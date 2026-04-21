@@ -1,0 +1,73 @@
+📌 TERMINAL 1: Backend Server
+powershell# Navigate to backend
+cd F:\Threadforge\backend
+
+# Activate virtual environment
+.\venv\Scripts\Activate.ps1
+
+# Start backend server on port 8000
+uvicorn main:app --reload --port 8000
+```
+
+**Expected Output:**
+```
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process
+INFO:     Started server process
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+✅ Backend is ready when you see: Application startup complete.
+
+📌 TERMINAL 2: Frontend Dev Server
+powershell# Navigate to frontend
+cd F:\Threadforge\frontend
+
+# Start frontend dev server (Vite)
+npm run dev
+```
+
+**Expected Output:**
+```
+  VITE v5.x.x  ready in xxx ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+  ➜  press h + enter to show help
+✅ Frontend is ready when you see: Local: http://localhost:5173/
+
+📌 TERMINAL 3: Stripe Webhook Listener (For Payment Testing)
+powershell# Start Stripe CLI webhook forwarding
+stripe listen --forward-to http://localhost:8000/api/payments/webhook
+```
+
+**Expected Output:**
+```
+Ready! Your webhook signing secret is whsec_xxxxxxxxxxxxx (^C to quit)
+```
+
+**⚠️ IMPORTANT:** If you see a NEW webhook secret (different from your `.env`):
+1. Copy the new `whsec_...` secret
+2. Update `backend/.env` file:
+```
+   STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxx
+```
+3. Restart Terminal 1 (backend server)
+
+**✅ Stripe is ready when you see:** `Ready! Your webhook signing secret is...`
+
+---
+
+## 🌐 OPEN APPLICATION
+
+**Open in your browser:**
+```
+http://localhost:5173
+Or click this direct link after all 3 terminals are running:
+👉 http://localhost:5173/dashboard
+
+
+Facebook debugging
+https://business.facebook.com/
+
+Twitter error message
+❌ twitter failed: twitter oauth error: Failed to get Twitter user info: {"client_id":"31563380","detail":"When authenticating requests to the Twitter API v2 endpoints, you must use keys and tokens from a Twitter developer App that is attached to a Project. You can create a project via the developer portal.","registration_url":"https://developer.twitter.com/en/docs/projects/overview","title":"Client Forbidden","required_enrollment":"Appropriate Level of API Access","reason":"client-not-enrolled","type":"https://api.twitter.com/2/problems/client-forbidden"}

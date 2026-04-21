@@ -1,0 +1,260 @@
+{
+  "credits": {
+    "runway": {
+      "balance": null,
+      "ok": false,
+      "error": "HTTP 404"
+    },
+    "elevenlabs": {
+      "used": null,
+      "limit": null,
+      "remaining": null,
+      "ok": false,
+      "error": "HTTP 401"
+    },
+    "gemini": {
+      "used_today": 0,
+      "daily_quota": 500,
+      "ok": true,
+      "error": null
+    },
+    "huggingface": {
+      "ok": true,
+      "model": "black-forest-labs/FLUX.1-schnell",
+      "username": null,
+      "error": null
+    }
+  },
+  "preview": {
+    "preview_id": "2abee58b-a7dd-4617-8480-7fda0ec2ca3c",
+    "scenes": [
+      {
+        "id": "scene_0",
+        "scene_index": 0,
+        "scene_type": "hook",
+        "description": "Split screen showing credit card charges, streaming app logos (Netflix, Spotify, Disney+, gym), with red X marks appearing over unused apps. Money counter graphic spinning downward.",
+        "duration": 5,
+        "image_url": "https://images.pexels.com/videos/27137608/pexels-photo-27137608.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=1200&w=630",
+        "method": "stock",
+        "credits_cost": 0,
+        "character_source": "generate",
+        "character_profile": {
+          "type": "professional person",
+          "style": "photorealistic",
+          "source": "stock_mode_skip"
+        }
+      },
+      {
+        "id": "scene_1",
+        "scene_index": 1,
+        "scene_type": "body",
+        "description": "Phone screen showing subscription list being scrolled, finger tapping cancel buttons, apps being deleted one by one. Checkmarks appear confirming cancellations.",
+        "duration": 5,
+        "image_url": "https://images.pexels.com/videos/8946986/copy-space-female-iphone-mobile-phone-8946986.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=1200&w=630",
+        "method": "stock",
+        "credits_cost": 0,
+        "character_source": "generate",
+        "character_profile": {
+          "type": "professional person",
+          "style": "photorealistic",
+          "source": "stock_mode_skip"
+        }
+      },
+      {
+        "id": "scene_2",
+        "scene_index": 2,
+        "scene_type": "body",
+        "description": "Bank app showing automated transfer setup, money flowing into savings account graphic, savings balance increasing with dollar signs. Calendar marking '1 hour' completion time.",
+        "duration": 5,
+        "image_url": "https://images.pexels.com/videos/6282193/pexels-photo-6282193.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=1200&w=630",
+        "method": "stock",
+        "credits_cost": 0,
+        "character_source": "generate",
+        "character_profile": {
+          "type": "professional person",
+          "style": "photorealistic",
+          "source": "stock_mode_skip"
+        }
+      },
+      {
+        "id": "scene_3",
+        "scene_index": 3,
+        "scene_type": "cta",
+        "description": "Phone with calendar notification 'Audit subscriptions today', clock showing time passing, success checkmark animation final frame.",
+        "duration": 5,
+        "image_url": "https://images.pexels.com/videos/7822022/pexels-photo-7822022.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=1200&w=630",
+        "method": "stock",
+        "credits_cost": 0,
+        "character_source": "generate",
+        "character_profile": {
+          "type": "professional person",
+          "style": "photorealistic",
+          "source": "stock_mode_skip"
+        }
+      }
+    ],
+    "character_profile": {
+      "type": "professional person",
+      "style": "photorealistic",
+      "source": "stock_mode_skip"
+    },
+    "estimated_cost": {
+      "credits": 0,
+      "usd": 0.0,
+      "elevenlabs_usd": 0.0204,
+      "total_usd": 0.0204
+    },
+    "can_afford": true,
+    "instructions": "Review scenes, edit text, reorder, then approve for generation."
+  },
+  "queue": {
+    "status": "queued",
+    "generation_id": 3,
+    "preview_id": "2abee58b-a7dd-4617-8480-7fda0ec2ca3c",
+    "message": "Video generation started in background.",
+    "dry_run": true
+  },
+  "generation": {
+    "success": true,
+    "dry_run": false,
+    "generation_id": 4,
+    "run_id": "vid_f9635efda394",
+    "duration_seconds": 10,
+    "parts": {
+      "hook": "Stop wasting money on unused subscriptions.",
+      "body": "Cancel them today and save every month.",
+      "cta": "Follow for more."
+    },
+    "scenes": [
+      {
+        "scene": 1,
+        "start": 0.0,
+        "end": 2.2,
+        "part": "hook",
+        "visual_description": "high-contrast opening motion or symbolic b-roll matching the hook",
+        "keywords": [
+          "stop",
+          "wasting",
+          "money",
+          "unused",
+          "subscriptions"
+        ],
+        "on_screen_text": "HOOK: Stop wasting money on unused subscriptions.",
+        "energy": "urgency",
+        "clip_url": null,
+        "use_runway": false,
+        "credits_cost": 0.0,
+        "reason": "STOCK MODE"
+      },
+      {
+        "scene": 2,
+        "start": 2.2,
+        "end": 7.8,
+        "part": "body",
+        "visual_description": "concept-relevant explanatory visual metaphor tied to the body",
+        "keywords": [
+          "cancel",
+          "today",
+          "save",
+          "month"
+        ],
+        "on_screen_text": "Cancel them today and save every month.",
+        "energy": "curiosity",
+        "clip_url": null,
+        "use_runway": false,
+        "credits_cost": 0.0,
+        "reason": "STOCK MODE"
+      },
+      {
+        "scene": 3,
+        "start": 7.8,
+        "end": 10.0,
+        "part": "cta",
+        "visual_description": "result-oriented visual and clean call-to-action style ending",
+        "keywords": [
+          "growth",
+          "success",
+          "goal",
+          "minimal"
+        ],
+        "on_screen_text": "CTA: Follow for more.",
+        "energy": "confidence",
+        "clip_url": null,
+        "use_runway": false,
+        "credits_cost": 0.0,
+        "reason": "STOCK MODE"
+      }
+    ],
+    "download_url": "/api/generate/video/download/vid_f9635efda394.mp4",
+    "preview_url": "/api/generate/video/download/vid_f9635efda394.mp4",
+    "platform_meta": null,
+    "seo": {
+      "title": "Stop Wasting Money on Unused Subscriptions! Cancel Now",
+      "description": "Are you throwing money away on subscriptions you never use? Netflix, Spotify, gym memberships, streaming services - they add up fast! The average person wastes $273 per month on forgotten subscriptions. That's over $3,200 per year down the drain! Take control of your finances today. Review your bank statements, identify unused subscriptions, and cancel them immediately. Every dollar saved is a dollar earned. Start building your emergency fund, paying off debt, or investing for your future instead of funding services you don't need. Your wallet will thank you! Ready to take action? Check your subscriptions right now and start saving money today!",
+      "tags": [
+        "cancel subscriptions",
+        "save money",
+        "personal finance",
+        "budgeting tips",
+        "money saving tips",
+        "financial advice",
+        "unused subscriptions",
+        "monthly expenses",
+        "budget hacks",
+        "frugal living",
+        "financial freedom",
+        "money management",
+        "subscription audit",
+        "cutting expenses",
+        "finance tips",
+        "saving money fast",
+        "budget planning",
+        "financial wellness",
+        "money mistakes",
+        "smart spending"
+      ],
+      "hashtags": [
+        "#SaveMoney",
+        "#PersonalFinance",
+        "#BudgetTips",
+        "#FinancialFreedom",
+        "#MoneyHacks",
+        "#Subscriptions",
+        "#FinanceTips"
+      ],
+      "thumbnail_text": "CANCEL UNUSED SUBSCRIPTIONS"
+    },
+    "thumbnail_path": "F:\\Threadforge\\backend\\generated_videos\\vid_f9635efda394.jpg",
+    "costs": {
+      "runway_credits_used": 0.0,
+      "runway_cost_usd": 0.0,
+      "elevenlabs_chars_used": 83,
+      "elevenlabs_cost_usd": 0.0249,
+      "total_cost_usd": 0.0249
+    },
+    "scene_strategy": [
+      {
+        "scene": 1,
+        "part": "hook",
+        "use_runway": false,
+        "credits_cost": 0.0,
+        "reason": "STOCK MODE"
+      },
+      {
+        "scene": 2,
+        "part": "body",
+        "use_runway": false,
+        "credits_cost": 0.0,
+        "reason": "STOCK MODE"
+      },
+      {
+        "scene": 3,
+        "part": "cta",
+        "use_runway": false,
+        "credits_cost": 0.0,
+        "reason": "STOCK MODE"
+      }
+    ],
+    "warning": null
+  }
+}

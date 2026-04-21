@@ -1,0 +1,180 @@
+{
+  "tests": [
+    {
+      "status": "PASS",
+      "name": "Auth Login",
+      "detail": "admin@test.com founder plan, token=eyJhbGciOiJIUzI1NiIs..."
+    },
+    {
+      "status": "PASS",
+      "name": "Video Plan API",
+      "detail": "hook=You're bleeding money every month without even kno"
+    },
+    {
+      "status": "PASS",
+      "name": "Plan scenes (4 scenes)",
+      "detail": ""
+    },
+    {
+      "status": "PASS",
+      "name": "Plan has hook",
+      "detail": ""
+    },
+    {
+      "status": "PASS",
+      "name": "Plan has body",
+      "detail": ""
+    },
+    {
+      "status": "PASS",
+      "name": "Plan has CTA",
+      "detail": ""
+    },
+    {
+      "status": "PASS",
+      "name": "YouTube Shorts metadata",
+      "detail": "Audit Your Bank NOW - Save $500/Year (Hidden Subsc"
+    },
+    {
+      "status": "PASS",
+      "name": "Reels metadata",
+      "detail": "You're Wasting $500/Year on Subscriptions"
+    },
+    {
+      "status": "PASS",
+      "name": "Video Preview API",
+      "detail": "4 scenes"
+    },
+    {
+      "status": "PASS",
+      "name": "All scenes = stock mode",
+      "detail": ""
+    },
+    {
+      "status": "PASS",
+      "name": "All scenes = 0 credits",
+      "detail": ""
+    },
+    {
+      "status": "PASS",
+      "name": "Estimated cost = 0 credits",
+      "detail": ""
+    },
+    {
+      "status": "PASS",
+      "name": "4 scenes have stock thumbnail URLs",
+      "detail": ""
+    },
+    {
+      "status": "FAIL",
+      "name": "Free Video Generation",
+      "detail": "Timeout >180s - stock footage pipeline may be slow"
+    },
+    {
+      "status": "PASS",
+      "name": "Free TTS API",
+      "detail": "provider=pyttsx3"
+    },
+    {
+      "status": "PASS",
+      "name": "pyttsx3 provider confirmed (offline TTS)",
+      "detail": ""
+    },
+    {
+      "status": "FAIL",
+      "name": "Audio file path returned but file not found",
+      "detail": "assets/voice_cache\\voice_free_f77d43e8cd8cfd60.wav"
+    },
+    {
+      "status": "PASS",
+      "name": "Generate-from-Preview API (dry_run=True)",
+      "detail": ""
+    },
+    {
+      "status": "PASS",
+      "name": "CRITICAL: dry_run=True echoed in response (no RunwayML call)",
+      "detail": ""
+    },
+    {
+      "status": "PASS",
+      "name": "Status = queued (background task queued)",
+      "detail": ""
+    },
+    {
+      "status": "PASS",
+      "name": "API Credits endpoint",
+      "detail": ""
+    },
+    {
+      "status": "PASS",
+      "name": "Runway status in credits",
+      "detail": "ok=False, balance=None"
+    },
+    {
+      "status": "PASS",
+      "name": "ElevenLabs status in credits",
+      "detail": "ok=False"
+    },
+    {
+      "status": "PASS",
+      "name": "Gemini status in credits",
+      "detail": "ok=True, quota=500"
+    },
+    {
+      "status": "PASS",
+      "name": "HuggingFace status in credits",
+      "detail": "ok=False, error=HF_TOKEN not set in .env"
+    },
+    {
+      "status": "PASS",
+      "name": "Video History API",
+      "detail": "3 items"
+    },
+    {
+      "status": "PASS",
+      "name": "History item has required fields (id, status)",
+      "detail": ""
+    },
+    {
+      "status": "PASS",
+      "name": "Dry-run items visible in history (1 items)",
+      "detail": ""
+    }
+  ],
+  "ratings": {
+    "Free Voice (pyttsx3)": {
+      "score": 2,
+      "note": "Robotic monotone voice. Works offline, zero cost. Not suitable for published content."
+    }
+  },
+  "summary": {
+    "passed": 26,
+    "failed": 2,
+    "total": 28
+  },
+  "api_credits_raw": {
+    "runway": {
+      "balance": null,
+      "ok": false,
+      "error": "HTTP 404"
+    },
+    "elevenlabs": {
+      "used": null,
+      "limit": null,
+      "remaining": null,
+      "ok": false,
+      "error": "HTTP 401"
+    },
+    "gemini": {
+      "used_today": 0,
+      "daily_quota": 500,
+      "ok": true,
+      "error": null
+    },
+    "huggingface": {
+      "ok": false,
+      "model": null,
+      "error": "HF_TOKEN not set in .env"
+    }
+  }
+}

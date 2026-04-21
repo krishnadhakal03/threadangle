@@ -1,0 +1,12 @@
+Stripe
+Publishable key
+pk_test_51T9X7xENTHUFg4mIQjtL2BEVBYrwdgpZIHdURGc12RgPovmatG5H7zO73pigfflN510yjfRGHkPrdNVT8tJBVo5600BHrEz3nK
+Secret key
+sk_test_51T9X7xENTHUFg4mI5sSxIk1qGoj6qPkAaIIIganSAmLoF7RvGEUfSaNCo55kHLIWqiwBs3t5apP7lIVfMoq7j513009wUMztgQ
+
+Product
+prod_U7mrAzwGGotv9z -> Threadangle Starter
+price_1T9XI0ENTHUFg4mIt7dV8SVz
+
+prod_U7mv1TExhByqx4 -> Threadangle Pro
+price_1T9XLgENTHUFg4mIfMn0SZRm

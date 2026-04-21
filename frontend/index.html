@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2" />
+    <link rel="apple-touch-icon" href="/threadangle-logo-120.png" />
+
+    <!-- Primary meta -->
+    <title>Threadangle — Turn Any Content Into Viral Social Posts</title>
+    <meta name="description" content="Paste a URL or text. Get a Twitter thread, LinkedIn post, and TikTok script instantly. Threadangle finds the perfect angle for every platform." />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="Threadangle — Turn Any Content Into Viral Social Posts" />
+    <meta property="og:description" content="Paste a URL or text. Get a Twitter thread, LinkedIn post, and TikTok script in 20 seconds." />
+    <meta property="og:image" content="https://kriangle.com/og-image.png" />
+    <meta property="og:url" content="https://kriangle.com" />
+    <meta property="og:type" content="website" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Threadangle — Turn Any Content Into Viral Social Posts" />
+    <meta name="twitter:description" content="Paste a URL or text. Get a Twitter thread, LinkedIn post, and TikTok script in 20 seconds." />
+    <meta name="twitter:image" content="https://kriangle.com/og-image.png" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+
+    <!-- Facebook JS SDK — used for Instagram Business Login (FB.login) -->
+    <!-- Meta canonical async loader: developers.facebook.com/docs/facebook-login/web -->
+    <!-- "Login with JavaScript SDK" must be ON in Meta App Dashboard → Facebook Login → Settings -->
+    <!-- Add localhost (and your production domain) to "Allowed Domains for JavaScript SDK" there too -->
+    <script>
+      window.fbAsyncInit = function() {
+        FB.init({
+          appId  : '%VITE_FACEBOOK_APP_ID%',
+          cookie : true,
+          xfbml  : true,
+          version: 'v21.0'
+        });
+
+        FB.AppEvents.logPageView();
+      };
+
+      (function(d, s, id){
+        var js, fjs = d.getElementsByTagName(s)[0];
+        if (d.getElementById(id)) {return;}
+        js = d.createElement(s); js.id = id;
+        js.src = "https://connect.facebook.net/en_US/sdk.js";
+        fjs.parentNode.insertBefore(js, fjs);
+      }(document, 'script', 'facebook-jssdk'));
+    </script>
+  </body>
+</html>

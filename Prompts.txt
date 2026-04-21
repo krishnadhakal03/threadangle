@@ -1,0 +1,81 @@
+I have attached screenshot from AI Video (Beta) , Report a Bug and Threadangle Support chat screen
+
+You are 20 years experience Sr UI/UX engineer who has success history
+Do following 
+1. Review all screen attached here as screenshot
+2. Rate and list all critical UI/UX issue
+3. Think out of box design
+4. Implement and Test them
+
+
+The Master Viral AI Video Guide (2026)
+Platform 	Trend / Title	Video Specs (Char/Length/Views)	Script Structure & Hook	Production Workflow
+TikTok	The Fruit That Doesn't Exist	Alien fruits; 15s; 10M+	Hook: Zoom into glowing fruit. Action: Slice to reveal liquid crystal core.	1. Midjourney for base images. 2. Luma Dream Machine for "Image-to-Video." 3. High-def Foley SFX.
+TikTok	Cyberpunk Tokyo Walk	Female Lead; 30s; 5M+	Hook: FPV rainy street walk. Monologue: "The rain here remembers."	1. OpenAI Sora 2 for cinematic realism. 2. ElevenLabs for noir voiceover. 3. CapCut color grading.
+Reels	Before/After AI Glow-up	Digital Double; 20s; 8M+	Hook: "My morning face vs. AI's." Action: Snap fingers to reveal 3D avatar.	1. Film real footage. 2. Runway Gen-4.5 "Video-to-Video" restyle. 3. Sync to trending Reel audio.
+Shorts	Stoic Wisdom	Marcus Aurelius; 45s; 11M+	Intro: "Aurelius once said..." Action: 3 rapid points on discipline.	1. 4K Statue generation. 2. ChatGPT for script. 3. HeyGen for lip-sync animation.
+TikTok	Galactic Safari	Astronaut Animals; 15s; 4M+	Hook: Lion in space armor. Narrator: "Lions aren't kings here—they're guardians."	1. Armor/Animal generation. 2. Pika 2.5 "Motion Brush" for specific movement. 3. Cinematic space score.
+Shorts	3 Quick AI Design Hacks	Screen Captures; 30s; 2.5M+	Hook: "Stop wasting time on X." Action: Show 3 tools in rapid succession.	1. Loom screen records. 2. InVideo AI for voiceover/overlays. 3. Edit in DaVinci Resolve.
+Reels	The Movie That Isn't Real	Cinematic Cast; 60s; 3.5M+	Trailer Hook: "Coming this summer... the movie too weird to exist."	1. Google Veo 3 for 10 unique cinematic scenes. 2. Udio for custom orchestral music.
+TikTok	Robot Fight in SF	Giant Mechs; 25s; 6M+	Action: Explosive impacts in real city streets. Text: "Who won this? 👇"	1. Film real-world location. 2. Luma Dream Machine "Extend Video" to add 3D robots. 3. Heavy metal foley effects.
+Shorts	7-Day AI Habit Challenge	AI Avatar; 45s; 1.8M+	Hook: "I let AI live my life for a week." Action: Day 1-7 rapid progress montage.	1. Consistent avatar in Viblo.ai. 2. ElevenLabs voice clone. 3. Veed.io for dynamic captions.
+Reels	Pattern-Break Twist	Everyday Objects; 15s; 4.2M+	Visual: A coffee cup liquefies when touched. Text: "Did you see it?"	1. Photo of real object. 2. Runway Gen-4.5 "Multi-Motion Brush" to transform. 3. Perfect loop editing.
+
+
+Now me and my copilot pro is ready for video production. I gave copilot to analyze most viral AI videos of 2026 and after analysis create top 10 contents, there script and timing. This attached pdf is provided by copilot pro.
+
+
+
+I want you to act as third party reviewer who is master in research and has helped my viral content creators get exploded with 10 video post. 
+
+
+
+Please do critical review of those scripts and do your improvisation so we can get high quality video and nice breakout.
+
+
+
+After analysis and review
+
+
+
+Prepare your version of top 10 scripts, either modifying current scripts or making new once. Then prepare detailed pdf with script/ scene by scene images suggestion of example, clips idea, voice caption, CTA and hook , potential views targets, timing to post and any other important data. It should be single pdf with name "Claude Viral Script 2026_top_10.pdf"
+
+We have lost 60 credit on last video generation due to critical bug.
+
+You are 20 years experience Sr UI/UX engineer who has success history
+Do following
+
+Review all screen and work flow
+Rate and list all critical UI/UX issue
+Think out of box design
+Implement fix all issues and Test them
+Make sure all flows are full functional both UI as well as backend makes sense
+Test all free API without limitation dont test anything consuming real credit mock them for now.
+
+For video quality, caption, thumbnail use footage mode to test.
+
+Review video and make as many fixes needed.
+
+After testing give me full details in pdf
+
+which flow was tested, found issues, fixed issues and retest.
+
+Stock video quality rating, thubnail rating, caption rating and free voice accuracy in video and caption style.
+
+This is my real investment so critical and brutal testing and fixing.
+
+Once this round is over inform me and we will plan for full ai paid testing.
+
+All permission granted, use any automation or testing tool. I want full proof system.
+
+No leakeage No workflow brekage
+
+
+F:\Threadforge\backend\generated_videos\5-Faceless-YouTube-Niches-That-Make-2-3K-Monthly-vid_18c870d59035
+
+video generated after all enhancement. Please do intensive analysis and review , Find out all critical issues in
+Voice
+Video
+Caption
+thumbnail
+Rate it on scale of five and give me how much can it refine after fix.
