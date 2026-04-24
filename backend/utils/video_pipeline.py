@@ -1809,12 +1809,12 @@ def _render_phone_bill_cta_pack(scene: "ScenePlan", run_id: str) -> str:
     lines = [
         "Call carrier this week",
         f"Save {yearly_cta}",
-        "Comment BILL for prompt" if engagement_cta_enabled else "Send to someone overpaying",
+        "Send to someone overpaying",
     ]
     print(
         f"[ENGAGEMENT_CTA] scene={getattr(scene, 'idx', 'unknown')} "
         f"enabled={'true' if engagement_cta_enabled else 'false'} "
-        f"variant={'comment_bill' if engagement_cta_enabled else 'default_fallback'}"
+        f"variant={'separate_chip' if engagement_cta_enabled else 'default_fallback'}"
     )
 
     img = Image.new("RGB", (_CARD_W, _CARD_H), (8, 10, 16))
@@ -1841,6 +1841,15 @@ def _render_phone_bill_cta_pack(scene: "ScenePlan", run_id: str) -> str:
     footer_font = _try_load_font(40, bold=False)
 
     draw.text((panel[0] + 42, panel[1] + 22), "NEXT STEP", font=label_font, fill=(10, 16, 24))
+    if engagement_cta_enabled:
+        chip_font = _try_load_font(36, bold=True)
+        chip_text = "Comment BILL for prompt"
+        chip_w, chip_h = 404, 74
+        chip_x = panel[2] - chip_w - 42
+        chip_y = panel[1] + 112
+        draw.rounded_rectangle([chip_x, chip_y, chip_x + chip_w, chip_y + chip_h], radius=28, fill=(36, 48, 78))
+        draw.rounded_rectangle([chip_x + 6, chip_y + 6, chip_x + chip_w - 6, chip_y + chip_h - 6], radius=24, outline=(126, 176, 255), width=2)
+        draw.text((chip_x + 24, chip_y + 20), chip_text, font=chip_font, fill=(233, 241, 255))
 
     title = "LOWER YOUR PHONE BILL"
     title_font, title_lines, title_line_height = _fit_text_block(
