@@ -20,6 +20,7 @@
     .eyebrow { display: inline-block; padding: 12px 20px; border-radius: 999px; background: rgba(88, 132, 214, .20); color: #a9c9ff; font-size: 28px; font-weight: 800; }
     .title { margin-top: 22px; font-size: 64px; line-height: 1.06; font-weight: 900; }
     .panel { margin-top: 28px; border-radius: 28px; background: #0d1624; border: 1px solid #2b3a54; padding: 28px; }
+    .panel.active { border-color: #6da1ff; box-shadow: 0 0 0 3px rgba(109,161,255,.14); }
     .label { font-size: 25px; color: #95a9c8; font-weight: 800; }
     .copy { margin-top: 12px; font-size: 40px; line-height: 1.22; font-weight: 800; white-space: pre-wrap; }
     .cursor::after { content: ""; display: inline-block; width: 4px; height: 39px; margin-left: 8px; background: rgba(255,255,255,.8); vertical-align: -6px; }
@@ -28,6 +29,10 @@
     .visible { opacity: 1 !important; transform: translateY(0) !important; }
     .chip-title { font-size: 30px; font-weight: 900; color: #ffffff; }
     .chip-sub { margin-top: 8px; font-size: 24px; line-height: 1.18; color: #9fb2cf; font-weight: 700; }
+    .loading { margin-top: 18px; height: 12px; border-radius: 999px; background: #19283d; overflow: hidden; opacity: 0; }
+    .loading.visible { opacity: 1 !important; }
+    .loading::after { content: ""; display: block; width: 64%; height: 100%; border-radius: 999px; background: #75a7ff; }
+    .mouse { position: absolute; width: 30px; height: 30px; border-radius: 50%; background: #fff; border: 5px solid #111827; box-shadow: 0 7px 18px rgba(0,0,0,.42); transform: translate(760px, 610px); }
   </style>
 </head>
 <body data-state="__STATE_JSON__" data-demo="__DATA_JSON__">
@@ -42,16 +47,18 @@
       <div class="content">
         <div class="eyebrow">AI Assistant</div>
         <div class="title">Ask AI for the script</div>
-        <div class="panel">
+        <div id="promptPanel" class="panel">
           <div class="label">Prompt</div>
           <div id="promptCopy" class="copy"></div>
         </div>
         <div class="panel">
           <div class="label">Result outline</div>
+          <div id="loading" class="loading"></div>
           <div id="resultWrap" class="result"></div>
         </div>
       </div>
     </div>
+    <div id="mouse" class="mouse"></div>
   </div>
   <script>
     const state = JSON.parse(document.body.dataset.state || '{}');
@@ -61,6 +68,8 @@
     const promptNode = document.getElementById('promptCopy');
     promptNode.textContent = prompt.slice(0, typedChars);
     if (typedChars < prompt.length) promptNode.classList.add('cursor');
+    if (typedChars < prompt.length) document.getElementById('promptPanel').classList.add('active');
+    if (typedChars >= prompt.length && visible < 2) document.getElementById('loading').classList.add('visible');
     const wrap = document.getElementById('resultWrap');
     const visible = Number(state.result_visible || 0);
     (data.outline || []).slice(0, 4).forEach((item, index) => {
@@ -69,6 +78,10 @@
       node.innerHTML = '<div class="chip-title">' + item.title + '</div><div class="chip-sub">' + item.sub + '</div>';
       wrap.appendChild(node);
     });
+    const mouse = document.getElementById('mouse');
+    if (typedChars < prompt.length) mouse.style.transform = 'translate(780px, 610px)';
+    else if (visible < 2) mouse.style.transform = 'translate(815px, 790px)';
+    else mouse.style.transform = 'translate(880px, 1040px)';
   </script>
 </body>
 </html>

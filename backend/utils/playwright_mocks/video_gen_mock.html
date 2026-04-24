@@ -19,11 +19,16 @@
     .label { font-size: 25px; color: #95a9c8; font-weight: 800; }
     .prompt { margin-top: 14px; border-radius: 22px; background: #111d2e; border: 1px solid #314260; padding: 22px; font-size: 35px; line-height: 1.22; font-weight: 800; }
     .button { margin-top: 22px; display: inline-block; border-radius: 22px; padding: 20px 26px; background: #3b6cff; font-size: 34px; font-weight: 900; }
+    .button.active { box-shadow: 0 0 0 5px rgba(59,108,255,.25); }
+    .loading { margin-top: 20px; height: 14px; border-radius: 999px; background: #1a2939; overflow: hidden; opacity: 0; }
+    .loading.visible { opacity: 1; }
+    .loading::after { content: ""; display: block; width: 74%; height: 100%; background: #8bb7ff; border-radius: 999px; }
     .preview { margin-top: 26px; height: 430px; border-radius: 26px; background: linear-gradient(135deg, #253553, #132133 60%, #21543b); border: 1px solid #3a4c70; position: relative; overflow: hidden; opacity: 0; }
     .visible { opacity: 1 !important; }
     .bar { position: absolute; left: 26px; right: 26px; bottom: 28px; height: 26px; border-radius: 13px; background: rgba(255,255,255,.22); }
     .bar::after { content: ""; display: block; height: 100%; width: 72%; border-radius: 13px; background: #9ff0c1; }
     .ready { position: absolute; left: 28px; top: 28px; padding: 14px 18px; border-radius: 18px; background: rgba(9,20,31,.78); font-size: 30px; font-weight: 900; }
+    .mouse { position: absolute; width: 30px; height: 30px; border-radius: 50%; background: #fff; border: 5px solid #111827; box-shadow: 0 7px 18px rgba(0,0,0,.42); transform: translate(795px, 830px); }
   </style>
 </head>
 <body data-state="__STATE_JSON__" data-demo="__DATA_JSON__">
@@ -38,14 +43,19 @@
       <div class="card">
         <div class="label">Prompt to video</div>
         <div class="prompt">Creator desk setup, phone preview, simple short-form video workflow.</div>
-        <div class="button">Generate scene</div>
+        <div id="button" class="button">Generate scene</div>
+        <div id="loading" class="loading"></div>
         <div id="preview" class="preview"><div class="ready">Preview ready</div><div class="bar"></div></div>
       </div>
     </div>
-  </div></div>
+  </div><div id="mouse" class="mouse"></div></div>
   <script>
     const state = JSON.parse(document.body.dataset.state || '{}');
-    if (Number(state.step_visible || 0) >= 2) document.getElementById('preview').classList.add('visible');
+    const visible = Number(state.step_visible || 0);
+    if (visible === 2) document.getElementById('button').classList.add('active');
+    if (visible === 2) document.getElementById('loading').classList.add('visible');
+    if (visible >= 3) document.getElementById('preview').classList.add('visible');
+    document.getElementById('mouse').style.transform = visible < 2 ? 'translate(810px, 760px)' : (visible < 3 ? 'translate(780px, 940px)' : 'translate(860px, 1250px)');
   </script>
 </body>
 </html>

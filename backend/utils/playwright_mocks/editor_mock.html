@@ -24,6 +24,9 @@
     .voice { background: #9df0bf; width: 82%; }
     .captions { background: #ffe28a; width: 72%; }
     .export { margin-top: 26px; border-radius: 22px; padding: 22px 28px; background: #ffffff; color: #111821; display: inline-block; font-size: 36px; font-weight: 900; opacity: 0; }
+    .export.active { box-shadow: 0 0 0 5px rgba(255,255,255,.22); }
+    .status { margin-left: 18px; color: #b7ffd4; font-size: 30px; font-weight: 900; opacity: 0; }
+    .mouse { position: absolute; width: 30px; height: 30px; border-radius: 50%; background: #fff; border: 5px solid #111827; box-shadow: 0 7px 18px rgba(0,0,0,.42); transform: translate(775px, 1180px); }
   </style>
 </head>
 <body data-state="__STATE_JSON__" data-demo="__DATA_JSON__">
@@ -42,10 +45,10 @@
           <div id="voice" class="track voice">Voice</div>
           <div id="captions" class="track captions">Captions</div>
         </div>
-        <div id="export" class="export">Export short</div>
+        <div id="export" class="export">Export short</div><span id="status" class="status">Post-ready</span>
       </div>
     </div>
-  </div></div>
+  </div><div id="mouse" class="mouse"></div></div>
   <script>
     const state = JSON.parse(document.body.dataset.state || '{}');
     const visible = Number(state.step_visible || 0);
@@ -53,6 +56,9 @@
     if (visible >= 2) document.getElementById('voice').classList.add('visible');
     if (visible >= 3) document.getElementById('captions').classList.add('visible');
     if (visible >= 4) document.getElementById('export').classList.add('visible');
+    if (visible >= 4) document.getElementById('export').classList.add('active');
+    if (visible >= 4) document.getElementById('status').classList.add('visible');
+    document.getElementById('mouse').style.transform = visible < 2 ? 'translate(800px, 1100px)' : (visible < 4 ? 'translate(720px, 1240px)' : 'translate(570px, 1400px)');
   </script>
 </body>
 </html>
