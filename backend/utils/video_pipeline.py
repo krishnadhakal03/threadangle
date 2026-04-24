@@ -2563,8 +2563,8 @@ def _playwright_local_demo_data(scene: "ScenePlan", demo_type: str) -> dict[str,
             "save": estimated_savings,
             "results": [
                 "Flexible dates found a lower Tuesday return.",
-                "Nearby airport option cut the fare before baggage.",
-                "Baggage-fee check kept the cheaper fare cheaper.",
+                "Nearby airport found a lower base fare.",
+                "Baggage fees included in comparison.",
             ],
         }
     return {}
