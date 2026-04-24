@@ -1058,12 +1058,26 @@ def _classify_screen_demo_type(scene: "ScenePlan") -> str:
     if not blob:
         return "stock_video"
 
-    if any(marker in blob for marker in ["call script", "carrier", "retention"]):
-        return "call_script_demo"
     if any(marker in blob for marker in ["chatgpt", "prompt", "paste", "write me"]):
         return "chat_prompt_demo"
+    if any(marker in blob for marker in ["call script", "carrier", "retention"]):
+        return "call_script_demo"
     if any(marker in blob for marker in ["bill", "$", "month", "year", "savings"]):
         return "bill_compare_demo"
+    return "stock_video"
+
+
+def _classify_playwright_demo_type(scene: "ScenePlan", screen_demo_type: str) -> str:
+    if not scene:
+        return "stock_video"
+    part = (getattr(scene, "part", "") or "").lower().strip()
+    if part in {"hook", "cta"}:
+        return "stock_video"
+    domain = _detect_problem_domain(scene)
+    if domain not in _DOMAIN_PACKS:
+        return "stock_video"
+    if screen_demo_type == "chat_prompt_demo":
+        return "ai_chat_typing"
     return "stock_video"
 
 
@@ -4577,8 +4591,10 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
     hook_shock_enabled = mode == "stock" and os.getenv("ENABLE_HOOK_SHOCK", "0") == "1"
     screen_demo_enabled = mode == "stock" and os.getenv("ENABLE_SCREEN_DEMOS", "0") == "1"
     cta_pack_enabled = mode == "stock" and os.getenv("ENABLE_CTA_PACKS", "0") == "1"
+    playwright_demo_enabled = mode == "stock" and os.getenv("ENABLE_PLAYWRIGHT_DEMO", "0") == "1"
     proof_scene_types: dict[int, str] = {}
     screen_demo_types: dict[int, str] = {}
+    playwright_demo_types: dict[int, str] = {}
     scene_domains: dict[int, str] = {}
     if mode == "stock":
         for scene in scenes:
@@ -4590,6 +4606,16 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
             print(
                 f"[SCREEN_DEMO] enabled={'true' if screen_demo_enabled else 'false'} "
                 f"scene={scene.idx} domain={domain or 'unqualified'} demo_type={screen_demo_type}"
+            )
+            playwright_demo_type = (
+                _classify_playwright_demo_type(scene, screen_demo_type)
+                if playwright_demo_enabled
+                else "stock_video"
+            )
+            playwright_demo_types[int(scene.idx)] = playwright_demo_type
+            print(
+                f"[PLAYWRIGHT_DEMO] enabled={'true' if playwright_demo_enabled else 'false'} "
+                f"scene={scene.idx} demo_type={playwright_demo_type}"
             )
             proof_type = _classify_proof_scene_type(scene) if proof_scenes_enabled else "stock_video"
             proof_scene_types[int(scene.idx)] = proof_type
@@ -4699,6 +4725,7 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                 scene_asset_type = "stock_video"
                 proof_type = proof_scene_types.get(int(scene.idx), "stock_video")
                 screen_demo_type = screen_demo_types.get(int(scene.idx), "stock_video")
+                playwright_demo_type = playwright_demo_types.get(int(scene.idx), "stock_video")
                 scene_domain = scene_domains.get(int(scene.idx), "")
 
                 if hook_shock_enabled and _qualifies_for_hook_shock(scene, scene_domain):
@@ -4710,6 +4737,15 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                     except Exception as e:
                         print(f"[HOOK_SHOCK] fallback_stock scene={scene.idx} reason=render_failed:{e}")
                         traceback.print_exc()
+
+                if playwright_demo_enabled and playwright_demo_type != "stock_video":
+                    try:
+                        path = _render_playwright_local_demo(scene, demo_type=playwright_demo_type, run_id=run_id)
+                        scene.clip_path = str(path)
+                        print(f"[PLAYWRIGHT_DEMO] rendered scene={scene.idx} path={path}")
+                        return
+                    except Exception as e:
+                        print(f"[PLAYWRIGHT_DEMO] fallback scene={scene.idx} reason={e}")
 
                 if screen_demo_enabled and screen_demo_type in {"chat_prompt_demo", "bill_compare_demo", "call_script_demo"}:
                     try:
