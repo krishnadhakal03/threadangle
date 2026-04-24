@@ -3177,7 +3177,7 @@ def _hook_shock_text(scene: "ScenePlan", domain: str) -> str:
     if domain == "subscriptions":
         return "Check this before you get charged again."
     if domain == "airline":
-        return "Before booking\nflights,\ncheck these 3 things"
+        return "Before booking\nflights,\ncheck these\n3 things"
     if domain == "rent":
         return "Check this before you accept the rent hike."
     if domain == "creator_tools":
@@ -3242,13 +3242,15 @@ def _render_hook_shock_clip(scene: "ScenePlan", run_id: str) -> str:
     else:
         lines = []
 
+    hook_font_sizes = [92, 86, 80, 74, 68, 62] if domain == "airline" else [116, 110, 104, 98, 92, 86, 80]
+    hook_max_lines = 4 if domain == "airline" else 3
     title_font, fitted_lines, line_height = _fit_text_block(
         draw,
         shock_text.upper(),
         max_width=int((card[2] - card[0]) * 0.9),
-        max_height=340,
-        font_sizes=[116, 110, 104, 98, 92, 86, 80],
-        max_lines=3,
+        max_height=430 if domain == "airline" else 340,
+        font_sizes=hook_font_sizes,
+        max_lines=hook_max_lines,
         bold=True,
         preserve_newlines=bool(lines),
     )
