@@ -1025,12 +1025,15 @@ def _classify_proof_scene_type(scene: "ScenePlan") -> str:
 
     prompt_markers = ["prompt", "chatgpt", "paste", "script", "write me"]
     bill_markers = ["phone bill", "carrier", "monthly bill", "plan"]
+    before_after_markers = ["before", "after", "down from", "went from", "from $", "to $", "was $", "now $"]
     savings_markers = ["$", "per month", "per year", "360", "savings"]
 
     if any(marker in blob for marker in prompt_markers):
         return "prompt_demo"
     if any(marker in blob for marker in bill_markers):
         return "bill_demo"
+    if any(marker in blob for marker in before_after_markers):
+        return "before_after_demo"
     if any(marker in blob for marker in savings_markers):
         return "savings_math"
     return "stock_video"
@@ -1711,6 +1714,39 @@ def _extract_monthly_and_yearly_values(scene: "ScenePlan") -> tuple[str, str]:
     return monthly_label, yearly_label
 
 
+def _extract_before_after_values(scene: "ScenePlan") -> tuple[str, str]:
+    blob = _proof_scene_blob(scene)
+    values = _extract_currency_values(blob)
+
+    before_match = re.search(r"before[:\s]+\$?\s*([0-9]+(?:\.[0-9]{1,2})?)", blob, re.IGNORECASE)
+    after_match = re.search(r"after[:\s]+\$?\s*([0-9]+(?:\.[0-9]{1,2})?)", blob, re.IGNORECASE)
+    from_to_match = re.search(
+        r"from\s+\$?\s*([0-9]+(?:\.[0-9]{1,2})?)\s+(?:to|down to)\s+\$?\s*([0-9]+(?:\.[0-9]{1,2})?)",
+        blob,
+        re.IGNORECASE,
+    )
+    was_now_match = re.search(
+        r"was\s+\$?\s*([0-9]+(?:\.[0-9]{1,2})?)\s+(?:now|today)\s+\$?\s*([0-9]+(?:\.[0-9]{1,2})?)",
+        blob,
+        re.IGNORECASE,
+    )
+
+    before_value: Optional[float] = float(before_match.group(1)) if before_match else None
+    after_value: Optional[float] = float(after_match.group(1)) if after_match else None
+    if from_to_match:
+        before_value = float(from_to_match.group(1))
+        after_value = float(from_to_match.group(2))
+    elif was_now_match:
+        before_value = float(was_now_match.group(1))
+        after_value = float(was_now_match.group(2))
+    elif len(values) >= 2 and before_value is None and after_value is None:
+        before_value, after_value = values[0], values[1]
+
+    before_label = _format_money(before_value) + "/month" if before_value is not None else "$95/month"
+    after_label = _format_money(after_value) + "/month" if after_value is not None else "$65/month"
+    return before_label, after_label
+
+
 def _hook_shock_text(scene: "ScenePlan", domain: str) -> str:
     raw = _clean_text(getattr(scene, "on_screen_text", "") or scene.subtitle or scene.source_text or "")
     pack = _DOMAIN_PACKS.get(domain or "", {})
@@ -1983,6 +2019,56 @@ def _render_savings_math_clip(scene: "ScenePlan", run_id: str) -> str:
     return str(out_path)
 
 
+def _render_before_after_demo_clip(scene: "ScenePlan", run_id: str) -> str:
+    from PIL import Image, ImageDraw
+
+    duration = float(max(1.6, (scene.end - scene.start)))
+    png_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_proof_before_after.png"
+    out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_proof_before_after.mp4"
+    before_label, after_label = _extract_before_after_values(scene)
+
+    img = Image.new("RGB", (_CARD_W, _CARD_H), (8, 12, 18))
+    draw = ImageDraw.Draw(img)
+    for yy in range(_CARD_H):
+        t = yy / float(max(1, _CARD_H - 1))
+        col = (
+            int(10 * (1 - t) + 2 * t),
+            int(18 * (1 - t) + 14 * t),
+            int(28 * (1 - t) + 16 * t),
+        )
+        draw.line([(0, yy), (_CARD_W, yy)], fill=col)
+
+    panel = [82, 220, _CARD_W - 82, _CARD_H - 220]
+    draw.rounded_rectangle(panel, radius=52, fill=(16, 22, 28), outline=(70, 90, 112), width=3)
+
+    label_font = _try_load_font(48, bold=True)
+    amount_font = _try_load_font(110, bold=True)
+    small_font = _try_load_font(42, bold=False)
+
+    draw.text((panel[0] + 44, panel[1] + 48), "BEFORE / AFTER", font=label_font, fill=(154, 205, 255))
+    before_box = [panel[0] + 44, panel[1] + 180, panel[2] - 44, panel[1] + 520]
+    after_box = [panel[0] + 44, panel[1] + 600, panel[2] - 44, panel[1] + 940]
+    draw.rounded_rectangle(before_box, radius=34, fill=(42, 25, 26))
+    draw.rounded_rectangle(after_box, radius=34, fill=(18, 58, 36))
+    draw.text((before_box[0] + 34, before_box[1] + 34), "BEFORE", font=label_font, fill=(255, 190, 190))
+    draw.text((before_box[0] + 34, before_box[1] + 130), before_label, font=amount_font, fill=(255, 255, 255))
+    draw.text((after_box[0] + 34, after_box[1] + 34), "AFTER", font=label_font, fill=(176, 255, 200))
+    draw.text((after_box[0] + 34, after_box[1] + 130), after_label, font=amount_font, fill=(255, 255, 255))
+    draw.text((panel[0] + 44, panel[3] - 120), "Use AI to compare the plan before you pay.", font=small_font, fill=(213, 224, 232))
+
+    img.save(png_path, "PNG")
+    _image_to_mp4(
+        image_path=png_path,
+        out_path=out_path,
+        duration=duration,
+        fps=30,
+        zoom_start=1.0,
+        zoom_end=1.05,
+        pan_px=8,
+    )
+    return str(out_path)
+
+
 def _render_proof_scene_clip(scene: "ScenePlan", run_id: str, proof_type: str) -> str:
     proof_type = (proof_type or "").strip()
     if proof_type == "prompt_demo":
@@ -1991,6 +2077,8 @@ def _render_proof_scene_clip(scene: "ScenePlan", run_id: str, proof_type: str) -
         return _render_bill_demo_clip(scene, run_id=run_id)
     if proof_type == "savings_math":
         return _render_savings_math_clip(scene, run_id=run_id)
+    if proof_type == "before_after_demo":
+        return _render_before_after_demo_clip(scene, run_id=run_id)
     raise ValueError(f"Unsupported proof scene type: {proof_type}")
 
 
@@ -3500,7 +3588,7 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                         print(f"[HOOK_SHOCK] fallback_stock scene={scene.idx} reason=render_failed:{e}")
                         traceback.print_exc()
 
-                if proof_scenes_enabled and proof_type in {"prompt_demo", "bill_demo", "savings_math"}:
+                if proof_scenes_enabled and proof_type in {"prompt_demo", "bill_demo", "savings_math", "before_after_demo"}:
                     try:
                         path = _render_proof_scene_clip(scene, run_id=run_id, proof_type=proof_type)
                         scene.clip_path = str(path)
