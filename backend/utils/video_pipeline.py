@@ -1969,6 +1969,166 @@ def _extract_before_after_values(scene: "ScenePlan") -> tuple[str, str]:
     return before_label, after_label
 
 
+def _before_after_proof_domain_key(domain: str) -> str:
+    normalized = (domain or "").strip().lower()
+    alias_map = {
+        "phone_bill": "phone_bill",
+        "subscriptions": "subscription",
+        "subscription": "subscription",
+        "airline": "airfare",
+        "airfare": "airfare",
+        "rent": "rent_negotiation",
+        "rent_negotiation": "rent_negotiation",
+    }
+    return alias_map.get(normalized, "")
+
+
+def _before_after_proof_payload(scene: "ScenePlan", domain: str) -> dict[str, str]:
+    domain_key = _before_after_proof_domain_key(domain)
+    if domain_key == "phone_bill":
+        current_label, target_label, _, yearly_savings_label, exact = _extract_phone_bill_values(scene)
+        return {
+            "domain_key": domain_key,
+            "left_title": "Before",
+            "left_amount": current_label,
+            "left_note": "Overpaying",
+            "right_title": "After",
+            "right_amount": target_label,
+            "right_note": f"Saved {yearly_savings_label}/yr",
+            "badge": "" if exact else "Example savings",
+        }
+
+    before_label, after_label = _extract_before_after_values(scene)
+    before_amount = before_label.replace("/month", "/mo")
+    after_amount = after_label.replace("/month", "/mo")
+
+    values = _extract_currency_values(_proof_scene_blob(scene))
+    yearly_saved = ""
+    if len(values) >= 2 and values[0] > values[1]:
+        yearly_saved = _format_money((values[0] - values[1]) * 12.0)
+
+    payloads = {
+        "subscription": {
+            "left_title": "Before",
+            "left_amount": before_amount if values else "$42/mo",
+            "left_note": "Too many charges",
+            "right_title": "After",
+            "right_amount": after_amount if values else "$18/mo",
+            "right_note": f"Saved {yearly_saved}/yr" if yearly_saved else "Canceled extras",
+            "badge": "Subscription reset",
+        },
+        "airfare": {
+            "left_title": "Before",
+            "left_amount": before_amount.replace("/mo", "") if values else "$480",
+            "left_note": "Booked full price",
+            "right_title": "After",
+            "right_amount": after_amount.replace("/mo", "") if values else "$320",
+            "right_note": "Saved on fare",
+            "badge": "Fare check",
+        },
+        "rent_negotiation": {
+            "left_title": "Before",
+            "left_amount": before_amount if values else "$1850/mo",
+            "left_note": "Accepted list price",
+            "right_title": "After",
+            "right_amount": after_amount if values else "$1650/mo",
+            "right_note": f"Saved {yearly_saved}/yr" if yearly_saved else "Negotiated lower",
+            "badge": "Rent negotiation",
+        },
+    }
+    return {"domain_key": domain_key, **payloads.get(domain_key, payloads["subscription"])}
+
+
+def _render_before_after_proof_clip(scene: "ScenePlan", run_id: str) -> str:
+    from PIL import Image, ImageDraw
+
+    duration = float(max(1.6, (scene.end - scene.start)))
+    png_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_before_after_proof.png"
+    out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_before_after_proof.mp4"
+
+    domain = _detect_problem_domain(scene)
+    payload = _before_after_proof_payload(scene, domain)
+    badge = _clean_text(payload.get("badge", ""))
+    _log_proof_audit(
+        scene,
+        f"{payload.get('left_title', 'Before')} {payload.get('left_amount', '')}",
+        f"{payload.get('right_title', 'After')} {payload.get('right_amount', '')}",
+        payload.get("right_note", ""),
+    )
+
+    img = Image.new("RGB", (_CARD_W, _CARD_H), (8, 12, 18))
+    draw = ImageDraw.Draw(img)
+    for yy in range(_CARD_H):
+        t = yy / float(max(1, _CARD_H - 1))
+        col = (
+            int(11 * (1 - t) + 5 * t),
+            int(16 * (1 - t) + 11 * t),
+            int(26 * (1 - t) + 16 * t),
+        )
+        draw.line([(0, yy), (_CARD_W, yy)], fill=col)
+
+    shell = [64, 210, _CARD_W - 64, _CARD_H - 230]
+    draw.rounded_rectangle(shell, radius=56, fill=(15, 20, 30), outline=(64, 82, 112), width=3)
+    if badge:
+        badge_box = [shell[0] + 42, shell[1] + 38, shell[0] + 360, shell[1] + 102]
+        draw.rounded_rectangle(badge_box, radius=28, fill=(30, 48, 80))
+
+    title_font = _try_load_font(50, bold=True)
+    amount_font = _try_load_font(104, bold=True)
+    note_font = _try_load_font(44, bold=False)
+    badge_font = _try_load_font(34, bold=True)
+
+    if badge:
+        draw.text((shell[0] + 68, shell[1] + 54), badge.upper(), font=badge_font, fill=(190, 218, 255))
+
+    left_box = [shell[0] + 38, shell[1] + 150, shell[0] + 450, shell[3] - 52]
+    right_box = [shell[0] + 490, shell[1] + 150, shell[2] - 38, shell[3] - 52]
+    draw.rounded_rectangle(left_box, radius=40, fill=(55, 27, 31))
+    draw.rounded_rectangle(right_box, radius=40, fill=(18, 63, 40))
+    divider = [shell[0] + 466, shell[1] + 186, shell[0] + 474, shell[3] - 86]
+    draw.rounded_rectangle(divider, radius=4, fill=(88, 108, 136))
+
+    def _draw_half(box: list[int], title: str, amount: str, note: str, accent: tuple[int, int, int]) -> None:
+        draw.text((box[0] + 34, box[1] + 38), title.upper(), font=title_font, fill=accent)
+        amount_lines = _wrap_text(draw, amount.upper(), amount_font, max_width=box[2] - box[0] - 68, max_lines=2)
+        yy = box[1] + 144
+        for line in amount_lines:
+            draw.text((box[0] + 34, yy), line, font=amount_font, fill=(255, 255, 255))
+            yy += 108
+        note_lines = _wrap_text(draw, note.upper(), note_font, max_width=box[2] - box[0] - 68, max_lines=2)
+        yy = max(yy + 26, box[3] - 190)
+        for line in note_lines:
+            draw.text((box[0] + 34, yy), line, font=note_font, fill=(228, 236, 242))
+            yy += 54
+
+    _draw_half(
+        left_box,
+        str(payload.get("left_title", "Before")),
+        str(payload.get("left_amount", "$95/mo")),
+        str(payload.get("left_note", "Overpaying")),
+        (255, 196, 196),
+    )
+    _draw_half(
+        right_box,
+        str(payload.get("right_title", "After")),
+        str(payload.get("right_amount", "$65/mo")),
+        str(payload.get("right_note", "Saved $360/yr")),
+        (182, 255, 196),
+    )
+
+    img.save(png_path, "PNG")
+    _image_to_mp4(
+        image_path=png_path,
+        out_path=out_path,
+        duration=duration,
+        fps=30,
+        zoom_start=1.0,
+        zoom_end=1.05,
+        pan_px=6,
+    )
+    return str(out_path)
+
+
 def _shorten_proof_text(text: str, max_words: int = 12) -> str:
     words = re.findall(r"[A-Za-z0-9'$/%.-]+", _clean_text(text))
     if not words:
