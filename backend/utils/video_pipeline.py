@@ -1119,6 +1119,38 @@ def _day3_workflow_step(scene: "ScenePlan") -> str:
     return ""
 
 
+def generate_day3_workflow_narration(text: str) -> tuple[Optional[str], str]:
+    if not _day3_workflow_enabled():
+        return None, "disabled"
+    try:
+        from backend.routes.voice_gen import VoiceGenRequest, generate_voice
+    except Exception:
+        try:
+            from routes.voice_gen import VoiceGenRequest, generate_voice
+        except Exception as exc:
+            print(f"[DAY3_WORKFLOW] audio unavailable reason=voice_import_failed:{exc}")
+            return None, "unavailable"
+
+    provider_preference = "elevenlabs" if os.getenv("ELEVENLABS_API_KEY") else "offline"
+    if provider_preference == "elevenlabs":
+        try:
+            result = generate_voice(VoiceGenRequest(text=text, force_free=False))
+            if result and result.audio_file and Path(result.audio_file).exists():
+                print(f"[DAY3_WORKFLOW] audio generated provider={result.provider} path={result.audio_file}")
+                return result.audio_file, result.provider
+        except Exception as exc:
+            print(f"[DAY3_WORKFLOW] elevenlabs audio fallback reason={exc}")
+
+    try:
+        result = generate_voice(VoiceGenRequest(text=text, force_free=True))
+        if result and result.audio_file and Path(result.audio_file).exists():
+            print(f"[DAY3_WORKFLOW] audio generated provider={result.provider} path={result.audio_file}")
+            return result.audio_file, result.provider
+    except Exception as exc:
+        print(f"[DAY3_WORKFLOW] offline audio unavailable reason={exc}")
+    return None, "unavailable"
+
+
 def _classify_proof_scene_type(scene: "ScenePlan") -> str:
     if not scene:
         return "stock_video"
