@@ -1282,7 +1282,15 @@ def _try_load_font(size: int, bold: bool = False):
         return ImageFont.load_default()
 
 
-def _wrap_text(draw, text: str, font, max_width: int, max_lines: int) -> list[str]:
+def _text_box_size(draw, text: str, font) -> tuple[int, int]:
+    try:
+        bbox = draw.textbbox((0, 0), text, font=font)
+        return bbox[2] - bbox[0], bbox[3] - bbox[1]
+    except Exception:
+        return max(1, len(text) * 12), 24
+
+
+def _wrap_text(draw, text: str, font, max_width: int, max_lines: int, *, allow_ellipsis: bool = True) -> list[str]:
     words = [w for w in re.split(r"\s+", _clean_text(text)) if w]
     if not words:
         return [""]
@@ -1326,6 +1334,50 @@ def _wrap_text(draw, text: str, font, max_width: int, max_lines: int) -> list[st
     if len(lines) == max_lines and len(words) > sum(len(l.split()) for l in lines):
         lines[-1] = lines[-1].rstrip(" .") + "…"
     return lines
+
+
+def _fit_text_block(
+    draw,
+    text: str,
+    *,
+    max_width: int,
+    max_height: int,
+    font_sizes: list[int],
+    max_lines: int,
+    bold: bool = False,
+    line_height_ratio: float = 1.08,
+    preserve_newlines: bool = False,
+) -> tuple[object, list[str], int]:
+    normalized = str(text or "")
+    explicit_lines = [segment.strip() for segment in normalized.splitlines() if segment.strip()] if preserve_newlines else []
+
+    for font_size in font_sizes:
+        candidate_font = _try_load_font(font_size, bold=bold)
+        candidate_lines = explicit_lines[:max_lines] if explicit_lines else _wrap_text(
+            draw,
+            normalized,
+            candidate_font,
+            max_width=max_width,
+            max_lines=max_lines,
+        )
+        if not candidate_lines:
+            continue
+        widest = max(_text_box_size(draw, line, candidate_font)[0] for line in candidate_lines)
+        line_height = int(font_size * line_height_ratio)
+        total_height = len(candidate_lines) * line_height
+        if widest <= max_width and total_height <= max_height:
+            return candidate_font, candidate_lines, line_height
+
+    fallback_size = max(20, min(font_sizes) if font_sizes else 24)
+    fallback_font = _try_load_font(fallback_size, bold=bold)
+    fallback_lines = explicit_lines[:max_lines] if explicit_lines else _wrap_text(
+        draw,
+        normalized,
+        fallback_font,
+        max_width=max_width,
+        max_lines=max_lines,
+    )
+    return fallback_font, fallback_lines or [""], int(fallback_size * line_height_ratio)
 
 
 def _ffmpeg_image_to_mp4(
@@ -1702,14 +1754,16 @@ def _render_cta_card(scene: "ScenePlan", run_id: str) -> tuple[str, dict]:
     highlight_color = (48, 52, 68)
     draw.rounded_rectangle([card_x1 + 8, card_y1 + 8, card_x2 - 8, card_y1 + accent_height - 8], radius=44, fill=highlight_color)
 
-    # Improved typography with better spacing and hierarchy
-    title_font = _try_load_font(96, bold=True)  # Slightly larger
-    lines = _wrap_text(draw, title, title_font, max_width=880, max_lines=3)
-
-    # Better vertical spacing and positioning
-    line_height = 124  # Increased spacing
-    total_text_height = len(lines) * line_height
-    start_y = card_y1 + accent_height + 80  # More space from accent bar
+    title_font, lines, line_height = _fit_text_block(
+        draw,
+        title,
+        max_width=card_x2 - card_x1 - 110,
+        max_height=card_y2 - card_y1 - 260,
+        font_sizes=[96, 90, 84, 78, 72, 66],
+        max_lines=3,
+        bold=True,
+    )
+    start_y = card_y1 + accent_height + 86
 
     for i, line in enumerate(lines):
         y = start_y + i * line_height
@@ -1777,22 +1831,29 @@ def _render_phone_bill_cta_pack(scene: "ScenePlan", run_id: str) -> str:
     draw.rectangle([panel[0], panel[1] + 46, panel[2], panel[1] + 96], fill=(84, 178, 255))
 
     label_font = _try_load_font(44, bold=True)
-    title_font = _try_load_font(108, bold=True)
-    pill_font = _try_load_font(62, bold=True)
+    pill_font_sizes = [62, 58, 54, 50, 46]
     footer_font = _try_load_font(40, bold=False)
 
     draw.text((panel[0] + 42, panel[1] + 22), "NEXT STEP", font=label_font, fill=(10, 16, 24))
 
     title = "LOWER YOUR PHONE BILL"
-    title_lines = _wrap_text(draw, title, title_font, max_width=panel[2] - panel[0] - 96, max_lines=2)
+    title_font, title_lines, title_line_height = _fit_text_block(
+        draw,
+        title,
+        max_width=panel[2] - panel[0] - 96,
+        max_height=220,
+        font_sizes=[108, 102, 96, 90, 84],
+        max_lines=2,
+        bold=True,
+    )
     title_y = panel[1] + 150
     for line in title_lines:
         draw.text((panel[0] + 48, title_y), line, font=title_font, fill=(255, 255, 255))
-        title_y += 118
+        title_y += title_line_height
 
     pill_y = title_y + 34
     pill_gap = 32
-    pill_height = 182
+    pill_height = 168
     pill_colors = [
         ((28, 42, 66), (84, 178, 255)),
         ((20, 54, 44), (86, 214, 162)),
@@ -1804,11 +1865,19 @@ def _render_phone_bill_cta_pack(scene: "ScenePlan", run_id: str) -> str:
         pill = [panel[0] + 40, pill_top, panel[2] - 40, pill_top + pill_height]
         draw.rounded_rectangle(pill, radius=42, fill=fill_color)
         draw.rounded_rectangle([pill[0], pill[1], pill[0] + 18, pill[3]], radius=18, fill=accent_color)
-        wrapped = _wrap_text(draw, line.upper(), pill_font, max_width=pill[2] - pill[0] - 88, max_lines=2)
-        text_y = pill_top + 30 if len(wrapped) == 1 else pill_top + 18
+        pill_font, wrapped, pill_line_height = _fit_text_block(
+            draw,
+            line.upper(),
+            max_width=pill[2] - pill[0] - 94,
+            max_height=pill_height - 38,
+            font_sizes=pill_font_sizes,
+            max_lines=2,
+            bold=True,
+        )
+        text_y = pill_top + 34 if len(wrapped) == 1 else pill_top + 20
         for wrapped_line in wrapped:
             draw.text((pill[0] + 48, text_y), wrapped_line, font=pill_font, fill=(255, 255, 255))
-            text_y += 68
+            text_y += pill_line_height
 
     footer = "Simple call. Real savings."
     draw.text((panel[0] + 48, panel[3] - 86), footer, font=footer_font, fill=(181, 208, 238))
@@ -2125,20 +2194,44 @@ def _render_before_after_proof_clip(scene: "ScenePlan", run_id: str) -> str:
         draw.rounded_rectangle(divider, radius=4, fill=(88, 108, 136))
 
         def _draw_half(box: list[int], title: str, amount: str, note: str, accent: tuple[int, int, int], show_amount: bool, show_note: bool, amount_size: int) -> None:
-            draw.text((box[0] + 34, box[1] + 38), title.upper(), font=title_font, fill=accent)
-            amount_font = _try_load_font(amount_size, bold=True)
+            title_font_fit, title_lines, _ = _fit_text_block(
+                draw,
+                title.upper(),
+                max_width=box[2] - box[0] - 68,
+                max_height=52,
+                font_sizes=[52, 48, 44, 40],
+                max_lines=1,
+                bold=True,
+            )
+            draw.text((box[0] + 34, box[1] + 38), title_lines[0], font=title_font_fit, fill=accent)
+            amount_font, amount_lines, amount_line_height = _fit_text_block(
+                draw,
+                amount.upper(),
+                max_width=box[2] - box[0] - 68,
+                max_height=104,
+                font_sizes=[amount_size, amount_size - 6, amount_size - 12, amount_size - 18],
+                max_lines=1,
+                bold=True,
+            )
             if show_amount:
-                amount_lines = _wrap_text(draw, amount.upper(), amount_font, max_width=box[2] - box[0] - 68, max_lines=1)
                 yy = box[1] + 146
                 for line in amount_lines:
                     draw.text((box[0] + 34, yy), line, font=amount_font, fill=(255, 255, 255))
-                    yy += 102
+                    yy += amount_line_height
             if show_note:
-                note_lines = _wrap_text(draw, note.upper(), note_font, max_width=box[2] - box[0] - 68, max_lines=2)
+                note_font_fit, note_lines, note_line_height = _fit_text_block(
+                    draw,
+                    note.upper(),
+                    max_width=box[2] - box[0] - 68,
+                    max_height=110,
+                    font_sizes=[42, 40, 38, 36, 34],
+                    max_lines=2,
+                    bold=False,
+                )
                 yy = box[3] - 176
                 for line in note_lines:
-                    draw.text((box[0] + 34, yy), line, font=note_font, fill=(228, 236, 242))
-                    yy += 54
+                    draw.text((box[0] + 34, yy), line, font=note_font_fit, fill=(228, 236, 242))
+                    yy += note_line_height
 
         _draw_half(
             left_box,
@@ -3062,32 +3155,36 @@ def _render_hook_shock_clip(scene: "ScenePlan", run_id: str) -> str:
     else:
         lines = []
 
-    max_width = card[2] - card[0] - 96
-    available_height = 360
-    title_font = _try_load_font(118, bold=True)
-    line_height = 130
-    for font_size in [118, 112, 108, 104, 100, 96, 92]:
-        candidate_font = _try_load_font(font_size, bold=True)
-        candidate_lines = lines or _wrap_text(draw, shock_text.upper(), candidate_font, max_width=max_width, max_lines=3)
-        if not candidate_lines:
-            continue
-        widest = max(draw.textbbox((0, 0), line, font=candidate_font)[2] for line in candidate_lines)
-        candidate_line_height = int(font_size * 1.05)
-        total_height = len(candidate_lines) * candidate_line_height
-        if widest <= max_width and total_height <= available_height:
-            title_font = candidate_font
-            lines = candidate_lines
-            line_height = candidate_line_height
-            break
-    if not lines:
-        lines = [shock_text.upper()]
+    title_font, fitted_lines, line_height = _fit_text_block(
+        draw,
+        shock_text.upper(),
+        max_width=int((card[2] - card[0]) * 0.9),
+        max_height=340,
+        font_sizes=[116, 110, 104, 98, 92, 86, 80],
+        max_lines=3,
+        bold=True,
+        preserve_newlines=bool(lines),
+    )
+    lines = fitted_lines or lines or [shock_text.upper()]
     y = card[1] + 170
     for line in lines:
         draw.text((card[0] + 46, y), line, font=title_font, fill=(255, 255, 255))
         y += line_height
 
     subtitle_text = "Check this before paying"
-    draw.text((card[0] + 48, min(card[3] - 140, y + 14)), subtitle_text, font=sub_font, fill=(255, 210, 160))
+    sub_font, sub_lines, sub_line_height = _fit_text_block(
+        draw,
+        subtitle_text,
+        max_width=int((card[2] - card[0]) * 0.9),
+        max_height=96,
+        font_sizes=[42, 40, 38, 36],
+        max_lines=2,
+        bold=False,
+    )
+    sub_y = min(card[3] - 150, y + 18)
+    for sub_line in sub_lines:
+        draw.text((card[0] + 48, sub_y), sub_line, font=sub_font, fill=(255, 210, 160))
+        sub_y += sub_line_height
 
     img.save(png_path, "PNG")
     _image_to_mp4(
@@ -3221,7 +3318,16 @@ def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
     value_font = _try_load_font(82, bold=True)
     small_font = _try_load_font(38, bold=True)
 
-    draw.text((sheet[0] + 42, sheet[1] + 30), "CARRIER BILL", font=heading_font, fill=(255, 255, 255))
+    heading_font, heading_lines, _ = _fit_text_block(
+        draw,
+        "CARRIER BILL",
+        max_width=380,
+        max_height=60,
+        font_sizes=[54, 50, 46],
+        max_lines=1,
+        bold=True,
+    )
+    draw.text((sheet[0] + 42, sheet[1] + 30), heading_lines[0], font=heading_font, fill=(255, 255, 255))
     draw.text((sheet[2] - 280, sheet[1] + 42), "MONTHLY REVIEW", font=meta_font, fill=(170, 186, 220))
 
     if domain == "phone_bill":
@@ -3244,8 +3350,29 @@ def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
         row_bottom = y + row_gap - 30
         if idx < len(rows) - 1:
             draw.line([(sheet[0] + 42, row_bottom), (sheet[2] - 42, row_bottom)], fill=(228, 232, 238), width=3)
-        draw.text((sheet[0] + 42, y), label.upper(), font=small_font, fill=(92, 102, 120))
-        draw.text((sheet[0] + 42, y + 62), value, font=value_font, fill=(19, 28, 46))
+        label_font, label_lines, _ = _fit_text_block(
+            draw,
+            label.upper(),
+            max_width=sheet[2] - sheet[0] - 84,
+            max_height=48,
+            font_sizes=[38, 36, 34, 32],
+            max_lines=1,
+            bold=True,
+        )
+        value_font_fit, value_lines, value_line_height = _fit_text_block(
+            draw,
+            value,
+            max_width=sheet[2] - sheet[0] - 84,
+            max_height=92,
+            font_sizes=[82, 78, 74, 70, 66],
+            max_lines=1,
+            bold=True,
+        )
+        draw.text((sheet[0] + 42, y), label_lines[0], font=label_font, fill=(92, 102, 120))
+        value_y = y + 62
+        for value_line in value_lines:
+            draw.text((sheet[0] + 42, value_y), value_line, font=value_font_fit, fill=(19, 28, 46))
+            value_y += value_line_height
         y += row_gap
 
     footer = [sheet[0] + 42, sheet[3] - 170, sheet[2] - 42, sheet[3] - 34]
@@ -3308,20 +3435,42 @@ def _render_savings_math_clip(scene: "ScenePlan", run_id: str) -> str:
         draw.rounded_rectangle(panel, radius=48, fill=(16, 22, 28), outline=(38, 50, 60), width=3)
 
         label_font = _try_load_font(48, bold=True)
-        monthly_font = _try_load_font(126 if progress < 0.42 else 132, bold=True)
-        yearly_font = _try_load_font(128 if progress < 0.86 else 138, bold=True)
         equals_font = _try_load_font(112, bold=True)
         sub_font = _try_load_font(44, bold=False)
+        monthly_font, monthly_lines, monthly_line_height = _fit_text_block(
+            draw,
+            monthly_display.replace("/month", " / MONTH"),
+            max_width=panel[2] - panel[0] - 108,
+            max_height=172,
+            font_sizes=[132 if progress >= 0.42 else 126, 122, 116, 110, 104],
+            max_lines=2,
+            bold=True,
+        )
+        yearly_font, yearly_lines, yearly_line_height = _fit_text_block(
+            draw,
+            yearly_display.replace("/year", " / YEAR"),
+            max_width=panel[2] - panel[0] - 108,
+            max_height=172,
+            font_sizes=[138 if progress >= 0.86 else 128, 124, 118, 112, 106],
+            max_lines=2,
+            bold=True,
+        )
 
         if domain == "phone_bill":
             draw.text((panel[0] + 54, panel[1] + 62), "SAVE", font=label_font, fill=(116, 221, 168))
             if progress >= 0.12:
-                draw.text((panel[0] + 54, panel[1] + 240), monthly_display.replace("/month", " / MONTH"), font=monthly_font, fill=(255, 255, 255))
+                monthly_y = panel[1] + 240
+                for monthly_line in monthly_lines:
+                    draw.text((panel[0] + 54, monthly_y), monthly_line, font=monthly_font, fill=(255, 255, 255))
+                    monthly_y += monthly_line_height
             if progress >= 0.42:
                 draw.text((panel[0] + 54, panel[1] + 655), "=", font=equals_font, fill=(116, 221, 168))
             if progress >= 0.60:
                 yearly_fill = (255, 255, 255) if progress < 0.86 else (210, 255, 221)
-                draw.text((panel[0] + 54, panel[1] + 865), yearly_display.replace("/year", " / YEAR"), font=yearly_font, fill=yearly_fill)
+                yearly_y = panel[1] + 865
+                for yearly_line in yearly_lines:
+                    draw.text((panel[0] + 54, yearly_y), yearly_line, font=yearly_font, fill=yearly_fill)
+                    yearly_y += yearly_line_height
 
             if progress >= 0.76:
                 note_box = [panel[0] + 54, panel[3] - 210, panel[2] - 54, panel[3] - 92]
