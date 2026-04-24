@@ -1112,6 +1112,17 @@ def _classify_proof_scene_type(scene: "ScenePlan") -> str:
     return "stock_video"
 
 
+def _qualifies_before_after_proof_scene(scene: "ScenePlan", domain: str, proof_type: str) -> bool:
+    if not scene:
+        return False
+    part = (getattr(scene, "part", "") or "").lower().strip()
+    if part in {"hook", "cta"}:
+        return False
+    if proof_type != "before_after_demo":
+        return False
+    return bool(_before_after_proof_domain_key(domain))
+
+
 def _choose_scene_asset_type(scene: "ScenePlan", intent: str) -> str:
     intent = (intent or "").strip()
     # Controlled rollback default: stock_video unless explicitly allowed by strategy gating.
@@ -4752,9 +4763,11 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
     screen_demo_enabled = mode == "stock" and os.getenv("ENABLE_SCREEN_DEMOS", "0") == "1"
     cta_pack_enabled = mode == "stock" and os.getenv("ENABLE_CTA_PACKS", "0") == "1"
     playwright_demo_enabled = mode == "stock" and os.getenv("ENABLE_PLAYWRIGHT_DEMO", "0") == "1"
+    before_after_proof_enabled = mode == "stock" and os.getenv("ENABLE_BEFORE_AFTER_PROOF", "0") == "1"
     proof_scene_types: dict[int, str] = {}
     screen_demo_types: dict[int, str] = {}
     playwright_demo_types: dict[int, str] = {}
+    before_after_proof_types: dict[int, str] = {}
     scene_domains: dict[int, str] = {}
     if mode == "stock":
         for scene in scenes:
@@ -4783,6 +4796,17 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                 f"[PROOF_SCENE] enabled={'true' if proof_scenes_enabled else 'false'} "
                 f"scene={scene.idx} domain={domain or 'unqualified'} "
                 f"eligible={'true' if domain_qualified else 'false'} proof_type={proof_type}"
+            )
+            before_after_type = (
+                "before_after_proof"
+                if before_after_proof_enabled and _qualifies_before_after_proof_scene(scene, domain, proof_type)
+                else "stock_video"
+            )
+            before_after_proof_types[int(scene.idx)] = before_after_type
+            print(
+                f"[BEFORE_AFTER_PROOF] enabled={'true' if before_after_proof_enabled else 'false'} "
+                f"scene={scene.idx} domain={_before_after_proof_domain_key(domain) or domain or 'unqualified'} "
+                f"proof_type={before_after_type}"
             )
             if (scene.part or "").lower().strip() == "hook":
                 hook_qualified = _qualifies_for_hook_shock(scene, domain)
@@ -4886,6 +4910,7 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                 proof_type = proof_scene_types.get(int(scene.idx), "stock_video")
                 screen_demo_type = screen_demo_types.get(int(scene.idx), "stock_video")
                 playwright_demo_type = playwright_demo_types.get(int(scene.idx), "stock_video")
+                before_after_proof_type = before_after_proof_types.get(int(scene.idx), "stock_video")
                 scene_domain = scene_domains.get(int(scene.idx), "")
 
                 if hook_shock_enabled and _qualifies_for_hook_shock(scene, scene_domain):
@@ -4918,6 +4943,16 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                         traceback.print_exc()
                 elif screen_demo_enabled:
                     print(f"[SCREEN_DEMO] fallback scene={scene.idx} reason=classified_stock_video")
+
+                if before_after_proof_enabled and before_after_proof_type == "before_after_proof":
+                    try:
+                        path = _render_before_after_proof_clip(scene, run_id=run_id)
+                        scene.clip_path = str(path)
+                        print(f"[BEFORE_AFTER_PROOF] rendered scene={scene.idx} path={path}")
+                        return
+                    except Exception as e:
+                        print(f"[BEFORE_AFTER_PROOF] fallback scene={scene.idx} reason=render_failed:{e}")
+                        traceback.print_exc()
 
                 if proof_scenes_enabled and proof_type in {"prompt_demo", "bill_demo", "savings_math", "before_after_demo"}:
                     try:
