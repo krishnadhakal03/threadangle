@@ -991,11 +991,11 @@ def _scene_domain_blob(scene: "ScenePlan") -> str:
 
 def _detect_problem_domain(scene: "ScenePlan") -> str:
     if not scene:
-        print("[DOMAIN_PACK] scene=unknown domain=generic_money_problem")
-        return "generic_money_problem"
+        print("[DOMAIN_PACK] scene=unknown domain=unqualified")
+        return ""
 
     blob = _scene_domain_blob(scene)
-    best_domain = "generic_money_problem"
+    best_domain = ""
     best_score = 0
     for domain, pack in _DOMAIN_PACKS.items():
         triggers = [str(t).lower() for t in pack.get("keyword_triggers", [])]
@@ -1006,8 +1006,10 @@ def _detect_problem_domain(scene: "ScenePlan") -> str:
 
     if best_score <= 0 and any(tok in blob for tok in ["chatgpt", "prompt", "ai", "script", "write me"]):
         best_domain = "creator_tools"
+        best_score = 1
 
-    print(f"[DOMAIN_PACK] scene={getattr(scene, 'idx', 'unknown')} domain={best_domain}")
+    log_domain = best_domain or "unqualified"
+    print(f"[DOMAIN_PACK] scene={getattr(scene, 'idx', 'unknown')} domain={log_domain}")
     return best_domain
 
 
@@ -1027,6 +1029,9 @@ def _classify_proof_scene_type(scene: "ScenePlan") -> str:
 
     part = (getattr(scene, "part", "") or "").lower().strip()
     if part in {"hook", "cta"}:
+        return "stock_video"
+    domain = _detect_problem_domain(scene)
+    if domain not in _DOMAIN_PACKS:
         return "stock_video"
 
     blob = _proof_scene_blob(scene).lower()
@@ -1800,6 +1805,8 @@ def _hook_shock_text(scene: "ScenePlan", domain: str) -> str:
 
 def _qualifies_for_hook_shock(scene: "ScenePlan", domain: str) -> bool:
     if not scene or (getattr(scene, "part", "") or "").lower().strip() != "hook":
+        return False
+    if domain not in _DOMAIN_PACKS:
         return False
     blob = _scene_domain_blob(scene)
     if domain in {"phone_bill", "subscriptions", "airline", "rent", "generic_money_problem"}:
@@ -3550,15 +3557,19 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
         for scene in scenes:
             domain = _detect_problem_domain(scene)
             scene_domains[int(scene.idx)] = domain
+            domain_qualified = domain in _DOMAIN_PACKS
             proof_type = _classify_proof_scene_type(scene) if proof_scenes_enabled else "stock_video"
             proof_scene_types[int(scene.idx)] = proof_type
             print(
                 f"[PROOF_SCENE] enabled={'true' if proof_scenes_enabled else 'false'} "
-                f"scene={scene.idx} proof_type={proof_type}"
+                f"scene={scene.idx} domain={domain or 'unqualified'} "
+                f"eligible={'true' if domain_qualified else 'false'} proof_type={proof_type}"
             )
             if (scene.part or "").lower().strip() == "hook":
+                hook_qualified = _qualifies_for_hook_shock(scene, domain)
                 print(
-                    f"[HOOK_SHOCK] scene={scene.idx} enabled={'true' if hook_shock_enabled else 'false'}"
+                    f"[HOOK_SHOCK] scene={scene.idx} enabled={'true' if hook_shock_enabled else 'false'} "
+                    f"domain={domain or 'unqualified'} qualified={'true' if hook_qualified else 'false'}"
                 )
 
     asset_strategy: Optional[dict[int, dict]] = None
@@ -3648,7 +3659,7 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                 scene_intent = ""
                 scene_asset_type = "stock_video"
                 proof_type = proof_scene_types.get(int(scene.idx), "stock_video")
-                scene_domain = scene_domains.get(int(scene.idx), "generic_money_problem")
+                scene_domain = scene_domains.get(int(scene.idx), "")
 
                 if hook_shock_enabled and _qualifies_for_hook_shock(scene, scene_domain):
                     try:
