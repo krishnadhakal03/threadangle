@@ -3177,7 +3177,7 @@ def _hook_shock_text(scene: "ScenePlan", domain: str) -> str:
     if domain == "subscriptions":
         return "Check this before you get charged again."
     if domain == "airline":
-        return "Before booking flights,\ncheck these 3 things"
+        return "Before booking\nflights,\ncheck these 3 things"
     if domain == "rent":
         return "Check this before you accept the rent hike."
     if domain == "creator_tools":
