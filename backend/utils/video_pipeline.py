@@ -1011,6 +1011,16 @@ def _detect_problem_domain(scene: "ScenePlan") -> str:
     return best_domain
 
 
+def _domain_pack_queries(scene: "ScenePlan", stage: str) -> list[str]:
+    domain = _detect_problem_domain(scene)
+    pack = _DOMAIN_PACKS.get(domain, {})
+    if stage == "hook":
+        return [str(q) for q in pack.get("preferred_hook_visual_query_seeds", [])]
+    if stage == "cta":
+        return [str(q) for q in pack.get("cta_visual_query_seeds", [])]
+    return [str(q) for q in pack.get("fallback_stock_query_seeds", [])]
+
+
 def _classify_proof_scene_type(scene: "ScenePlan") -> str:
     if not scene:
         return "stock_video"
@@ -2312,6 +2322,9 @@ def _scene_query_candidates(scene: ScenePlan) -> List[str]:
     """
     candidates: List[str] = []
     matched_families = _match_concept_families(scene)
+    domain_hook_queries = _domain_pack_queries(scene, "hook")
+    domain_cta_queries = _domain_pack_queries(scene, "cta")
+    domain_fallback_queries = _domain_pack_queries(scene, "fallback")
 
     if scene.part == "hook":
         hook_seed = " ".join(
@@ -2325,6 +2338,7 @@ def _scene_query_candidates(scene: ScenePlan) -> List[str]:
         intent = _stock_hook_visual_intent(pattern, hook_seed)
         object_phrase = _stock_hook_object_phrase(scene, matched_families)
 
+        candidates.extend(domain_hook_queries[:3])
         candidates.extend(
             [
                 "person stop gesture reacting to laptop screen",
@@ -2347,11 +2361,19 @@ def _scene_query_candidates(scene: ScenePlan) -> List[str]:
             context_query = f"person reacting to {context_phrase} on computer screen"
             if context_query not in candidates:
                 candidates.append(context_query)
-        candidates = candidates[:4]
+        for fallback_query in domain_fallback_queries[:2]:
+            if fallback_query not in candidates:
+                candidates.append(fallback_query)
+        deduped: List[str] = []
+        for query in candidates:
+            clean = _clean_text(query)
+            if clean and clean not in deduped:
+                deduped.append(clean)
+        candidates = deduped[:4]
     elif scene.part == "cta":
         # CTA must be action-oriented and explicitly "follow/phone" driven.
         # Keep deterministic and avoid weak generic success/nature clips.
-        base = [
+        base = domain_cta_queries[:3] + [
             "creator posting short video on phone",
             "person tapping follow button on phone screen",
             "creator pointing to follow button on phone",
@@ -2378,7 +2400,12 @@ def _scene_query_candidates(scene: ScenePlan) -> List[str]:
             ql = q.lower()
             if any(tok in ql for tok in must_have):
                 filtered.append(q)
-        candidates = filtered[:4]
+        deduped: list[str] = []
+        for query in filtered:
+            clean = _clean_text(query)
+            if clean and clean not in deduped:
+                deduped.append(clean)
+        candidates = deduped[:4]
     else:
         # Role-aware query scaffolds to satisfy strict progression gates and improve stock availability.
         role = str(getattr(scene, "role_label", "") or "").strip().lower()
@@ -2422,6 +2449,9 @@ def _scene_query_candidates(scene: ScenePlan) -> List[str]:
                     "dashboard comparison on computer screen close up",
                 ]
             )
+            scene_specific_prepended = True
+        elif any(tok in scene_blob for tok in ["carrier", "phone bill", "subscription", "subscriptions", "flight", "airline", "rent", "lease"]):
+            candidates.extend(domain_fallback_queries[:3])
             scene_specific_prepended = True
 
         if role == "payoff_1" and not scene_specific_prepended:
@@ -2698,6 +2728,19 @@ def _score_clip_quality_for_scene(
 
     # Unified token view for scoring when clip titles are numeric IDs (common for stock URLs).
     all_tokens = set(title_tokens) | set(expected_tokens) | set(query_tokens) | set(clip_tokens)
+    domain_token_groups = {
+        "phone_bill": {"carrier", "bill", "phone", "mobile", "plan", "customer", "service"},
+        "subscriptions": {"subscription", "subscriptions", "charges", "cancel", "cancellation", "recurring", "credit", "card"},
+        "airline": {"airline", "airport", "flight", "flights", "delay", "boarding", "traveler", "gate", "counter"},
+        "rent": {"rent", "lease", "landlord", "apartment", "housing", "tenant"},
+    }
+    for _, tokens in domain_token_groups.items():
+        query_hits = len(query_tokens.intersection(tokens))
+        clip_hits = len((clip_tokens | query_tokens).intersection(tokens))
+        if query_hits >= 2:
+            score += 6 * min(clip_hits, 2)
+            if clip_hits == 0 and scene_part in {"hook", "cta"}:
+                score -= 12
 
     # Hard reject absurd/off-topic categories unless script/query explicitly implies them.
     # This is a deterministic guardrail to prevent "dinosaur/greenscreen novelty" clips.
