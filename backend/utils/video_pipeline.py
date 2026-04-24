@@ -2416,6 +2416,14 @@ def _screen_demo_bill_values(scene: "ScenePlan") -> dict[str, str]:
     domain = _detect_problem_domain(scene)
     if domain == "phone_bill":
         current_label, target_label, savings_label, yearly_savings_label, exact = _extract_phone_bill_values(scene)
+        # Screen-demo bill comparisons should always present the canonical
+        # phone-bill payoff structure, even when the spoken line only includes
+        # savings math rather than all four bill states.
+        if not exact:
+            current_label = "$95/mo"
+            target_label = "$65/mo"
+            savings_label = "$30/mo"
+            yearly_savings_label = "$360"
         return {
             "current": current_label,
             "target": target_label,
@@ -2892,10 +2900,10 @@ def _screen_demo_html(scene: "ScenePlan", demo_type: str, state: Optional[dict] 
 
     if demo_type == "bill_compare_demo":
         metrics = [
-            ("Current", html.escape(str(data.get("current", "$95/mo")))),
-            ("Target", html.escape(str(data.get("target", "$65/mo")))),
+            ("Current Bill", html.escape(str(data.get("current", "$95/mo")))),
+            ("Target Bill", html.escape(str(data.get("target", "$65/mo")))),
             ("Savings", html.escape(str(data.get("savings", "$30/mo")))),
-            ("Yearly", html.escape(str(data.get("yearly", "$360")))),
+            ("Yearly Savings", html.escape(str(data.get("yearly", "$360")))),
         ][: max(0, min(4, metric_count))]
         metric_html = "".join(
             f"<div class='metric'><div class='row'><div class='name'>{name}</div><div class='value'>{value}</div></div></div>"
@@ -3056,10 +3064,10 @@ def _render_screen_demo_frame_fallback(scene: "ScenePlan", demo_type: str, state
     elif demo_type == "bill_compare_demo":
         draw.text((content_x, content_y + 88), "Phone Plan Review", font=title_font, fill=(255, 255, 255))
         metrics = [
-            ("Current", str(data.get("current", "$95/mo"))),
-            ("Target", str(data.get("target", "$65/mo"))),
+            ("Current Bill", str(data.get("current", "$95/mo"))),
+            ("Target Bill", str(data.get("target", "$65/mo"))),
             ("Savings", str(data.get("savings", "$30/mo"))),
-            ("Yearly", str(data.get("yearly", "$360"))),
+            ("Yearly Savings", str(data.get("yearly", "$360"))),
         ]
         metric_count = int(state.get("metric_count", 4) or 4)
         yy = content_y + 228
