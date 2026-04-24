@@ -224,6 +224,7 @@ _DOMAIN_PACKS: dict[str, dict[str, object]] = {
         ],
         "proof_card_labels": ["Carrier bill", "Monthly charge", "Annual savings"],
         "cta_visual_query_seeds": [
+            "person making phone call on smartphone",
             "person making customer service phone call",
             "phone plan comparison on smartphone",
             "phone bill on phone screen close up",
@@ -1713,6 +1714,93 @@ def _render_cta_card(scene: "ScenePlan", run_id: str) -> tuple[str, dict]:
     }
 
 
+def _render_phone_bill_cta_pack(scene: "ScenePlan", run_id: str) -> str:
+    from PIL import Image, ImageDraw
+
+    duration = float(max(1.8, (scene.end - scene.start)))
+    png_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_cta_phone_bill.png"
+    out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_cta_phone_bill.mp4"
+
+    _, _, _, yearly_label, _ = _extract_phone_bill_values(scene)
+    yearly_cta = yearly_label.replace("/year", "/year").replace("/yr", "/year")
+    if not yearly_cta.endswith("/year"):
+        yearly_cta = "$360/year"
+
+    lines = [
+        "Call carrier this week",
+        f"Save {yearly_cta}",
+        "Send to someone overpaying",
+    ]
+
+    img = Image.new("RGB", (_CARD_W, _CARD_H), (8, 10, 16))
+    draw = ImageDraw.Draw(img)
+
+    top = (20, 28, 48)
+    bottom = (6, 8, 14)
+    for yy in range(_CARD_H):
+        t = yy / float(max(1, _CARD_H - 1))
+        col = (
+            int(top[0] * (1 - t) + bottom[0] * t),
+            int(top[1] * (1 - t) + bottom[1] * t),
+            int(top[2] * (1 - t) + bottom[2] * t),
+        )
+        draw.line([(0, yy), (_CARD_W, yy)], fill=col)
+
+    panel = [72, 280, _CARD_W - 72, _CARD_H - 220]
+    draw.rounded_rectangle(panel, radius=58, fill=(16, 20, 30), outline=(84, 178, 255), width=4)
+    draw.rounded_rectangle([panel[0], panel[1], panel[2], panel[1] + 96], radius=58, fill=(84, 178, 255))
+    draw.rectangle([panel[0], panel[1] + 46, panel[2], panel[1] + 96], fill=(84, 178, 255))
+
+    label_font = _try_load_font(44, bold=True)
+    title_font = _try_load_font(108, bold=True)
+    pill_font = _try_load_font(62, bold=True)
+    footer_font = _try_load_font(40, bold=False)
+
+    draw.text((panel[0] + 42, panel[1] + 22), "NEXT STEP", font=label_font, fill=(10, 16, 24))
+
+    title = "LOWER YOUR PHONE BILL"
+    title_lines = _wrap_text(draw, title, title_font, max_width=panel[2] - panel[0] - 96, max_lines=2)
+    title_y = panel[1] + 150
+    for line in title_lines:
+        draw.text((panel[0] + 48, title_y), line, font=title_font, fill=(255, 255, 255))
+        title_y += 118
+
+    pill_y = title_y + 34
+    pill_gap = 32
+    pill_height = 182
+    pill_colors = [
+        ((28, 42, 66), (84, 178, 255)),
+        ((20, 54, 44), (86, 214, 162)),
+        ((54, 34, 28), (255, 189, 92)),
+    ]
+    for idx, line in enumerate(lines):
+        pill_top = pill_y + idx * (pill_height + pill_gap)
+        fill_color, accent_color = pill_colors[idx]
+        pill = [panel[0] + 40, pill_top, panel[2] - 40, pill_top + pill_height]
+        draw.rounded_rectangle(pill, radius=42, fill=fill_color)
+        draw.rounded_rectangle([pill[0], pill[1], pill[0] + 18, pill[3]], radius=18, fill=accent_color)
+        wrapped = _wrap_text(draw, line.upper(), pill_font, max_width=pill[2] - pill[0] - 88, max_lines=2)
+        text_y = pill_top + 30 if len(wrapped) == 1 else pill_top + 18
+        for wrapped_line in wrapped:
+            draw.text((pill[0] + 48, text_y), wrapped_line, font=pill_font, fill=(255, 255, 255))
+            text_y += 68
+
+    footer = "Simple call. Real savings."
+    draw.text((panel[0] + 48, panel[3] - 86), footer, font=footer_font, fill=(181, 208, 238))
+
+    img.save(png_path, "PNG")
+    _image_to_mp4(
+        image_path=png_path,
+        out_path=out_path,
+        duration=duration,
+        fps=30,
+        zoom_start=1.0,
+        zoom_end=1.05,
+        pan_px=8,
+    )
+    return str(out_path)
+
+
 def _proof_scene_blob(scene: "ScenePlan") -> str:
     return _clean_text(
         " ".join(
@@ -1888,18 +1976,13 @@ def _log_proof_audit(scene: "ScenePlan", *text_groups: str) -> None:
 
 def _screen_demo_prompt_lines(scene: "ScenePlan") -> tuple[str, str]:
     domain = _detect_problem_domain(scene)
-    blob = _proof_scene_blob(scene).lower()
     if domain == "phone_bill":
-        if any(tok in blob for tok in ["call", "script", "retention"]):
-            prompt = "Write me a phone carrier retention script to lower my monthly bill."
-            response = "Start by asking about loyalty discounts and competitor pricing."
-        else:
-            prompt = "Help me lower my phone bill with one short prompt."
-            response = "Ask for retention offers, plan downgrades, and fee reductions."
+        prompt = "Ask ChatGPT:\n\"Write my carrier call script.\""
+        response = "Start by asking about loyalty discounts and competitor pricing."
     else:
         prompt = _clean_text(scene.subtitle or scene.source_text or "Help me solve this problem fast.")
         response = "Here is a simple plan with one clear next step."
-    return _shorten_proof_text(prompt, max_words=18), _shorten_proof_text(response, max_words=18)
+    return prompt, _shorten_proof_text(response, max_words=18)
 
 
 def _screen_demo_bill_values(scene: "ScenePlan") -> dict[str, str]:
@@ -2068,8 +2151,8 @@ def _screen_demo_html(scene: "ScenePlan", demo_type: str, state: Optional[dict] 
             for name, value in metrics
         )
         body = (
-            "<div class='pill'>Plan Review</div>"
-            "<div class='title'>Bill Comparison</div>"
+            "<div class='pill'>Carrier Bill Check</div>"
+            "<div class='title'>Phone Plan Review</div>"
             f"<div class='metric-grid'>{metric_html}</div>"
             + (f"<div class='note'>{note}</div>" if note else "")
         )
@@ -2183,7 +2266,7 @@ def _render_screen_demo_frame_fallback(scene: "ScenePlan", demo_type: str, state
     draw.rounded_rectangle([content_x, content_y, content_x + pill_w, content_y + 56], radius=28, fill=(35, 62, 102))
     pill_text = {
         "chat_prompt_demo": "AI Assistant",
-        "bill_compare_demo": "Plan Review",
+        "bill_compare_demo": "Carrier Bill Check",
         "call_script_demo": "Call Script",
     }.get(demo_type, "Screen Demo")
     draw.text((content_x + 20, content_y + 12), pill_text, font=pill_font, fill=(164, 204, 255))
@@ -2215,7 +2298,7 @@ def _render_screen_demo_frame_fallback(scene: "ScenePlan", demo_type: str, state
                 yy += 68
 
     elif demo_type == "bill_compare_demo":
-        draw.text((content_x, content_y + 88), "Bill Comparison", font=title_font, fill=(255, 255, 255))
+        draw.text((content_x, content_y + 88), "Phone Plan Review", font=title_font, fill=(255, 255, 255))
         metrics = [
             ("Current", str(data.get("current", "$95/mo"))),
             ("Target", str(data.get("target", "$65/mo"))),
@@ -2429,9 +2512,8 @@ def _render_hook_shock_clip(scene: "ScenePlan", run_id: str) -> str:
         draw.text((card[0] + 46, y), line, font=title_font, fill=(255, 255, 255))
         y += 130
 
-    footer_text = _shorten_proof_text(_clean_text(scene.subtitle or scene.source_text or ""), max_words=6).upper()
-    if footer_text:
-        draw.text((card[0] + 46, card[3] - 130), footer_text, font=sub_font, fill=(255, 210, 160))
+    subtitle_text = "Check this before paying"
+    draw.text((card[0] + 48, min(card[3] - 140, y + 14)), subtitle_text, font=sub_font, fill=(255, 210, 160))
 
     img.save(png_path, "PNG")
     _image_to_mp4(
@@ -3598,10 +3680,10 @@ def _score_clip_quality_for_scene(
         if len(query_tokens.intersection(phone_bill_cta_tokens)) >= 2:
             if scenic_hits:
                 return 0.0, "PHONE_BILL_CTA_SCENIC"
-            if any(tok in all_tokens for tok in ["park", "garden", "mountain", "beach", "nature", "forest", "lake"]):
-                score -= 24
+            if any(tok in all_tokens for tok in ["park", "garden", "mountain", "beach", "nature", "forest", "lake", "trail", "trees", "outdoors"]):
+                return 0.0, "PHONE_BILL_CTA_NATURE"
             if any(tok in all_tokens for tok in ["call", "phone", "service", "carrier", "comparison", "screen"]):
-                score += 10
+                score += 14
 
     score = max(0.0, min(100.0, score))
 
@@ -4168,6 +4250,7 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
     proof_scenes_enabled = mode == "stock" and os.getenv("ENABLE_PROOF_SCENES", "0") == "1"
     hook_shock_enabled = mode == "stock" and os.getenv("ENABLE_HOOK_SHOCK", "0") == "1"
     screen_demo_enabled = mode == "stock" and os.getenv("ENABLE_SCREEN_DEMOS", "0") == "1"
+    cta_pack_enabled = mode == "stock" and os.getenv("ENABLE_CTA_PACKS", "0") == "1"
     proof_scene_types: dict[int, str] = {}
     screen_demo_types: dict[int, str] = {}
     scene_domains: dict[int, str] = {}
@@ -4194,6 +4277,12 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                 print(
                     f"[HOOK_SHOCK] scene={scene.idx} enabled={'true' if hook_shock_enabled else 'false'} "
                     f"domain={domain or 'unqualified'} qualified={'true' if hook_qualified else 'false'}"
+                )
+            if (scene.part or "").lower().strip() == "cta":
+                cta_pack_qualified = domain == "phone_bill"
+                print(
+                    f"[CTA_PACK] scene={scene.idx} enabled={'true' if cta_pack_enabled else 'false'} "
+                    f"domain={domain or 'unqualified'} qualified={'true' if cta_pack_qualified else 'false'}"
                 )
 
     asset_strategy: Optional[dict[int, dict]] = None
@@ -4319,6 +4408,18 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                         traceback.print_exc()
                 elif proof_scenes_enabled:
                     print(f"[PROOF_SCENE] fallback_stock scene={scene.idx} reason=classified_stock_video")
+
+                if cta_pack_enabled and (scene.part or "").lower().strip() == "cta" and scene_domain == "phone_bill":
+                    try:
+                        path = _render_phone_bill_cta_pack(scene, run_id=run_id)
+                        scene.clip_path = str(path)
+                        print(f"[CTA_PACK] rendered scene={scene.idx} path={path}")
+                        return
+                    except Exception as e:
+                        print(f"[CTA_PACK] fallback_stock scene={scene.idx} reason=render_failed:{e}")
+                        traceback.print_exc()
+                elif cta_pack_enabled and (scene.part or "").lower().strip() == "cta":
+                    print(f"[CTA_PACK] fallback_stock scene={scene.idx} reason=unqualified_domain")
 
                 if mode == "stock" and experimental_mixed_media_enabled and asset_strategy is not None:
                     meta = asset_strategy.get(int(scene.idx), {})
