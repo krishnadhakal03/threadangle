@@ -2336,7 +2336,7 @@ def _render_before_after_proof_clip(scene: "ScenePlan", run_id: str) -> str:
                     max_lines=2,
                     bold=False,
                 )
-                yy = box[3] - 146
+                yy = box[3] - 168
                 for line in note_lines:
                     draw.text((box[0] + 34, yy), line, font=note_font_fit, fill=(228, 236, 242))
                     yy += note_line_height
@@ -2358,7 +2358,7 @@ def _render_before_after_proof_clip(scene: "ScenePlan", run_id: str) -> str:
             str(payload.get("right_note", "Save $360/yr")),
             (182, 255, 196),
             show_amount=progress >= 0.42,
-            show_note=progress >= 0.72,
+            show_note=progress >= 0.58,
             amount_size=right_amount_size,
         )
 
