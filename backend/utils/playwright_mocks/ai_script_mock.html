@@ -65,13 +65,13 @@
     const data = JSON.parse(document.body.dataset.demo || '{}');
     const prompt = String(data.prompt || '');
     const typedChars = Math.max(0, Math.min(prompt.length, Number(state.typed_chars || prompt.length)));
+    const visible = Number(state.result_visible || 0);
     const promptNode = document.getElementById('promptCopy');
     promptNode.textContent = prompt.slice(0, typedChars);
     if (typedChars < prompt.length) promptNode.classList.add('cursor');
     if (typedChars < prompt.length) document.getElementById('promptPanel').classList.add('active');
     if (typedChars >= prompt.length && visible < 2) document.getElementById('loading').classList.add('visible');
     const wrap = document.getElementById('resultWrap');
-    const visible = Number(state.result_visible || 0);
     (data.outline || []).slice(0, 4).forEach((item, index) => {
       const node = document.createElement('div');
       node.className = 'chip' + (index + 1 <= visible ? ' visible' : '');
