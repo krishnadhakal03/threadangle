@@ -1958,6 +1958,78 @@ def _render_phone_bill_cta_pack(scene: "ScenePlan", run_id: str) -> str:
     return str(out_path)
 
 
+def _render_day3_workflow_cta_pack(scene: "ScenePlan", run_id: str) -> str:
+    from PIL import Image, ImageDraw
+
+    duration = float(max(1.8, (scene.end - scene.start)))
+    png_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_cta_day3_workflow.png"
+    out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_cta_day3_workflow.mp4"
+
+    img = Image.new("RGB", (_CARD_W, _CARD_H), (7, 9, 14))
+    draw = ImageDraw.Draw(img)
+    top = (16, 24, 36)
+    bottom = (5, 7, 12)
+    for yy in range(_CARD_H):
+        t = yy / float(max(1, _CARD_H - 1))
+        col = (
+            int(top[0] * (1 - t) + bottom[0] * t),
+            int(top[1] * (1 - t) + bottom[1] * t),
+            int(top[2] * (1 - t) + bottom[2] * t),
+        )
+        draw.line([(0, yy), (_CARD_W, yy)], fill=col)
+
+    panel = [72, 300, _CARD_W - 72, _CARD_H - 360]
+    draw.rounded_rectangle(panel, radius=58, fill=(18, 22, 32), outline=(255, 214, 92), width=5)
+    draw.rounded_rectangle([panel[0], panel[1], panel[2], panel[1] + 92], radius=58, fill=(255, 214, 92))
+    draw.rectangle([panel[0], panel[1] + 44, panel[2], panel[1] + 92], fill=(255, 214, 92))
+
+    label_font = _try_load_font(42, bold=True)
+    title_font, title_lines, title_line_height = _fit_text_block(
+        draw,
+        "COMMENT GUIDE\nFOR FULL WORKFLOW",
+        max_width=panel[2] - panel[0] - 92,
+        max_height=350,
+        font_sizes=[94, 88, 82, 76, 70],
+        max_lines=3,
+        bold=True,
+        preserve_newlines=True,
+    )
+    sub_font, sub_lines, sub_line_height = _fit_text_block(
+        draw,
+        "Save this and try later",
+        max_width=panel[2] - panel[0] - 92,
+        max_height=90,
+        font_sizes=[46, 42, 38],
+        max_lines=1,
+        bold=False,
+    )
+
+    draw.text((panel[0] + 42, panel[1] + 20), "REPEAT THIS PROCESS", font=label_font, fill=(18, 22, 32))
+    y = panel[1] + 190
+    for line in title_lines:
+        draw.text((panel[0] + 48, y), line, font=title_font, fill=(255, 255, 255))
+        y += title_line_height
+
+    sub_box = [panel[0] + 48, panel[3] - 182, panel[2] - 48, panel[3] - 72]
+    draw.rounded_rectangle(sub_box, radius=30, fill=(30, 38, 54), outline=(88, 104, 132), width=2)
+    sy = sub_box[1] + 28
+    for line in sub_lines:
+        draw.text((sub_box[0] + 28, sy), line, font=sub_font, fill=(225, 235, 245))
+        sy += sub_line_height
+
+    img.save(png_path, "PNG")
+    _image_to_mp4(
+        image_path=png_path,
+        out_path=out_path,
+        duration=duration,
+        fps=30,
+        zoom_start=1.0,
+        zoom_end=1.03,
+        pan_px=0,
+    )
+    return str(out_path)
+
+
 def _proof_scene_blob(scene: "ScenePlan") -> str:
     return _clean_text(
         " ".join(
@@ -5467,6 +5539,16 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                         traceback.print_exc()
                 elif proof_scenes_enabled:
                     print(f"[PROOF_SCENE] fallback_stock scene={scene.idx} reason=classified_stock_video")
+
+                if cta_pack_enabled and workflow_step == "cta":
+                    try:
+                        path = _render_day3_workflow_cta_pack(scene, run_id=run_id)
+                        scene.clip_path = str(path)
+                        print(f"[CTA_PACK] rendered scene={scene.idx} path={path}")
+                        return
+                    except Exception as e:
+                        print(f"[CTA_PACK] fallback_stock scene={scene.idx} reason=render_failed:{e}")
+                        traceback.print_exc()
 
                 if cta_pack_enabled and (scene.part or "").lower().strip() == "cta" and scene_domain == "phone_bill":
                     try:
