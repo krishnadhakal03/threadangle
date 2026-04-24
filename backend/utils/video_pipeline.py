@@ -2134,6 +2134,77 @@ def _before_after_proof_payload(scene: "ScenePlan", domain: str) -> dict[str, st
     return {"domain_key": domain_key, **payloads.get(domain_key, payloads["subscription"])}
 
 
+def _qualifies_pattern_interrupt_scene(scene: "ScenePlan", domain: str, proof_type: str) -> bool:
+    if (getattr(scene, "part", "") or "").lower().strip() != "body":
+        return False
+    if domain not in {"phone_bill", "generic_money_problem"}:
+        return False
+    if proof_type != "savings_math":
+        return False
+    blob = _proof_scene_blob(scene).lower()
+    return any(token in blob for token in ["$360", "360", "savings", "save", "year"])
+
+
+def _render_pattern_interrupt_card(scene: "ScenePlan", run_id: str) -> str:
+    from PIL import Image, ImageDraw
+
+    duration = 0.4
+    png_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_pattern_interrupt.png"
+    out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_pattern_interrupt.mp4"
+
+    img = Image.new("RGB", (_CARD_W, _CARD_H), (10, 12, 18))
+    draw = ImageDraw.Draw(img)
+    for yy in range(_CARD_H):
+        t = yy / float(max(1, _CARD_H - 1))
+        col = (
+            int(18 * (1 - t) + 8 * t),
+            int(22 * (1 - t) + 10 * t),
+            int(34 * (1 - t) + 14 * t),
+        )
+        draw.line([(0, yy), (_CARD_W, yy)], fill=col)
+
+    card = [94, 540, _CARD_W - 94, 1170]
+    draw.rounded_rectangle(card, radius=54, fill=(18, 24, 38), outline=(100, 138, 204), width=4)
+    label_font, label_lines, label_line_height = _fit_text_block(
+        draw,
+        "Wait...",
+        max_width=card[2] - card[0] - 100,
+        max_height=80,
+        font_sizes=[70, 64, 58],
+        max_lines=1,
+        bold=True,
+    )
+    body_font, body_lines, body_line_height = _fit_text_block(
+        draw,
+        "that's $360/year",
+        max_width=card[2] - card[0] - 100,
+        max_height=140,
+        font_sizes=[96, 90, 84, 78],
+        max_lines=2,
+        bold=True,
+    )
+    y = card[1] + 110
+    for line in label_lines:
+        draw.text((card[0] + 50, y), line, font=label_font, fill=(166, 202, 255))
+        y += label_line_height
+    y += 34
+    for line in body_lines:
+        draw.text((card[0] + 50, y), line, font=body_font, fill=(255, 255, 255))
+        y += body_line_height
+
+    img.save(png_path, "PNG")
+    _image_to_mp4(
+        image_path=png_path,
+        out_path=out_path,
+        duration=duration,
+        fps=30,
+        zoom_start=1.0,
+        zoom_end=1.03,
+        pan_px=0,
+    )
+    return str(out_path)
+
+
 def _render_before_after_proof_clip(scene: "ScenePlan", run_id: str) -> str:
     from PIL import Image, ImageDraw
     from moviepy.editor import ImageSequenceClip
@@ -5047,10 +5118,12 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
     cta_pack_enabled = mode == "stock" and os.getenv("ENABLE_CTA_PACKS", "0") == "1"
     playwright_demo_enabled = mode == "stock" and os.getenv("ENABLE_PLAYWRIGHT_DEMO", "0") == "1"
     before_after_proof_enabled = mode == "stock" and os.getenv("ENABLE_BEFORE_AFTER_PROOF", "0") == "1"
+    pattern_interrupt_enabled = mode == "stock" and os.getenv("ENABLE_PATTERN_INTERRUPT", "0") == "1"
     proof_scene_types: dict[int, str] = {}
     screen_demo_types: dict[int, str] = {}
     playwright_demo_types: dict[int, str] = {}
     before_after_proof_types: dict[int, str] = {}
+    pattern_interrupt_types: dict[int, str] = {}
     scene_domains: dict[int, str] = {}
     if mode == "stock":
         dominant_domain = _dominant_problem_domain(scenes)
@@ -5100,6 +5173,17 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                 f"[BEFORE_AFTER_PROOF] enabled={'true' if before_after_proof_enabled else 'false'} "
                 f"scene={scene.idx} domain={_before_after_proof_domain_key(domain) or domain or 'unqualified'} "
                 f"proof_type={before_after_type}"
+            )
+            pattern_interrupt_type = (
+                "pattern_interrupt"
+                if pattern_interrupt_enabled and _qualifies_pattern_interrupt_scene(scene, domain, proof_type)
+                else "stock_video"
+            )
+            pattern_interrupt_types[int(scene.idx)] = pattern_interrupt_type
+            print(
+                f"[PATTERN_INTERRUPT] enabled={'true' if pattern_interrupt_enabled else 'false'} "
+                f"scene={scene.idx} domain={domain or 'unqualified'} "
+                f"qualified={'true' if pattern_interrupt_type == 'pattern_interrupt' else 'false'} inserted=false"
             )
             if (scene.part or "").lower().strip() == "hook":
                 hook_qualified = _qualifies_for_hook_shock(scene, domain)
@@ -5204,7 +5288,17 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                 screen_demo_type = screen_demo_types.get(int(scene.idx), "stock_video")
                 playwright_demo_type = playwright_demo_types.get(int(scene.idx), "stock_video")
                 before_after_proof_type = before_after_proof_types.get(int(scene.idx), "stock_video")
+                pattern_interrupt_type = pattern_interrupt_types.get(int(scene.idx), "stock_video")
                 scene_domain = scene_domains.get(int(scene.idx), "")
+
+                if pattern_interrupt_enabled and pattern_interrupt_type == "pattern_interrupt":
+                    try:
+                        path = _render_pattern_interrupt_card(scene, run_id=run_id)
+                        setattr(scene, "pattern_interrupt_path", str(path))
+                        print(f"[PATTERN_INTERRUPT] rendered scene={scene.idx} path={path} inserted=false reason=timing_safe_sidecar")
+                    except Exception as e:
+                        print(f"[PATTERN_INTERRUPT] fallback scene={scene.idx} reason=render_failed:{e}")
+                        traceback.print_exc()
 
                 if hook_shock_enabled and _qualifies_for_hook_shock(scene, scene_domain):
                     try:
