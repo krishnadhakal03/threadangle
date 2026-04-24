@@ -1959,6 +1959,10 @@ def _canonical_phone_bill_metrics() -> tuple[str, str, str, str]:
     return "$95/mo", "$65/mo", "$30/mo", "$360"
 
 
+def _canonical_flight_savings_metrics() -> tuple[str, str, str]:
+    return "$824", "$712", "$112"
+
+
 def _extract_monthly_and_yearly_values(scene: "ScenePlan") -> tuple[str, str]:
     blob = _proof_scene_blob(scene)
     monthly_value: Optional[float] = None
@@ -2138,6 +2142,18 @@ def _before_after_proof_payload(scene: "ScenePlan", domain: str) -> dict[str, st
             "right_note": f"Save {yearly_savings_label}/yr",
             "badge": "Carrier Bill Reset",
         }
+    if domain_key == "airfare":
+        original_fare, better_option, estimated_savings = _canonical_flight_savings_metrics()
+        return {
+            "domain_key": domain_key,
+            "left_title": "Original Fare",
+            "left_amount": original_fare,
+            "left_note": "First date picked",
+            "right_title": "Better Date Fare",
+            "right_amount": better_option,
+            "right_note": f"Estimated savings {estimated_savings}",
+            "badge": "Flight Price Review",
+        }
 
     before_label, after_label = _extract_before_after_values(scene)
     before_amount = before_label.replace("/month", "/mo")
@@ -2157,15 +2173,6 @@ def _before_after_proof_payload(scene: "ScenePlan", domain: str) -> dict[str, st
             "right_amount": after_amount if values else "$18/mo",
             "right_note": f"Saved {yearly_saved}/yr" if yearly_saved else "Canceled extras",
             "badge": "Subscription reset",
-        },
-        "airfare": {
-            "left_title": "Before",
-            "left_amount": before_amount.replace("/mo", "") if values else "$480",
-            "left_note": "Booked full price",
-            "right_title": "After",
-            "right_amount": after_amount.replace("/mo", "") if values else "$320",
-            "right_note": "Saved on fare",
-            "badge": "Fare check",
         },
         "rent_negotiation": {
             "left_title": "Before",
@@ -2465,6 +2472,15 @@ def _screen_demo_bill_values(scene: "ScenePlan") -> dict[str, str]:
             "yearly": yearly_savings_label,
             "note": "",
         }
+    if domain == "airline":
+        original_fare, better_option, estimated_savings = _canonical_flight_savings_metrics()
+        return {
+            "current": original_fare,
+            "target": better_option,
+            "savings": estimated_savings,
+            "yearly": "",
+            "note": "Baggage fees included",
+        }
     monthly_label, yearly_label = _extract_monthly_and_yearly_values(scene)
     return {
         "current": monthly_label.replace("/month", "/mo"),
@@ -2539,11 +2555,12 @@ def _playwright_local_demo_data(scene: "ScenePlan", demo_type: str) -> dict[str,
             ],
         }
     if demo_type == "travel_compare_mock":
+        original_fare, better_option, estimated_savings = _canonical_flight_savings_metrics()
         return {
             "query": "Compare flight prices using flexible dates, nearby airports, and baggage fees.",
-            "before": "$824",
-            "after": "$712",
-            "save": "$112",
+            "before": original_fare,
+            "after": better_option,
+            "save": estimated_savings,
             "results": [
                 "Flexible dates found a lower Tuesday return.",
                 "Nearby airport option cut the fare before baggage.",
@@ -2710,6 +2727,7 @@ def _screen_demo_html(scene: "ScenePlan", demo_type: str, state: Optional[dict] 
 
     state = state or {}
     data = _screen_demo_template_data(scene, demo_type)
+    domain = _detect_problem_domain(scene)
     typed_chars = int(state.get("typed_chars", 0) or 0)
     response_visible = bool(state.get("response_visible", False))
     call_visible = int(state.get("call_visible", 3) or 3)
@@ -2813,19 +2831,30 @@ def _screen_demo_html(scene: "ScenePlan", demo_type: str, state: Optional[dict] 
         return f"<html><head>{base_css}</head><body>{header}{body}{footer}</body></html>"
 
     if demo_type == "bill_compare_demo":
-        metrics = [
-            ("Current Bill", html.escape(str(data.get("current", "$95/mo")))),
-            ("Target Bill", html.escape(str(data.get("target", "$65/mo")))),
-            ("Savings", html.escape(str(data.get("savings", "$30/mo")))),
-            ("Yearly Savings", html.escape(str(data.get("yearly", "$360")))),
-        ][: max(0, min(4, metric_count))]
+        if domain == "airline":
+            metrics = [
+                ("Original Fare", html.escape(str(data.get("current", "$824")))),
+                ("Better Date Fare", html.escape(str(data.get("target", "$712")))),
+                ("Estimated Savings", html.escape(str(data.get("savings", "$112")))),
+            ][: max(0, min(3, metric_count))]
+            pill_text = "Travel Compare"
+            title_text = "Flight Price Review"
+        else:
+            metrics = [
+                ("Current Bill", html.escape(str(data.get("current", "$95/mo")))),
+                ("Target Bill", html.escape(str(data.get("target", "$65/mo")))),
+                ("Savings", html.escape(str(data.get("savings", "$30/mo")))),
+                ("Yearly Savings", html.escape(str(data.get("yearly", "$360")))),
+            ][: max(0, min(4, metric_count))]
+            pill_text = "Carrier Bill Check"
+            title_text = "Phone Plan Review"
         metric_html = "".join(
             f"<div class='metric'><div class='row'><div class='name'>{name}</div><div class='value'>{value}</div></div></div>"
             for name, value in metrics
         )
         body = (
-            "<div class='pill'>Carrier Bill Check</div>"
-            "<div class='title'>Phone Plan Review</div>"
+            f"<div class='pill'>{pill_text}</div>"
+            f"<div class='title'>{title_text}</div>"
             f"<div class='metric-grid'>{metric_html}</div>"
             + (f"<div class='note'>{note}</div>" if note else "")
         )
@@ -2908,6 +2937,7 @@ def _render_screen_demo_frame_fallback(scene: "ScenePlan", demo_type: str, state
     from PIL import Image, ImageDraw
 
     data = _screen_demo_template_data(scene, demo_type)
+    domain = _detect_problem_domain(scene)
     img = Image.new("RGB", (_CARD_W, _CARD_H), (9, 14, 20))
     draw = ImageDraw.Draw(img)
     for yy in range(_CARD_H):
@@ -2944,7 +2974,7 @@ def _render_screen_demo_frame_fallback(scene: "ScenePlan", demo_type: str, state
     draw.rounded_rectangle([content_x, content_y, content_x + pill_w, content_y + 56], radius=28, fill=(35, 62, 102))
     pill_text = {
         "chat_prompt_demo": "AI Assistant",
-        "bill_compare_demo": "Carrier Bill Check",
+        "bill_compare_demo": "Travel Compare" if domain == "airline" else "Carrier Bill Check",
         "call_script_demo": "Call Script",
     }.get(demo_type, "Screen Demo")
     draw.text((content_x + 20, content_y + 12), pill_text, font=pill_font, fill=(164, 204, 255))
@@ -2976,13 +3006,25 @@ def _render_screen_demo_frame_fallback(scene: "ScenePlan", demo_type: str, state
                 yy += 68
 
     elif demo_type == "bill_compare_demo":
-        draw.text((content_x, content_y + 88), "Phone Plan Review", font=title_font, fill=(255, 255, 255))
-        metrics = [
-            ("Current Bill", str(data.get("current", "$95/mo"))),
-            ("Target Bill", str(data.get("target", "$65/mo"))),
-            ("Savings", str(data.get("savings", "$30/mo"))),
-            ("Yearly Savings", str(data.get("yearly", "$360"))),
-        ]
+        draw.text(
+            (content_x, content_y + 88),
+            "Flight Price Review" if domain == "airline" else "Phone Plan Review",
+            font=title_font,
+            fill=(255, 255, 255),
+        )
+        if domain == "airline":
+            metrics = [
+                ("Original Fare", str(data.get("current", "$824"))),
+                ("Better Date Fare", str(data.get("target", "$712"))),
+                ("Estimated Savings", str(data.get("savings", "$112"))),
+            ]
+        else:
+            metrics = [
+                ("Current Bill", str(data.get("current", "$95/mo"))),
+                ("Target Bill", str(data.get("target", "$65/mo"))),
+                ("Savings", str(data.get("savings", "$30/mo"))),
+                ("Yearly Savings", str(data.get("yearly", "$360"))),
+            ]
         metric_count = int(state.get("metric_count", 4) or 4)
         yy = content_y + 228
         for name, value in metrics[: max(0, min(metric_count, len(metrics)))]:
