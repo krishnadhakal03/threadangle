@@ -209,6 +209,111 @@ _HOOK_OBJECT_FALLBACKS = {
     "growth_analytics": "analytics dashboard growth",
 }
 
+_DOMAIN_PACKS: dict[str, dict[str, object]] = {
+    "phone_bill": {
+        "keyword_triggers": ["phone bill", "carrier", "carrier app", "cell phone", "mobile plan", "wireless plan", "data plan", "phone plan"],
+        "preferred_hook_visual_query_seeds": [
+            "person reacting to phone bill on laptop",
+            "customer checking carrier app bill",
+            "person frustrated looking at monthly phone bill",
+        ],
+        "proof_card_labels": ["Carrier bill", "Monthly charge", "Annual savings"],
+        "cta_visual_query_seeds": [
+            "person checking phone bill savings on phone",
+            "person tapping customer service call on smartphone",
+        ],
+        "fallback_stock_query_seeds": [
+            "phone bill payment screen close up",
+            "person calling carrier customer service",
+        ],
+    },
+    "subscriptions": {
+        "keyword_triggers": ["subscription", "subscriptions", "cancel", "cancellation", "charges", "recurring", "free trial", "renewal"],
+        "preferred_hook_visual_query_seeds": [
+            "person reviewing subscription charges on phone",
+            "credit card statement recurring charges close up",
+            "subscription list app screen close up",
+        ],
+        "proof_card_labels": ["Subscription list", "Monthly waste", "Cancel extras"],
+        "cta_visual_query_seeds": [
+            "person canceling subscription on phone",
+            "finger tapping manage subscriptions screen",
+        ],
+        "fallback_stock_query_seeds": [
+            "credit card charges screen close up",
+            "subscription cancellation screen phone",
+        ],
+    },
+    "airline": {
+        "keyword_triggers": ["flight", "flights", "airline", "airport", "delay", "delayed", "boarding", "fare", "travel"],
+        "preferred_hook_visual_query_seeds": [
+            "traveler frustrated at airport departure board",
+            "airline counter customer service delay",
+            "person checking flight delay board",
+        ],
+        "proof_card_labels": ["Flight check", "Before price", "After price"],
+        "cta_visual_query_seeds": [
+            "traveler checking boarding app on phone",
+            "person asking airline support at airport counter",
+        ],
+        "fallback_stock_query_seeds": [
+            "airport delay board close up",
+            "traveler waiting at airline gate frustrated",
+        ],
+    },
+    "rent": {
+        "keyword_triggers": ["rent", "lease", "landlord", "apartment", "housing", "renewal notice"],
+        "preferred_hook_visual_query_seeds": [
+            "person reacting to rent increase letter",
+            "tenant reviewing apartment lease payment",
+            "person stressed over housing bill paperwork",
+        ],
+        "proof_card_labels": ["Rent notice", "Current payment", "Negotiated savings"],
+        "cta_visual_query_seeds": [
+            "tenant checking rent payment app on phone",
+            "person calling landlord about lease",
+        ],
+        "fallback_stock_query_seeds": [
+            "apartment lease paperwork close up",
+            "rent payment notice on table",
+        ],
+    },
+    "generic_money_problem": {
+        "keyword_triggers": ["save money", "saving money", "overpay", "overpaying", "bill", "bills", "monthly cost", "wasting money", "expenses"],
+        "preferred_hook_visual_query_seeds": [
+            "person shocked at monthly bill statement",
+            "person reviewing expenses on laptop",
+            "frustrated person looking at payment amount",
+        ],
+        "proof_card_labels": ["Before", "After", "Savings"],
+        "cta_visual_query_seeds": [
+            "person checking savings on banking app",
+            "person comparing monthly charges on phone",
+        ],
+        "fallback_stock_query_seeds": [
+            "monthly bill close up payment screen",
+            "person reacting to expensive invoice",
+        ],
+    },
+    "creator_tools": {
+        "keyword_triggers": ["prompt", "chatgpt", "ai tool", "ai tools", "creator", "script", "write me", "editing", "thumbnail", "capcut", "canva"],
+        "preferred_hook_visual_query_seeds": [
+            "creator reacting to ai workflow on laptop",
+            "person comparing ai tool results on screen",
+            "creator editing content on laptop fast",
+        ],
+        "proof_card_labels": ["Prompt", "Output", "Time saved"],
+        "cta_visual_query_seeds": [
+            "creator posting short video on phone",
+            "person tapping follow button on phone screen",
+        ],
+        "fallback_stock_query_seeds": [
+            "chatgpt writing workflow laptop",
+            "creator editing content on computer screen",
+        ],
+    },
+}
+
 for d in (ASSETS_DIR, RAW_DIR, TEMP_DIR, CACHE_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
@@ -868,6 +973,42 @@ def _classify_scene_intent(scene: "ScenePlan") -> str:
     if any(re.search(rf"\b{re.escape(token)}\b", blob) for token in action_markers):
         return "method_action"
     return "info_emphasis"
+
+
+def _scene_domain_blob(scene: "ScenePlan") -> str:
+    return _clean_text(
+        " ".join(
+            [
+                getattr(scene, "source_text", "") or "",
+                getattr(scene, "subtitle", "") or "",
+                getattr(scene, "visual_description", "") or "",
+                getattr(scene, "on_screen_text", "") or "",
+                " ".join(getattr(scene, "keywords", []) or []),
+            ]
+        )
+    ).lower()
+
+
+def _detect_problem_domain(scene: "ScenePlan") -> str:
+    if not scene:
+        print("[DOMAIN_PACK] scene=unknown domain=generic_money_problem")
+        return "generic_money_problem"
+
+    blob = _scene_domain_blob(scene)
+    best_domain = "generic_money_problem"
+    best_score = 0
+    for domain, pack in _DOMAIN_PACKS.items():
+        triggers = [str(t).lower() for t in pack.get("keyword_triggers", [])]
+        score = sum(1 for trigger in triggers if trigger and trigger in blob)
+        if score > best_score:
+            best_domain = domain
+            best_score = score
+
+    if best_score <= 0 and any(tok in blob for tok in ["chatgpt", "prompt", "ai", "script", "write me"]):
+        best_domain = "creator_tools"
+
+    print(f"[DOMAIN_PACK] scene={getattr(scene, 'idx', 'unknown')} domain={best_domain}")
+    return best_domain
 
 
 def _classify_proof_scene_type(scene: "ScenePlan") -> str:
@@ -3156,6 +3297,7 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
     proof_scene_types: dict[int, str] = {}
     if mode == "stock":
         for scene in scenes:
+            _detect_problem_domain(scene)
             proof_type = _classify_proof_scene_type(scene) if proof_scenes_enabled else "stock_video"
             proof_scene_types[int(scene.idx)] = proof_type
             print(
