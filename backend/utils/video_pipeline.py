@@ -1753,6 +1753,17 @@ def _render_savings_math_clip(scene: "ScenePlan", run_id: str) -> str:
     return str(out_path)
 
 
+def _render_proof_scene_clip(scene: "ScenePlan", run_id: str, proof_type: str) -> str:
+    proof_type = (proof_type or "").strip()
+    if proof_type == "prompt_demo":
+        return _render_prompt_demo_clip(scene, run_id=run_id)
+    if proof_type == "bill_demo":
+        return _render_bill_demo_clip(scene, run_id=run_id)
+    if proof_type == "savings_math":
+        return _render_savings_math_clip(scene, run_id=run_id)
+    raise ValueError(f"Unsupported proof scene type: {proof_type}")
+
+
 def _visual_description_tokens(visual_desc: str) -> str:
     """Extract meaningful tokens from visual description - Batch 2A"""
     if not visual_desc:
@@ -3141,6 +3152,16 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
     experimental_mixed_media_enabled = os.getenv("ENABLE_EXPERIMENTAL_MIXED_MEDIA", "0") == "1"
     if mode == "stock":
         print(f"[MIXED_MEDIA] experimental_mixed_media_enabled={'true' if experimental_mixed_media_enabled else 'false'}")
+    proof_scenes_enabled = mode == "stock" and os.getenv("ENABLE_PROOF_SCENES", "0") == "1"
+    proof_scene_types: dict[int, str] = {}
+    if mode == "stock":
+        for scene in scenes:
+            proof_type = _classify_proof_scene_type(scene) if proof_scenes_enabled else "stock_video"
+            proof_scene_types[int(scene.idx)] = proof_type
+            print(
+                f"[PROOF_SCENE] enabled={'true' if proof_scenes_enabled else 'false'} "
+                f"scene={scene.idx} proof_type={proof_type}"
+            )
 
     asset_strategy: Optional[dict[int, dict]] = None
     stock_video_scenes = scenes
@@ -3228,6 +3249,20 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
 
                 scene_intent = ""
                 scene_asset_type = "stock_video"
+                proof_type = proof_scene_types.get(int(scene.idx), "stock_video")
+
+                if proof_scenes_enabled and proof_type in {"prompt_demo", "bill_demo", "savings_math"}:
+                    try:
+                        path = _render_proof_scene_clip(scene, run_id=run_id, proof_type=proof_type)
+                        scene.clip_path = str(path)
+                        print(f"[PROOF_SCENE] rendered scene={scene.idx} path={path}")
+                        return
+                    except Exception as e:
+                        print(f"[PROOF_SCENE] fallback_stock scene={scene.idx} reason=render_failed:{e}")
+                        traceback.print_exc()
+                elif proof_scenes_enabled:
+                    print(f"[PROOF_SCENE] fallback_stock scene={scene.idx} reason=classified_stock_video")
+
                 if mode == "stock" and experimental_mixed_media_enabled and asset_strategy is not None:
                     meta = asset_strategy.get(int(scene.idx), {})
                     scene_intent = str(meta.get("intent") or "")
