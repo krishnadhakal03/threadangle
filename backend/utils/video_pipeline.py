@@ -1932,6 +1932,7 @@ def _screen_demo_html(scene: "ScenePlan", demo_type: str, state: Optional[dict] 
     typed_chars = int(state.get("typed_chars", 0) or 0)
     response_visible = bool(state.get("response_visible", False))
     call_visible = int(state.get("call_visible", 3) or 3)
+    metric_count = int(state.get("metric_count", 4) or 4)
     note = html.escape(str(data.get("note", "") or ""))
 
     base_css = """
@@ -2031,15 +2032,20 @@ def _screen_demo_html(scene: "ScenePlan", demo_type: str, state: Optional[dict] 
         return f"<html><head>{base_css}</head><body>{header}{body}{footer}</body></html>"
 
     if demo_type == "bill_compare_demo":
+        metrics = [
+            ("Current", html.escape(str(data.get("current", "$95/mo")))),
+            ("Target", html.escape(str(data.get("target", "$65/mo")))),
+            ("Savings", html.escape(str(data.get("savings", "$30/mo")))),
+            ("Yearly", html.escape(str(data.get("yearly", "$360")))),
+        ][: max(0, min(4, metric_count))]
+        metric_html = "".join(
+            f"<div class='metric'><div class='row'><div class='name'>{name}</div><div class='value'>{value}</div></div></div>"
+            for name, value in metrics
+        )
         body = (
             "<div class='pill'>Plan Review</div>"
             "<div class='title'>Bill Comparison</div>"
-            "<div class='metric-grid'>"
-            f"<div class='metric'><div class='row'><div class='name'>Current</div><div class='value'>{html.escape(str(data.get('current', '$95/mo')))}</div></div></div>"
-            f"<div class='metric'><div class='row'><div class='name'>Target</div><div class='value'>{html.escape(str(data.get('target', '$65/mo')))}</div></div></div>"
-            f"<div class='metric'><div class='row'><div class='name'>Savings</div><div class='value'>{html.escape(str(data.get('savings', '$30/mo')))}</div></div></div>"
-            f"<div class='metric'><div class='row'><div class='name'>Yearly</div><div class='value'>{html.escape(str(data.get('yearly', '$360')))}</div></div></div>"
-            "</div>"
+            f"<div class='metric-grid'>{metric_html}</div>"
             + (f"<div class='note'>{note}</div>" if note else "")
         )
         return f"<html><head>{base_css}</head><body>{header}{body}{footer}</body></html>"
@@ -2061,6 +2067,261 @@ def _write_screen_demo_html(scene: "ScenePlan", demo_type: str, run_id: str, fra
     html_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_{demo_type}_{frame_idx:03d}.html"
     html_path.write_text(_screen_demo_html(scene, demo_type, state=state), encoding="utf-8")
     return html_path
+
+
+def _screen_demo_frame_states(scene: "ScenePlan", demo_type: str, fps: int = 10) -> list[dict]:
+    duration = float(max(1.8, scene.end - scene.start))
+    frame_count = max(8, int(round(duration * fps)))
+    data = _screen_demo_template_data(scene, demo_type)
+
+    states: list[dict] = []
+    if demo_type == "chat_prompt_demo":
+        prompt = str(data.get("prompt", "") or "")
+        for idx in range(frame_count):
+            progress = idx / float(max(1, frame_count - 1))
+            typed_ratio = min(1.0, progress / 0.60)
+            typed_chars = int(round(len(prompt) * typed_ratio))
+            response_visible = progress >= 0.62
+            states.append({"typed_chars": typed_chars, "response_visible": response_visible})
+        return states
+
+    if demo_type == "call_script_demo":
+        for idx in range(frame_count):
+            progress = idx / float(max(1, frame_count - 1))
+            visible = min(3, 1 + int(progress * 3.2))
+            states.append({"call_visible": visible})
+        return states
+
+    if demo_type == "bill_compare_demo":
+        for idx in range(frame_count):
+            progress = idx / float(max(1, frame_count - 1))
+            metric_count = min(4, 1 + int(progress * 4.2))
+            states.append({"metric_count": metric_count})
+        return states
+
+    return [{} for _ in range(frame_count)]
+
+
+def _playwright_available() -> bool:
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["node", "-e", "require('playwright'); process.stdout.write('yes')"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return result.stdout.strip() == "yes"
+    except Exception:
+        return False
+
+
+def _render_screen_demo_frame_fallback(scene: "ScenePlan", demo_type: str, state: dict, png_path: Path) -> None:
+    from PIL import Image, ImageDraw
+
+    data = _screen_demo_template_data(scene, demo_type)
+    img = Image.new("RGB", (_CARD_W, _CARD_H), (9, 14, 20))
+    draw = ImageDraw.Draw(img)
+    for yy in range(_CARD_H):
+        t = yy / float(max(1, _CARD_H - 1))
+        col = (
+            int(14 * (1 - t) + 5 * t),
+            int(20 * (1 - t) + 9 * t),
+            int(28 * (1 - t) + 15 * t),
+        )
+        draw.line([(0, yy), (_CARD_W, yy)], fill=col)
+
+    browser = [56, 96, _CARD_W - 56, _CARD_H - 110]
+    draw.rounded_rectangle(browser, radius=42, fill=(17, 23, 34), outline=(48, 62, 84), width=3)
+    topbar = [browser[0], browser[1], browser[2], browser[1] + 126]
+    draw.rounded_rectangle(topbar, radius=42, fill=(24, 31, 45))
+    draw.rectangle([browser[0], browser[1] + 64, browser[2], browser[1] + 126], fill=(24, 31, 45))
+    for idx, color in enumerate([(255, 95, 86), (255, 189, 46), (39, 201, 63)]):
+        xx = browser[0] + 34 + idx * 28
+        draw.ellipse([xx, browser[1] + 44, xx + 16, browser[1] + 60], fill=color)
+    address_font = _try_load_font(28, bold=False)
+    draw.rounded_rectangle([browser[0] + 140, browser[1] + 34, browser[2] - 28, browser[1] + 86], radius=18, fill=(11, 18, 30))
+    draw.text((browser[0] + 164, browser[1] + 45), "local-demo://screen-demo", font=address_font, fill=(147, 166, 196))
+
+    pill_font = _try_load_font(30, bold=True)
+    title_font = _try_load_font(78, bold=True)
+    label_font = _try_load_font(28, bold=True)
+    body_font = _try_load_font(48, bold=True)
+    metric_font = _try_load_font(60, bold=True)
+    small_font = _try_load_font(30, bold=False)
+
+    content_x = browser[0] + 42
+    content_y = browser[1] + 168
+    pill_w = 220
+    draw.rounded_rectangle([content_x, content_y, content_x + pill_w, content_y + 56], radius=28, fill=(35, 62, 102))
+    pill_text = {
+        "chat_prompt_demo": "AI Assistant",
+        "bill_compare_demo": "Plan Review",
+        "call_script_demo": "Call Script",
+    }.get(demo_type, "Screen Demo")
+    draw.text((content_x + 20, content_y + 12), pill_text, font=pill_font, fill=(164, 204, 255))
+
+    if demo_type == "chat_prompt_demo":
+        draw.text((content_x, content_y + 88), "Prompt Demo", font=title_font, fill=(255, 255, 255))
+        prompt = str(data.get("prompt", "") or "")
+        response = str(data.get("response", "") or "")
+        typed_chars = int(state.get("typed_chars", len(prompt)) or 0)
+        typed_prompt = prompt[: max(0, min(len(prompt), typed_chars))]
+        if typed_chars < len(prompt):
+            typed_prompt += "|"
+        prompt_box = [content_x, content_y + 220, browser[2] - 42, content_y + 620]
+        draw.rounded_rectangle(prompt_box, radius=28, fill=(13, 19, 30), outline=(46, 64, 96), width=2)
+        draw.text((prompt_box[0] + 26, prompt_box[1] + 26), "Prompt", font=label_font, fill=(147, 166, 196))
+        lines = _wrap_text(draw, typed_prompt, body_font, max_width=prompt_box[2] - prompt_box[0] - 52, max_lines=5)
+        yy = prompt_box[1] + 86
+        for line in lines:
+            draw.text((prompt_box[0] + 26, yy), line, font=body_font, fill=(255, 255, 255))
+            yy += 68
+        if state.get("response_visible"):
+            response_box = [content_x, content_y + 664, browser[2] - 42, content_y + 1020]
+            draw.rounded_rectangle(response_box, radius=28, fill=(16, 34, 26), outline=(48, 92, 70), width=2)
+            draw.text((response_box[0] + 26, response_box[1] + 26), "AI Assistant", font=label_font, fill=(170, 236, 190))
+            resp_lines = _wrap_text(draw, response, body_font, max_width=response_box[2] - response_box[0] - 52, max_lines=4)
+            yy = response_box[1] + 86
+            for line in resp_lines:
+                draw.text((response_box[0] + 26, yy), line, font=body_font, fill=(242, 248, 245))
+                yy += 68
+
+    elif demo_type == "bill_compare_demo":
+        draw.text((content_x, content_y + 88), "Bill Comparison", font=title_font, fill=(255, 255, 255))
+        metrics = [
+            ("Current", str(data.get("current", "$95/mo"))),
+            ("Target", str(data.get("target", "$65/mo"))),
+            ("Savings", str(data.get("savings", "$30/mo"))),
+            ("Yearly", str(data.get("yearly", "$360"))),
+        ]
+        metric_count = int(state.get("metric_count", 4) or 4)
+        yy = content_y + 228
+        for name, value in metrics[: max(0, min(metric_count, len(metrics)))]:
+            box = [content_x, yy, browser[2] - 42, yy + 180]
+            draw.rounded_rectangle(box, radius=28, fill=(13, 19, 30), outline=(44, 58, 78), width=2)
+            draw.text((box[0] + 24, box[1] + 28), name.upper(), font=label_font, fill=(159, 177, 203))
+            draw.text((box[0] + 24, box[1] + 78), value, font=metric_font, fill=(255, 255, 255))
+            yy += 206
+        note = _clean_text(str(data.get("note", "") or ""))
+        if note:
+            draw.text((content_x, yy + 16), note.upper(), font=label_font, fill=(255, 215, 122))
+
+    elif demo_type == "call_script_demo":
+        draw.text((content_x, content_y + 88), "What To Say", font=title_font, fill=(255, 255, 255))
+        yy = content_y + 236
+        visible = int(state.get("call_visible", 3) or 3)
+        for line in list(data.get("lines", []))[: max(0, min(3, visible))]:
+            box = [content_x, yy, browser[2] - 42, yy + 150]
+            draw.rounded_rectangle(box, radius=28, fill=(13, 19, 30), outline=(44, 58, 78), width=2)
+            line_text = _wrap_text(draw, str(line), body_font, max_width=box[2] - box[0] - 50, max_lines=2)
+            ly = box[1] + 34
+            for part in line_text:
+                draw.text((box[0] + 24, ly), part, font=body_font, fill=(255, 255, 255))
+                ly += 58
+            yy += 176
+
+    png_path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(png_path, "PNG")
+
+
+def _ffmpeg_frame_sequence_to_mp4(frame_pattern: Path, out_path: Path, fps: int = 10) -> bool:
+    import subprocess
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-framerate",
+        str(fps),
+        "-i",
+        str(frame_pattern),
+        "-vf",
+        f"fps=30,format=yuv420p,scale={FAST_TARGET_W}:{FAST_TARGET_H}",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "20",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        str(out_path),
+    ]
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except Exception:
+        return False
+
+
+def _render_screen_demo_clip(scene: "ScenePlan", demo_type: str, run_id: str) -> str:
+    import subprocess
+    from moviepy.editor import ImageSequenceClip
+
+    fps = 10
+    frame_states = _screen_demo_frame_states(scene, demo_type, fps=fps)
+    frame_dir = TEMP_DIR / f"{run_id}_scene_{scene.idx}_{demo_type}_frames"
+    frame_dir.mkdir(parents=True, exist_ok=True)
+    out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_{demo_type}.mp4"
+
+    html_paths: list[Path] = []
+    png_paths: list[Path] = []
+    for idx, state in enumerate(frame_states):
+        html_paths.append(_write_screen_demo_html(scene, demo_type, run_id=run_id, frame_idx=idx, state=state))
+        png_paths.append(frame_dir / f"frame_{idx:03d}.png")
+
+    rendered_with_playwright = False
+    if _playwright_available():
+        script_path = frame_dir / "render_playwright.js"
+        html_list = [str(path.resolve()) for path in html_paths]
+        png_list = [str(path.resolve()) for path in png_paths]
+        script_path.write_text(
+            (
+                "const { chromium } = require('playwright');\n"
+                f"const htmlPaths = {repr(html_list)};\n"
+                f"const pngPaths = {repr(png_list)};\n"
+                "(async () => {\n"
+                "  const browser = await chromium.launch({ headless: true });\n"
+                "  const page = await browser.newPage({ viewport: { width: 1080, height: 1920 }, deviceScaleFactor: 1 });\n"
+                "  for (let i = 0; i < htmlPaths.length; i += 1) {\n"
+                "    await page.goto('file:///' + htmlPaths[i].replace(/\\\\/g, '/'));\n"
+                "    await page.screenshot({ path: pngPaths[i], type: 'png' });\n"
+                "  }\n"
+                "  await browser.close();\n"
+                "})().catch((err) => { console.error(err); process.exit(1); });\n"
+            ),
+            encoding="utf-8",
+        )
+        try:
+            subprocess.run(["node", str(script_path)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
+            rendered_with_playwright = all(path.exists() for path in png_paths)
+        except Exception:
+            rendered_with_playwright = False
+
+    if not rendered_with_playwright:
+        for png_path, state in zip(png_paths, frame_states):
+            _render_screen_demo_frame_fallback(scene, demo_type, state, png_path)
+
+    frame_pattern = frame_dir / "frame_%03d.png"
+    if _ffmpeg_frame_sequence_to_mp4(frame_pattern, out_path, fps=fps):
+        return str(out_path)
+
+    clip = ImageSequenceClip([str(path) for path in png_paths if path.exists()], fps=fps)
+    clip.write_videofile(
+        str(out_path),
+        codec="libx264",
+        audio=False,
+        fps=30,
+        ffmpeg_params=["-pix_fmt", "yuv420p", "-movflags", "+faststart"],
+        logger=None,
+    )
+    clip.close()
+    return str(out_path)
 
 
 def _hook_shock_text(scene: "ScenePlan", domain: str) -> str:
