@@ -2580,10 +2580,12 @@ def _playwright_demo_frame_states(scene: "ScenePlan", demo_type: str, fps: int =
         prompt = str(data.get("prompt", "") or "")
         for idx in range(frame_count):
             progress = idx / float(max(1, frame_count - 1))
-            typed_ratio = min(1.0, progress / 0.58)
+            typed_ratio = min(1.0, progress / 0.42)
             typed_chars = int(round(len(prompt) * typed_ratio))
-            response_visible = progress >= 0.60
-            response_progress = min(1.0, max(0.0, (progress - 0.60) / 0.30))
+            if progress >= 0.46:
+                typed_chars = len(prompt)
+            response_visible = progress >= 0.54
+            response_progress = min(1.0, max(0.0, (progress - 0.54) / 0.30))
             states.append(
                 {
                     "typed_chars": typed_chars,
