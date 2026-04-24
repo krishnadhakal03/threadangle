@@ -2032,6 +2032,330 @@ def _screen_demo_template_data(scene: "ScenePlan", demo_type: str) -> dict[str, 
     return {}
 
 
+def _playwright_local_demo_data(scene: "ScenePlan", demo_type: str) -> dict[str, object]:
+    if demo_type == "ai_chat_typing":
+        prompt, response = _screen_demo_prompt_lines(scene)
+        return {"prompt": prompt, "response": response}
+    if demo_type == "search_results_mock":
+        return {
+            "query": "best phone plan savings",
+            "results": [
+                "Carrier savings checklist",
+                "Questions to ask retention",
+                "How to compare plan fees",
+            ],
+        }
+    if demo_type == "spreadsheet_savings_mock":
+        return {
+            "headers": ["Plan", "Current", "Target", "Savings"],
+            "rows": [
+                ["Unlimited", "$95", "$65", "$30"],
+                ["Fees", "$12", "$4", "$8"],
+                ["Yearly", "$1140", "$780", "$360"],
+            ],
+        }
+    return {}
+
+
+def _playwright_demo_frame_states(scene: "ScenePlan", demo_type: str, fps: int = 10) -> list[dict]:
+    duration = float(max(1.8, scene.end - scene.start))
+    frame_count = max(10, int(round(duration * fps)))
+    data = _playwright_local_demo_data(scene, demo_type)
+
+    states: list[dict] = []
+    if demo_type == "ai_chat_typing":
+        prompt = str(data.get("prompt", "") or "")
+        for idx in range(frame_count):
+            progress = idx / float(max(1, frame_count - 1))
+            typed_ratio = min(1.0, progress / 0.58)
+            typed_chars = int(round(len(prompt) * typed_ratio))
+            response_visible = progress >= 0.60
+            response_progress = min(1.0, max(0.0, (progress - 0.60) / 0.30))
+            states.append(
+                {
+                    "typed_chars": typed_chars,
+                    "response_visible": response_visible,
+                    "response_progress": response_progress,
+                }
+            )
+        return states
+
+    if demo_type == "search_results_mock":
+        for idx in range(frame_count):
+            progress = idx / float(max(1, frame_count - 1))
+            visible = 1 if progress < 0.30 else (2 if progress < 0.62 else 3)
+            states.append({"result_visible": visible})
+        return states
+
+    if demo_type == "spreadsheet_savings_mock":
+        for idx in range(frame_count):
+            progress = idx / float(max(1, frame_count - 1))
+            row_visible = 1 if progress < 0.28 else (2 if progress < 0.56 else 3)
+            states.append({"row_visible": row_visible})
+        return states
+
+    return [{} for _ in range(frame_count)]
+
+
+def _playwright_local_demo_html(scene: "ScenePlan", demo_type: str, state: Optional[dict] = None) -> str:
+    import html
+    import json
+
+    state = state or {}
+    data = _playwright_local_demo_data(scene, demo_type)
+    state_json = html.escape(json.dumps(state))
+
+    base_css = """
+    <style>
+      * { box-sizing: border-box; }
+      html, body {
+        width: 1080px; height: 1920px; margin: 0; padding: 0; overflow: hidden;
+        background: linear-gradient(180deg, #09111a 0%, #081018 100%);
+        font-family: Arial, sans-serif; color: #f5f7fb;
+      }
+      body {
+        background:
+          radial-gradient(circle at top, rgba(74, 118, 190, 0.18), transparent 36%),
+          linear-gradient(180deg, #09111a 0%, #081018 100%);
+      }
+      .shell {
+        width: 1080px; height: 1920px; padding: 72px 56px 250px;
+      }
+      .browser {
+        width: 100%; height: 100%; border-radius: 42px; overflow: hidden;
+        border: 2px solid #2a3449; background: #101824; box-shadow: 0 24px 88px rgba(0, 0, 0, 0.42);
+      }
+      .topbar {
+        height: 118px; display: flex; align-items: center; gap: 14px; padding: 0 34px;
+        background: #171f2d; border-bottom: 1px solid #29324a;
+      }
+      .dot { width: 18px; height: 18px; border-radius: 50%; }
+      .address {
+        margin-left: 18px; flex: 1; height: 58px; border-radius: 18px;
+        background: #0d1420; color: #93a6c4; display: flex; align-items: center;
+        padding: 0 22px; font-size: 26px;
+      }
+      .content { padding: 44px 42px 40px; }
+      .eyebrow {
+        display: inline-block; padding: 14px 22px; border-radius: 999px;
+        background: rgba(83,124,196,0.18); color: #9ec2ff; font-size: 28px; font-weight: 700;
+      }
+      .title { margin-top: 22px; font-size: 66px; line-height: 1.06; font-weight: 800; letter-spacing: -1px; }
+      .card {
+        margin-top: 30px; border-radius: 30px; background: rgba(12, 19, 31, 0.96);
+        border: 1px solid #273248; padding: 30px;
+      }
+      .label { font-size: 26px; color: #93a6c4; font-weight: 700; }
+      .copy { font-size: 44px; line-height: 1.22; font-weight: 700; color: #ffffff; white-space: pre-wrap; }
+      .prompt-box, .response-box, .result, .sheet-row {
+        border-radius: 24px; padding: 28px; margin-top: 22px;
+        background: #121a29; border: 1px solid #2a3650;
+      }
+      .response-box {
+        background: #102118; border-color: #2e5b45;
+        opacity: 0; transform: translateY(18px);
+      }
+      .result, .sheet-row {
+        opacity: 0; transform: translateY(16px);
+      }
+      .visible {
+        opacity: 1 !important; transform: translateY(0) !important;
+      }
+      .copy.cursor::after {
+        content: ""; display: inline-block; width: 4px; height: 44px; margin-left: 8px;
+        background: rgba(255,255,255,0.78); vertical-align: -6px;
+      }
+      .result-title { font-size: 36px; font-weight: 800; color: #ffffff; }
+      .result-sub { margin-top: 10px; font-size: 24px; color: #8fa3c1; }
+      .sheet-header, .sheet-row {
+        display: grid; grid-template-columns: 1.1fr 0.9fr 0.9fr 0.9fr; gap: 18px; align-items: center;
+      }
+      .sheet-header {
+        margin-top: 30px; padding: 0 6px; font-size: 24px; color: #90a6c6; font-weight: 700;
+      }
+      .sheet-row { font-size: 34px; font-weight: 700; color: #ffffff; }
+      .pos { color: #92efb2; }
+    </style>
+    """
+
+    script = """
+    <script>
+      window.addEventListener('DOMContentLoaded', () => {
+        const state = JSON.parse(document.body.dataset.state || '{}');
+        const typed = document.querySelector('[data-typed]');
+        if (typed) {
+          const full = typed.dataset.full || '';
+          const chars = Math.max(0, Math.min(full.length, Number(state.typed_chars || full.length)));
+          typed.textContent = full.slice(0, chars);
+          if (chars < full.length) typed.classList.add('cursor');
+        }
+        if (state.response_visible) {
+          const node = document.querySelector('.response-box');
+          if (node) node.classList.add('visible');
+        }
+        document.querySelectorAll('[data-show-idx]').forEach((node) => {
+          const idx = Number(node.dataset.showIdx || '0');
+          const resultVisible = Number(state.result_visible || 0);
+          const rowVisible = Number(state.row_visible || 0);
+          const callVisible = Number(state.call_visible || 0);
+          if (idx <= resultVisible || idx <= rowVisible || idx <= callVisible) {
+            node.classList.add('visible');
+          }
+        });
+      });
+    </script>
+    """
+
+    header = """
+    <div class="shell">
+      <div class="browser">
+        <div class="topbar">
+          <div class="dot" style="background:#ff605c"></div>
+          <div class="dot" style="background:#ffbd44"></div>
+          <div class="dot" style="background:#00ca4e"></div>
+          <div class="address">local-demo://playwright-poc</div>
+        </div>
+        <div class="content">
+    """
+    footer = """
+        </div>
+      </div>
+    </div>
+    """
+
+    if demo_type == "ai_chat_typing":
+        prompt = html.escape(str(data.get("prompt", "") or ""))
+        response = html.escape(str(data.get("response", "") or ""))
+        body = (
+            "<div class='eyebrow'>AI Assistant</div>"
+            "<div class='title'>Prompt Walkthrough</div>"
+            "<div class='card'>"
+            "<div class='prompt-box'><div class='label'>Prompt</div>"
+            f"<div class='copy' data-typed data-full='{prompt}'></div></div>"
+            f"<div class='response-box'><div class='label'>AI Assistant</div><div class='copy'>{response}</div></div>"
+            "</div>"
+        )
+    elif demo_type == "search_results_mock":
+        results = list(data.get("results", []))[:3]
+        result_html = "".join(
+            f"<div class='result' data-show-idx='{idx + 1}'><div class='result-title'>{html.escape(str(item))}</div>"
+            "<div class='result-sub'>Local mock results for a savings workflow.</div></div>"
+            for idx, item in enumerate(results)
+        )
+        body = (
+            "<div class='eyebrow'>Search Mock</div>"
+            "<div class='title'>Check options before you call</div>"
+            "<div class='card'>"
+            f"<div class='label'>Query</div><div class='copy'>{html.escape(str(data.get('query', '')))}</div>"
+            f"{result_html}</div>"
+        )
+    else:
+        headers = list(data.get("headers", []))[:4]
+        rows = list(data.get("rows", []))[:3]
+        header_html = "".join(f"<div>{html.escape(str(item))}</div>" for item in headers)
+        row_html = "".join(
+            "<div class='sheet-row' data-show-idx='{idx}'>".format(idx=idx + 1)
+            + "".join(
+                f"<div class='{'pos' if col_idx == 3 else ''}'>{html.escape(str(cell))}</div>"
+                for col_idx, cell in enumerate(row[:4])
+            )
+            + "</div>"
+            for idx, row in enumerate(rows)
+        )
+        body = (
+            "<div class='eyebrow'>Savings Sheet</div>"
+            "<div class='title'>Compare the payoff clearly</div>"
+            "<div class='card'>"
+            f"<div class='sheet-header'>{header_html}</div>{row_html}</div>"
+        )
+
+    return (
+        f"<html><head>{base_css}</head><body data-state=\"{state_json}\">"
+        f"{header}{body}{footer}{script}</body></html>"
+    )
+
+
+def _write_playwright_local_demo_html(scene: "ScenePlan", demo_type: str, run_id: str, frame_idx: int, state: Optional[dict] = None) -> Path:
+    html_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_{demo_type}_playwright_{frame_idx:03d}.html"
+    html_path.write_text(_playwright_local_demo_html(scene, demo_type, state=state), encoding="utf-8")
+    return html_path
+
+
+def _render_playwright_html_sequence(html_paths: list[Path], png_paths: list[Path], script_path: Path) -> tuple[bool, str]:
+    import subprocess
+
+    html_list = [str(path.resolve()) for path in html_paths]
+    png_list = [str(path.resolve()) for path in png_paths]
+    script_path.write_text(
+        (
+            "const { chromium } = require('playwright');\n"
+            f"const htmlPaths = {repr(html_list)};\n"
+            f"const pngPaths = {repr(png_list)};\n"
+            "(async () => {\n"
+            "  const browser = await chromium.launch({ headless: true });\n"
+            "  const page = await browser.newPage({ viewport: { width: 1080, height: 1920 }, deviceScaleFactor: 1 });\n"
+            "  for (let i = 0; i < htmlPaths.length; i += 1) {\n"
+            "    await page.goto('file:///' + htmlPaths[i].replace(/\\\\/g, '/'));\n"
+            "    await page.waitForTimeout(90);\n"
+            "    await page.screenshot({ path: pngPaths[i], type: 'png' });\n"
+            "  }\n"
+            "  await browser.close();\n"
+            "})().catch((err) => { console.error(err && err.message ? err.message : err); process.exit(1); });\n"
+        ),
+        encoding="utf-8",
+    )
+    try:
+        subprocess.run(["node", str(script_path)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=180)
+        return all(path.exists() for path in png_paths), ""
+    except subprocess.CalledProcessError as exc:
+        return False, (exc.stderr.decode("utf-8", errors="ignore") if exc.stderr else "playwright_failed").strip()[:180]
+    except Exception as exc:
+        return False, str(exc)
+
+
+def _render_playwright_local_demo(scene: "ScenePlan", demo_type: str, run_id: str) -> str:
+    from moviepy.editor import ImageSequenceClip
+
+    fps = 10
+    frame_states = _playwright_demo_frame_states(scene, demo_type, fps=fps)
+    frame_dir = TEMP_DIR / f"{run_id}_scene_{scene.idx}_{demo_type}_playwright_frames"
+    frame_dir.mkdir(parents=True, exist_ok=True)
+    out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_playwright_demo.mp4"
+
+    html_paths: list[Path] = []
+    png_paths: list[Path] = []
+    for idx, state in enumerate(frame_states):
+        html_paths.append(_write_playwright_local_demo_html(scene, demo_type, run_id=run_id, frame_idx=idx, state=state))
+        png_paths.append(frame_dir / f"frame_{idx:03d}.png")
+
+    if not _playwright_available():
+        raise RuntimeError("playwright_unavailable")
+
+    rendered, reason = _render_playwright_html_sequence(
+        html_paths=html_paths,
+        png_paths=png_paths,
+        script_path=frame_dir / "render_playwright_local_demo.js",
+    )
+    if not rendered:
+        raise RuntimeError(reason or "playwright_render_failed")
+
+    frame_pattern = frame_dir / "frame_%03d.png"
+    if _ffmpeg_frame_sequence_to_mp4(frame_pattern, out_path, fps=fps):
+        return str(out_path)
+
+    clip = ImageSequenceClip([str(path) for path in png_paths if path.exists()], fps=fps)
+    clip.write_videofile(
+        str(out_path),
+        codec="libx264",
+        audio=False,
+        fps=30,
+        ffmpeg_params=["-pix_fmt", "yuv420p", "-movflags", "+faststart"],
+        logger=None,
+    )
+    clip.close()
+    return str(out_path)
+
+
 def _screen_demo_html(scene: "ScenePlan", demo_type: str, state: Optional[dict] = None) -> str:
     import html
 
