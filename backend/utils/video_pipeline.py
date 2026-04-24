@@ -3257,14 +3257,25 @@ def _render_savings_math_clip(scene: "ScenePlan", run_id: str) -> str:
     equals_font = _try_load_font(112, bold=True)
     sub_font = _try_load_font(44, bold=False)
 
-    draw.text((panel[0] + 54, panel[1] + 62), "SAVINGS MATH", font=label_font, fill=(116, 221, 168))
-    draw.text((panel[0] + 54, panel[1] + 230), monthly_display, font=hero_font, fill=(255, 255, 255))
-    draw.text((panel[0] + 54, panel[1] + 650), "=", font=equals_font, fill=(116, 221, 168))
-    draw.text((panel[0] + 54, panel[1] + 860), yearly_display, font=hero_font, fill=(255, 255, 255))
+    domain = _detect_problem_domain(scene)
+    if domain == "phone_bill":
+        draw.text((panel[0] + 54, panel[1] + 62), "SAVE", font=label_font, fill=(116, 221, 168))
+        draw.text((panel[0] + 54, panel[1] + 240), monthly_display.replace("/month", " / MONTH"), font=hero_font, fill=(255, 255, 255))
+        draw.text((panel[0] + 54, panel[1] + 655), "=", font=equals_font, fill=(116, 221, 168))
+        draw.text((panel[0] + 54, panel[1] + 865), yearly_display.replace("/year", " / YEAR"), font=hero_font, fill=(255, 255, 255))
 
-    note_box = [panel[0] + 54, panel[3] - 230, panel[2] - 54, panel[3] - 82]
-    draw.rounded_rectangle(note_box, radius=28, fill=(22, 34, 41))
-    draw.text((note_box[0] + 30, note_box[1] + 38), "Simple payoff proof. No stock footage needed.", font=sub_font, fill=(215, 226, 232))
+        note_box = [panel[0] + 54, panel[3] - 230, panel[2] - 54, panel[3] - 82]
+        draw.rounded_rectangle(note_box, radius=28, fill=(22, 34, 41))
+        draw.text((note_box[0] + 30, note_box[1] + 38), "10-minute call", font=sub_font, fill=(215, 226, 232))
+    else:
+        draw.text((panel[0] + 54, panel[1] + 62), "SAVINGS MATH", font=label_font, fill=(116, 221, 168))
+        draw.text((panel[0] + 54, panel[1] + 230), monthly_display, font=hero_font, fill=(255, 255, 255))
+        draw.text((panel[0] + 54, panel[1] + 650), "=", font=equals_font, fill=(116, 221, 168))
+        draw.text((panel[0] + 54, panel[1] + 860), yearly_display, font=hero_font, fill=(255, 255, 255))
+
+        note_box = [panel[0] + 54, panel[3] - 230, panel[2] - 54, panel[3] - 82]
+        draw.rounded_rectangle(note_box, radius=28, fill=(22, 34, 41))
+        draw.text((note_box[0] + 30, note_box[1] + 38), "Simple payoff proof. No stock footage needed.", font=sub_font, fill=(215, 226, 232))
 
     img.save(png_path, "PNG")
     _image_to_mp4(
