@@ -3177,7 +3177,7 @@ def _hook_shock_text(scene: "ScenePlan", domain: str) -> str:
     if domain == "subscriptions":
         return "Check this before you get charged again."
     if domain == "airline":
-        return "Don't book flights before asking AI this."
+        return "Before booking flights,\ncheck these 3 things"
     if domain == "rent":
         return "Check this before you accept the rent hike."
     if domain == "creator_tools":
@@ -3258,7 +3258,7 @@ def _render_hook_shock_clip(scene: "ScenePlan", run_id: str) -> str:
         draw.text((card[0] + 46, y), line, font=title_font, fill=(255, 255, 255))
         y += line_height
 
-    subtitle_text = "Check this before paying"
+    subtitle_text = "Save before you pay" if domain == "airline" else "Check this before paying"
     sub_font, sub_lines, sub_line_height = _fit_text_block(
         draw,
         subtitle_text,
