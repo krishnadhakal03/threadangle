@@ -1986,10 +1986,10 @@ def _render_day3_workflow_cta_pack(scene: "ScenePlan", run_id: str) -> str:
     label_font = _try_load_font(42, bold=True)
     title_font, title_lines, title_line_height = _fit_text_block(
         draw,
-        "COMMENT GUIDE\nFOR FULL WORKFLOW",
+        "COMMENT GUIDE\nI'LL SEND THE\nFULL WORKFLOW",
         max_width=panel[2] - panel[0] - 92,
-        max_height=350,
-        font_sizes=[94, 88, 82, 76, 70],
+        max_height=420,
+        font_sizes=[82, 76, 70, 64],
         max_lines=3,
         bold=True,
         preserve_newlines=True,
