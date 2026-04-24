@@ -211,20 +211,29 @@ _HOOK_OBJECT_FALLBACKS = {
 
 _DOMAIN_PACKS: dict[str, dict[str, object]] = {
     "phone_bill": {
-        "keyword_triggers": ["phone bill", "carrier", "carrier app", "cell phone", "mobile plan", "wireless plan", "data plan", "phone plan"],
+        "keyword_triggers": [
+            "phone bill", "phone companies", "phone carrier", "carrier", "carrier app",
+            "cell phone", "mobile plan", "wireless plan", "data plan", "phone plan",
+            "retention", "monthly bill", "loyalty discount",
+        ],
         "preferred_hook_visual_query_seeds": [
-            "person reacting to phone bill on laptop",
+            "person reacting to phone bill on phone",
             "customer checking carrier app bill",
             "person frustrated looking at monthly phone bill",
+            "customer service phone call about carrier bill",
         ],
         "proof_card_labels": ["Carrier bill", "Monthly charge", "Annual savings"],
         "cta_visual_query_seeds": [
-            "person checking phone bill savings on phone",
+            "person making customer service phone call",
+            "phone plan comparison on smartphone",
+            "phone bill on phone screen close up",
+            "carrier app screen on phone close up",
             "person tapping customer service call on smartphone",
         ],
         "fallback_stock_query_seeds": [
-            "phone bill payment screen close up",
+            "phone bill on phone screen close up",
             "person calling carrier customer service",
+            "phone plan comparison on phone screen",
         ],
     },
     "subscriptions": {
@@ -995,6 +1004,15 @@ def _detect_problem_domain(scene: "ScenePlan") -> str:
         return ""
 
     blob = _scene_domain_blob(scene)
+    phone_bill_priority_triggers = [
+        "phone bill", "phone companies", "phone carrier", "carrier", "plan",
+        "retention", "monthly bill", "loyalty discount",
+    ]
+    phone_bill_score = sum(1 for trigger in phone_bill_priority_triggers if trigger in blob)
+    if phone_bill_score >= 2 or ("phone bill" in blob and any(tok in blob for tok in ["carrier", "plan", "monthly bill"])):
+        print(f"[DOMAIN_PACK] scene={getattr(scene, 'idx', 'unknown')} domain=phone_bill")
+        return "phone_bill"
+
     best_domain = ""
     best_score = 0
     for domain, pack in _DOMAIN_PACKS.items():
@@ -1729,6 +1747,68 @@ def _extract_monthly_and_yearly_values(scene: "ScenePlan") -> tuple[str, str]:
     return monthly_label, yearly_label
 
 
+def _extract_phone_bill_values(scene: "ScenePlan") -> tuple[str, str, str, str, bool]:
+    blob = _proof_scene_blob(scene)
+    values = _extract_currency_values(blob)
+    current_value: Optional[float] = None
+    target_value: Optional[float] = None
+    savings_value: Optional[float] = None
+
+    current_match = re.search(
+        r"(?:current bill|monthly bill|phone bill|bill shows)\D*\$?\s*([0-9]+(?:\.[0-9]{1,2})?)",
+        blob,
+        re.IGNORECASE,
+    )
+    target_match = re.search(
+        r"(?:target bill|after|lower to|down to|new bill)\D*\$?\s*([0-9]+(?:\.[0-9]{1,2})?)",
+        blob,
+        re.IGNORECASE,
+    )
+    savings_match = re.search(
+        r"(?:save|savings)\D*\$?\s*([0-9]+(?:\.[0-9]{1,2})?)\s*(?:/|per\s+)?month",
+        blob,
+        re.IGNORECASE,
+    )
+    before_after_match = re.search(
+        r"before[:\s]+\$?\s*([0-9]+(?:\.[0-9]{1,2})?).*?after[:\s]+\$?\s*([0-9]+(?:\.[0-9]{1,2})?)",
+        blob,
+        re.IGNORECASE,
+    )
+
+    if current_match:
+        current_value = float(current_match.group(1))
+    if target_match:
+        target_value = float(target_match.group(1))
+    if savings_match:
+        savings_value = float(savings_match.group(1))
+    if before_after_match:
+        current_value = float(before_after_match.group(1))
+        target_value = float(before_after_match.group(2))
+
+    if current_value is None and values:
+        current_value = values[0]
+    if target_value is None and len(values) >= 2:
+        target_value = values[1]
+
+    if savings_value is None and current_value is not None and target_value is not None and current_value > target_value:
+        savings_value = current_value - target_value
+
+    exact = current_value is not None and target_value is not None and savings_value is not None
+    if not exact:
+        current_value = 95.0
+        target_value = 65.0
+        savings_value = 30.0
+
+    yearly_savings_value = float(savings_value or 30.0) * 12.0
+    return (
+        f"{_format_money(current_value)}/mo",
+        f"{_format_money(target_value)}/mo",
+        f"{_format_money(savings_value)}/mo",
+        _format_money(yearly_savings_value),
+        exact,
+    )
+
+
 def _extract_before_after_values(scene: "ScenePlan") -> tuple[str, str]:
     blob = _proof_scene_blob(scene)
     values = _extract_currency_values(blob)
@@ -1785,7 +1865,12 @@ def _hook_shock_text(scene: "ScenePlan", domain: str) -> str:
     raw = _clean_text(getattr(scene, "on_screen_text", "") or scene.subtitle or scene.source_text or "")
     pack = _DOMAIN_PACKS.get(domain or "", {})
     if domain == "phone_bill":
-        return "Most people overpay for this."
+        upper = raw.upper()
+        if any(tok in upper for tok in ["LOWER", "SAVE", "CUT"]):
+            return "LOWER YOUR PHONE BILL"
+        if any(tok in upper for tok in ["SERVICE", "CARRIER", "PLAN"]):
+            return "STOP OVERPAYING FOR PHONE SERVICE"
+        return "YOUR PHONE BILL IS TOO HIGH"
     if domain == "subscriptions":
         return "Check this before you get charged again."
     if domain == "airline":
@@ -1856,8 +1941,9 @@ def _render_hook_shock_clip(scene: "ScenePlan", run_id: str) -> str:
         draw.text((card[0] + 46, y), line, font=title_font, fill=(255, 255, 255))
         y += 130
 
-    domain_line = domain.replace("_", " ").upper()
-    draw.text((card[0] + 46, card[3] - 130), domain_line, font=sub_font, fill=(255, 210, 160))
+    footer_text = _shorten_proof_text(_clean_text(scene.subtitle or scene.source_text or ""), max_words=6).upper()
+    if footer_text:
+        draw.text((card[0] + 46, card[3] - 130), footer_text, font=sub_font, fill=(255, 210, 160))
 
     img.save(png_path, "PNG")
     _image_to_mp4(
@@ -1878,12 +1964,20 @@ def _render_prompt_demo_clip(scene: "ScenePlan", run_id: str) -> str:
     duration = float(max(1.6, (scene.end - scene.start)))
     png_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_proof_prompt.png"
     out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_proof_prompt.mp4"
+    domain = _detect_problem_domain(scene)
 
     display = _clean_text(getattr(scene, "on_screen_text", "") or scene.subtitle or scene.source_text or "")
-    prompt_text = _shorten_proof_text(
-        display or _clean_text(scene.subtitle or scene.source_text or "") or "Write me a better script for this topic.",
-        max_words=12,
-    )
+    if domain == "phone_bill":
+        blob = _proof_scene_blob(scene).lower()
+        if any(tok in blob for tok in ["call", "carrier call", "customer service", "retention"]):
+            prompt_text = "Ask ChatGPT to write your carrier call script."
+        else:
+            prompt_text = 'Prompt: "Help me lower my phone bill."'
+    else:
+        prompt_text = _shorten_proof_text(
+            display or _clean_text(scene.subtitle or scene.source_text or "") or "Write me a better script for this topic.",
+            max_words=12,
+        )
     _log_proof_audit(scene, "AI PROMPT", prompt_text, "Copy this prompt")
 
     img = Image.new("RGB", (_CARD_W, _CARD_H), (8, 10, 16))
@@ -1951,15 +2045,21 @@ def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
     duration = float(max(1.6, (scene.end - scene.start)))
     png_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_proof_bill.png"
     out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_proof_bill.mp4"
-    monthly_label, yearly_label = _extract_monthly_and_yearly_values(scene)
+    domain = _detect_problem_domain(scene)
 
-    raw_text = _clean_text(scene.subtitle or scene.source_text or "")
-    savings_match = re.search(r"\b(save|saving|savings)\b.*?(\$\s*[0-9]+(?:\.[0-9]{1,2})?)", raw_text, re.IGNORECASE)
-    savings_label = savings_match.group(2).replace(" ", "") if savings_match else yearly_label
-    monthly_label = _shorten_proof_text(monthly_label, max_words=3)
-    yearly_label = _shorten_proof_text(yearly_label, max_words=3)
-    savings_label = _shorten_proof_text(savings_label, max_words=3)
-    _log_proof_audit(scene, "Carrier bill", monthly_label, savings_label)
+    if domain == "phone_bill":
+        current_label, target_label, savings_label, yearly_savings_label, exact_values = _extract_phone_bill_values(scene)
+        audit_prefix = "Carrier bill" if exact_values else "Example savings"
+        _log_proof_audit(scene, audit_prefix, current_label, savings_label)
+    else:
+        monthly_label, yearly_label = _extract_monthly_and_yearly_values(scene)
+        raw_text = _clean_text(scene.subtitle or scene.source_text or "")
+        savings_match = re.search(r"\b(save|saving|savings)\b.*?(\$\s*[0-9]+(?:\.[0-9]{1,2})?)", raw_text, re.IGNORECASE)
+        savings_label = savings_match.group(2).replace(" ", "") if savings_match else yearly_label
+        monthly_label = _shorten_proof_text(monthly_label, max_words=3)
+        yearly_label = _shorten_proof_text(yearly_label, max_words=3)
+        savings_label = _shorten_proof_text(savings_label, max_words=3)
+        _log_proof_audit(scene, "Carrier bill", monthly_label, savings_label)
 
     img = Image.new("RGB", (_CARD_W, _CARD_H), (238, 241, 246))
     draw = ImageDraw.Draw(img)
@@ -1974,26 +2074,46 @@ def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
 
     heading_font = _try_load_font(54, bold=True)
     meta_font = _try_load_font(34, bold=False)
-    value_font = _try_load_font(70, bold=True)
-    small_font = _try_load_font(42, bold=True)
+    value_font = _try_load_font(64, bold=True)
+    small_font = _try_load_font(38, bold=True)
 
     draw.text((sheet[0] + 42, sheet[1] + 30), "CARRIER BILL", font=heading_font, fill=(255, 255, 255))
-    draw.text((sheet[2] - 260, sheet[1] + 42), "AUTO PAY", font=meta_font, fill=(170, 186, 220))
+    draw.text((sheet[2] - 280, sheet[1] + 42), "MONTHLY REVIEW", font=meta_font, fill=(170, 186, 220))
 
-    rows = [("Monthly charge", monthly_label), ("Annual total", yearly_label), ("Savings", savings_label)]
-    y = sheet[1] + 220
+    if domain == "phone_bill":
+        rows = [
+            ("Current bill", current_label),
+            ("Target bill", target_label),
+            ("Savings", savings_label),
+            ("Yearly savings", yearly_savings_label),
+        ]
+        y = sheet[1] + 190
+        row_gap = 190
+        if not exact_values:
+            draw.text((sheet[0] + 42, sheet[1] + 142), "EXAMPLE SAVINGS", font=meta_font, fill=(255, 210, 64))
+    else:
+        rows = [("Monthly charge", monthly_label), ("Annual total", yearly_label), ("Savings", savings_label)]
+        y = sheet[1] + 220
+        row_gap = 250
+
     for idx, (label, value) in enumerate(rows):
-        row_bottom = y + 220
+        row_bottom = y + row_gap - 30
         if idx < len(rows) - 1:
             draw.line([(sheet[0] + 42, row_bottom), (sheet[2] - 42, row_bottom)], fill=(228, 232, 238), width=3)
         draw.text((sheet[0] + 42, y), label.upper(), font=small_font, fill=(92, 102, 120))
         draw.text((sheet[0] + 42, y + 70), value, font=value_font, fill=(19, 28, 46))
-        y += 250
+        y += row_gap
 
     footer = [sheet[0] + 42, sheet[3] - 270, sheet[2] - 42, sheet[3] - 72]
     draw.rounded_rectangle(footer, radius=28, fill=(235, 248, 240))
-    draw.text((footer[0] + 28, footer[1] + 30), "Savings line item", font=small_font, fill=(45, 122, 74))
-    draw.text((footer[0] + 28, footer[1] + 94), "Switch plan and keep the same coverage.", font=meta_font, fill=(66, 86, 94))
+    if domain == "phone_bill":
+        footer_title = "Call and ask for the lower plan."
+        footer_body = "Mention retention offers or loyalty discounts."
+    else:
+        footer_title = "Savings line item"
+        footer_body = "Switch plan and keep the same coverage."
+    draw.text((footer[0] + 28, footer[1] + 30), footer_title, font=small_font, fill=(45, 122, 74))
+    draw.text((footer[0] + 28, footer[1] + 94), footer_body, font=meta_font, fill=(66, 86, 94))
 
     img.save(png_path, "PNG")
     _image_to_mp4(
@@ -2986,6 +3106,14 @@ def _score_clip_quality_for_scene(
             return 0.0, "ROLE_EXPECT_CTA_ACTION"
         if environment_family not in {"phone_hand", "person_reaction", "other"}:
             score -= 8
+        phone_bill_cta_tokens = {"carrier", "bill", "phone", "service", "plan", "customer", "call", "comparison"}
+        if len(query_tokens.intersection(phone_bill_cta_tokens)) >= 2:
+            if scenic_hits:
+                return 0.0, "PHONE_BILL_CTA_SCENIC"
+            if any(tok in all_tokens for tok in ["park", "garden", "mountain", "beach", "nature", "forest", "lake"]):
+                score -= 24
+            if any(tok in all_tokens for tok in ["call", "phone", "service", "carrier", "comparison", "screen"]):
+                score += 10
 
     score = max(0.0, min(100.0, score))
 
