@@ -2093,7 +2093,7 @@ def _render_before_after_proof_clip(scene: "ScenePlan", run_id: str) -> str:
         )
         draw.line([(0, yy), (_CARD_W, yy)], fill=col)
 
-    shell = [64, 210, _CARD_W - 64, _CARD_H - 230]
+    shell = [64, 180, _CARD_W - 64, _CARD_H - 360]
     draw.rounded_rectangle(shell, radius=56, fill=(15, 20, 30), outline=(64, 82, 112), width=3)
     if badge:
         badge_box = [shell[0] + 42, shell[1] + 38, shell[0] + 360, shell[1] + 102]
@@ -2107,11 +2107,11 @@ def _render_before_after_proof_clip(scene: "ScenePlan", run_id: str) -> str:
     if badge:
         draw.text((shell[0] + 68, shell[1] + 54), badge.upper(), font=badge_font, fill=(190, 218, 255))
 
-    left_box = [shell[0] + 38, shell[1] + 150, shell[0] + 468, shell[3] - 52]
-    right_box = [shell[0] + 472, shell[1] + 150, shell[2] - 38, shell[3] - 52]
+    left_box = [shell[0] + 38, shell[1] + 136, shell[0] + 468, shell[3] - 110]
+    right_box = [shell[0] + 472, shell[1] + 136, shell[2] - 38, shell[3] - 110]
     draw.rounded_rectangle(left_box, radius=40, fill=(55, 27, 31))
     draw.rounded_rectangle(right_box, radius=40, fill=(18, 63, 40))
-    divider = [shell[0] + 466, shell[1] + 186, shell[0] + 474, shell[3] - 86]
+    divider = [shell[0] + 466, shell[1] + 170, shell[0] + 474, shell[3] - 136]
     draw.rounded_rectangle(divider, radius=4, fill=(88, 108, 136))
 
     def _draw_half(box: list[int], title: str, amount: str, note: str, accent: tuple[int, int, int]) -> None:
@@ -2319,7 +2319,7 @@ def _playwright_local_demo_html(scene: "ScenePlan", demo_type: str, state: Optio
           linear-gradient(180deg, #09111a 0%, #081018 100%);
       }
       .shell {
-        width: 1080px; height: 1920px; padding: 72px 56px 250px;
+        width: 1080px; height: 1920px; padding: 72px 56px 360px;
       }
       .browser {
         width: 100%; height: 100%; border-radius: 42px; overflow: hidden;
@@ -2335,7 +2335,7 @@ def _playwright_local_demo_html(scene: "ScenePlan", demo_type: str, state: Optio
         background: #0d1420; color: #93a6c4; display: flex; align-items: center;
         padding: 0 22px; font-size: 26px;
       }
-      .content { padding: 44px 42px 40px; }
+      .content { padding: 36px 42px 240px; }
       .eyebrow {
         display: inline-block; padding: 14px 22px; border-radius: 999px;
         background: rgba(83,124,196,0.18); color: #9ec2ff; font-size: 28px; font-weight: 700;
@@ -2770,7 +2770,7 @@ def _render_screen_demo_frame_fallback(scene: "ScenePlan", demo_type: str, state
         )
         draw.line([(0, yy), (_CARD_W, yy)], fill=col)
 
-    browser = [56, 84, _CARD_W - 56, _CARD_H - 250]
+    browser = [56, 84, _CARD_W - 56, _CARD_H - 360]
     draw.rounded_rectangle(browser, radius=42, fill=(17, 23, 34), outline=(48, 62, 84), width=3)
     topbar = [browser[0], browser[1], browser[2], browser[1] + 126]
     draw.rounded_rectangle(topbar, radius=42, fill=(24, 31, 45))
@@ -2790,7 +2790,7 @@ def _render_screen_demo_frame_fallback(scene: "ScenePlan", demo_type: str, state
     small_font = _try_load_font(30, bold=False)
 
     content_x = browser[0] + 42
-    content_y = browser[1] + 152
+    content_y = browser[1] + 138
     pill_w = 220
     draw.rounded_rectangle([content_x, content_y, content_x + pill_w, content_y + 56], radius=28, fill=(35, 62, 102))
     pill_text = {
@@ -3112,7 +3112,7 @@ def _render_prompt_demo_clip(scene: "ScenePlan", run_id: str) -> str:
         )
         draw.line([(0, yy), (_CARD_W, yy)], fill=col)
 
-    card = [56, 180, _CARD_W - 56, _CARD_H - 220]
+    card = [56, 150, _CARD_W - 56, _CARD_H - 420]
     draw.rounded_rectangle(card, radius=54, fill=(17, 23, 36), outline=(46, 66, 104), width=4)
     draw.rounded_rectangle([card[0], card[1], card[2], card[1] + 138], radius=54, fill=(23, 31, 49))
     draw.rectangle([card[0], card[1] + 76, card[2], card[1] + 138], fill=(23, 31, 49))
@@ -3127,9 +3127,9 @@ def _render_prompt_demo_clip(scene: "ScenePlan", run_id: str) -> str:
     chip_font = _try_load_font(42, bold=True)
 
     draw.text((card[0] + 150, card[1] + 34), "AI PROMPT", font=label_font, fill=(135, 168, 255))
-    draw.text((card[0] + 70, card[1] + 188), "Paste this into ChatGPT", font=title_font, fill=(255, 255, 255))
+    draw.text((card[0] + 70, card[1] + 176), "Paste this into ChatGPT", font=title_font, fill=(255, 255, 255))
 
-    prompt_box = [card[0] + 56, card[1] + 360, card[2] - 56, card[3] - 240]
+    prompt_box = [card[0] + 56, card[1] + 320, card[2] - 56, card[3] - 180]
     draw.rounded_rectangle(prompt_box, radius=34, fill=(10, 14, 24), outline=(52, 72, 110), width=3)
     prompt_lines = _wrap_text(draw, prompt_text, body_font, max_width=prompt_box[2] - prompt_box[0] - 88, max_lines=4)
     yy = prompt_box[1] + 58
@@ -3140,7 +3140,7 @@ def _render_prompt_demo_clip(scene: "ScenePlan", run_id: str) -> str:
     chip_w = 420
     chip_h = 88
     chip_x = prompt_box[0]
-    chip_y = prompt_box[3] + 56
+    chip_y = prompt_box[3] + 28
     draw.rounded_rectangle([chip_x, chip_y, chip_x + chip_w, chip_y + chip_h], radius=30, fill=(37, 145, 255))
     draw.text((chip_x + 32, chip_y + 22), "Copy this prompt", font=chip_font, fill=(255, 255, 255))
 
@@ -3186,7 +3186,7 @@ def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
         shade = 246 - int(yy * 0.018)
         draw.line([(0, yy), (_CARD_W, yy)], fill=(shade, shade, min(255, shade + 4)))
 
-    sheet = [88, 120, _CARD_W - 88, _CARD_H - 140]
+    sheet = [88, 120, _CARD_W - 88, _CARD_H - 320]
     draw.rounded_rectangle(sheet, radius=42, fill=(255, 255, 255), outline=(214, 220, 230), width=4)
     draw.rectangle([sheet[0], sheet[1], sheet[2], sheet[1] + 126], fill=(28, 36, 58))
 
@@ -3205,14 +3205,14 @@ def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
             ("Savings", savings_label),
             ("Yearly savings", yearly_savings_label),
         ]
-        y = sheet[1] + 190
-        row_gap = 184
+        y = sheet[1] + 180
+        row_gap = 158
         if not exact_values:
             draw.text((sheet[0] + 42, sheet[1] + 142), "EXAMPLE SAVINGS", font=meta_font, fill=(255, 210, 64))
     else:
         rows = [("Monthly charge", monthly_label), ("Annual total", yearly_label), ("Savings", savings_label)]
-        y = sheet[1] + 220
-        row_gap = 250
+        y = sheet[1] + 200
+        row_gap = 214
 
     for idx, (label, value) in enumerate(rows):
         row_bottom = y + row_gap - 30
@@ -3222,7 +3222,7 @@ def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
         draw.text((sheet[0] + 42, y + 62), value, font=value_font, fill=(19, 28, 46))
         y += row_gap
 
-    footer = [sheet[0] + 42, sheet[3] - 270, sheet[2] - 42, sheet[3] - 72]
+    footer = [sheet[0] + 42, sheet[3] - 170, sheet[2] - 42, sheet[3] - 34]
     draw.rounded_rectangle(footer, radius=28, fill=(235, 248, 240))
     if domain == "phone_bill":
         footer_title = "Call and ask for the lower plan."
