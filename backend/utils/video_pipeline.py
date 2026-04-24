@@ -2020,7 +2020,7 @@ def _before_after_proof_payload(scene: "ScenePlan", domain: str) -> dict[str, st
             "left_note": "Overpaying",
             "right_title": "After",
             "right_amount": target_label,
-            "right_note": f"Saved {yearly_savings_label}/yr",
+            "right_note": f"Save {yearly_savings_label}/yr",
             "badge": "" if exact else "Example savings",
         }
 
@@ -2099,9 +2099,9 @@ def _render_before_after_proof_clip(scene: "ScenePlan", run_id: str) -> str:
         badge_box = [shell[0] + 42, shell[1] + 38, shell[0] + 360, shell[1] + 102]
         draw.rounded_rectangle(badge_box, radius=28, fill=(30, 48, 80))
 
-    title_font = _try_load_font(50, bold=True)
-    amount_font = _try_load_font(88, bold=True)
-    note_font = _try_load_font(44, bold=False)
+    title_font = _try_load_font(52, bold=True)
+    amount_font = _try_load_font(96, bold=True)
+    note_font = _try_load_font(42, bold=False)
     badge_font = _try_load_font(34, bold=True)
 
     if badge:
@@ -2117,12 +2117,12 @@ def _render_before_after_proof_clip(scene: "ScenePlan", run_id: str) -> str:
     def _draw_half(box: list[int], title: str, amount: str, note: str, accent: tuple[int, int, int]) -> None:
         draw.text((box[0] + 34, box[1] + 38), title.upper(), font=title_font, fill=accent)
         amount_lines = _wrap_text(draw, amount.upper(), amount_font, max_width=box[2] - box[0] - 68, max_lines=1)
-        yy = box[1] + 154
+        yy = box[1] + 146
         for line in amount_lines:
             draw.text((box[0] + 34, yy), line, font=amount_font, fill=(255, 255, 255))
-            yy += 96
+            yy += 102
         note_lines = _wrap_text(draw, note.upper(), note_font, max_width=box[2] - box[0] - 68, max_lines=2)
-        yy = max(yy + 36, box[3] - 190)
+        yy = max(yy + 24, box[3] - 176)
         for line in note_lines:
             draw.text((box[0] + 34, yy), line, font=note_font, fill=(228, 236, 242))
             yy += 54
