@@ -17,12 +17,14 @@
     .title { margin-top: 22px; font-size: 64px; line-height: 1.06; font-weight: 900; }
     .card { margin-top: 28px; border-radius: 28px; background: #0d1623; border: 1px solid #2c3b55; padding: 28px; }
     .label { font-size: 25px; color: #95a9c8; font-weight: 800; }
-    .script { margin-top: 14px; min-height: 210px; border-radius: 22px; background: #111d2e; border: 1px solid #314260; padding: 22px; font-size: 34px; line-height: 1.22; font-weight: 800; }
+    .script { margin-top: 14px; min-height: 210px; border-radius: 22px; background: #111d2e; border: 1px solid #314260; padding: 22px; font-size: 34px; line-height: 1.22; font-weight: 800; opacity: .35; }
+    .script.pasted { opacity: 1; border-color: #9af0ca; }
     .steps { margin-top: 24px; display: grid; gap: 18px; }
     .step { border-radius: 22px; padding: 24px; background: #121f31; border: 1px solid #30415f; font-size: 38px; font-weight: 900; opacity: .25; }
     .step.done { opacity: 1; }
     .step.active { border-color: #9af0ca; box-shadow: 0 0 0 3px rgba(154,240,202,.14); }
-    .progress { margin-top: 20px; height: 14px; border-radius: 999px; background: #1a2939; overflow: hidden; opacity: 0; }
+    .progress-label { margin-top: 18px; color: #9af0ca; font-size: 26px; font-weight: 900; opacity: 0; }
+    .progress { margin-top: 10px; height: 14px; border-radius: 999px; background: #1a2939; overflow: hidden; opacity: 0; }
     .progress.visible { opacity: 1; }
     .progress::after { content: ""; display: block; width: 68%; height: 100%; background: #9af0ca; border-radius: 999px; }
     .ready { margin-top: 26px; border-radius: 24px; padding: 26px; background: #123321; border: 1px solid #2c6b47; font-size: 42px; font-weight: 900; color: #b7ffd4; opacity: 0; }
@@ -43,11 +45,12 @@
       <div class="title">Turn script into voice</div>
       <div class="card">
         <div class="label">Paste script</div>
-        <div class="script">Stop spending hours making short videos. Repeat this simple workflow.</div>
+        <div id="scriptBox" class="script">Stop spending hours making short videos. Repeat this simple workflow.</div>
         <div class="steps">
           <div id="pasteStep" class="step">Paste script</div>
           <div id="voiceStep" class="step">Generate voice</div>
         </div>
+        <div id="progressLabel" class="progress-label">Generating voice...</div>
         <div id="progress" class="progress"></div>
         <div id="readyStep" class="ready">Voice ready</div>
         <div id="wave" class="wave"><span style="height:24px"></span><span style="height:46px"></span><span style="height:32px"></span><span style="height:56px"></span><span style="height:28px"></span><span style="height:44px"></span><span style="height:34px"></span></div>
@@ -58,8 +61,10 @@
     const state = JSON.parse(document.body.dataset.state || '{}');
     const visible = Number(state.step_visible || 0);
     if (visible >= 1) document.getElementById('pasteStep').classList.add('done');
+    if (visible >= 1) document.getElementById('scriptBox').classList.add('pasted');
     if (visible >= 2) document.getElementById('voiceStep').classList.add('done');
     if (visible === 2) document.getElementById('voiceStep').classList.add('active');
+    if (visible === 2) document.getElementById('progressLabel').classList.add('visible');
     if (visible === 2) document.getElementById('progress').classList.add('visible');
     if (visible >= 3) document.getElementById('readyStep').classList.add('visible');
     if (visible >= 3) document.getElementById('wave').classList.add('visible');
