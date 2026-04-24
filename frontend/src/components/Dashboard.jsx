@@ -2077,18 +2077,39 @@ export default function Dashboard({ mode = 'generate' }) {
       (Array.isArray(plan?.scenes) && plan.scenes.length > 0 && plan.scenes) ||
       [];
 
-    const sceneText = sceneSource
-      .map((s) => s?.subtitle || s?.on_screen_text || s?.description || s?.visual_description || '')
+    const hook = (plan.hook || hydratedItem?.parts?.hook || '').trim();
+    const body = (plan.body || hydratedItem?.parts?.body || '').trim();
+    const cta = (plan.cta || hydratedItem?.parts?.cta || '').trim();
+    const subtitleSceneText = sceneSource
+      .map((s) => s?.subtitle || '')
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    const sourceTextSceneText = sceneSource
+      .map((s) => s?.source_text || '')
       .filter(Boolean)
       .join(' ')
       .trim();
 
-    const hook = (plan.hook || hydratedItem?.parts?.hook || '').trim();
-    const body = (plan.body || hydratedItem?.parts?.body || '').trim();
-    const cta = (plan.cta || hydratedItem?.parts?.cta || '').trim();
-    const finalScript = (
-      plan.final_script || [hook, body, cta].filter(Boolean).join(' ').trim() || sceneText
-    ).trim();
+    let finalScriptSource = 'none_safe_empty';
+    let finalScript = '';
+    if ((plan?.final_script || '').trim()) {
+      finalScript = plan.final_script.trim();
+      finalScriptSource = 'plan.final_script';
+    } else if ((plan?.confirmed_plan?.final_script || '').trim()) {
+      finalScript = plan.confirmed_plan.final_script.trim();
+      finalScriptSource = 'plan.confirmed_plan.final_script';
+    } else if ((plan?.script || '').trim()) {
+      finalScript = plan.script.trim();
+      finalScriptSource = 'plan.script';
+    } else if (subtitleSceneText) {
+      finalScript = subtitleSceneText;
+      finalScriptSource = 'scene.subtitle';
+    } else if (sourceTextSceneText) {
+      finalScript = sourceTextSceneText;
+      finalScriptSource = 'scene.source_text';
+    }
+    console.log(`[HISTORY_RESTORE] finalScript_source=${finalScriptSource}`);
     const niche = (plan.niche || hydratedItem?.niche || 'general').trim();
     const durationSeconds = hydratedItem?.duration_seconds || 45;
 

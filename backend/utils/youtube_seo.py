@@ -10,6 +10,51 @@ import anthropic
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 
+def _derive_hook_display(script: str) -> str:
+    from utils.video_pipeline import parse_script, _classify_hook_pattern, _stock_hook_text
+
+    parts = parse_script(script or "")
+    hook = str(parts.hook or "").strip()
+    if not hook:
+        return ""
+    return _stock_hook_text(hook, _classify_hook_pattern(hook))
+
+
+def _refine_packaging(title: str, thumbnail_text: str, script: str) -> tuple[str, str, str]:
+    hook_display = _derive_hook_display(script)
+    title_clean = re.sub(r"\s+", " ", str(title or "").strip())
+    thumb_clean = re.sub(r"\s+", " ", str(thumbnail_text or "").strip())
+
+    hook_upper = hook_display.upper().strip()
+    if hook_upper == "STOP PAYING FOR AI":
+        title_clean = "Stop Paying for AI: 5 Free Tools That Replace Paid Apps"
+        thumb_clean = hook_upper
+    elif hook_upper == "5 FREE AI TOOLS":
+        title_clean = "5 Free AI Tools That Replace Paid Apps"
+        thumb_clean = hook_upper
+    elif hook_upper == "PAID AI? USE THESE":
+        title_clean = "Paid AI? Use These Free Tools Instead"
+        thumb_clean = hook_upper
+    elif hook_upper == "FREE TOOLS > PAID AI":
+        title_clean = "Free Tools That Beat Paid AI for Everyday Work"
+        thumb_clean = hook_upper
+    else:
+        if hook_display:
+            if not thumb_clean:
+                thumb_clean = hook_display
+            if not title_clean:
+                title_clean = hook_display.title()
+
+    if hook_display and thumb_clean:
+        thumb_tokens = thumb_clean.split()
+        if len(thumb_tokens) > 5:
+            thumb_clean = " ".join(thumb_tokens[:5])
+
+    title_clean = re.sub(r"\s+", " ", title_clean).strip()[:100]
+    thumb_clean = re.sub(r"\s+", " ", thumb_clean).strip()[:50]
+    return title_clean, thumb_clean, hook_display
+
+
 def _strip_unwanted_year_tokens(text: str, *, script: str, allow_current_year: bool = False) -> str:
     """
     Remove injected 4-digit years (e.g. "2024") unless they appear in the user/script input.
@@ -99,6 +144,12 @@ Rules:
         # Deterministic safety: strip injected years unless user/script included them.
         title_clean = _strip_unwanted_year_tokens(title_raw, script=script, allow_current_year=False)
         thumb_clean = _strip_unwanted_year_tokens(thumb_raw, script=script, allow_current_year=False)
+        title_clean, thumb_clean, hook_display = _refine_packaging(title_clean, thumb_clean, script)
+        print(
+            f"[PACKAGING] title=\"{title_clean}\" "
+            f"thumbnail_text=\"{thumb_clean}\" "
+            f"hook_display=\"{hook_display}\""
+        )
 
         return {
             "title": title_clean[:100],
