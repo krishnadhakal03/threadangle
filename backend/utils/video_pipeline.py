@@ -1041,6 +1041,31 @@ def _domain_pack_queries(scene: "ScenePlan", stage: str) -> list[str]:
     return [str(q) for q in pack.get("fallback_stock_query_seeds", [])]
 
 
+def _classify_screen_demo_type(scene: "ScenePlan") -> str:
+    if not scene:
+        return "stock_video"
+
+    part = (getattr(scene, "part", "") or "").lower().strip()
+    if part in {"hook", "cta"}:
+        return "stock_video"
+
+    domain = _detect_problem_domain(scene)
+    if domain not in _DOMAIN_PACKS:
+        return "stock_video"
+
+    blob = _proof_scene_blob(scene).lower()
+    if not blob:
+        return "stock_video"
+
+    if any(marker in blob for marker in ["chatgpt", "prompt", "paste", "write me"]):
+        return "chat_prompt_demo"
+    if any(marker in blob for marker in ["call script", "carrier", "retention"]):
+        return "call_script_demo"
+    if any(marker in blob for marker in ["bill", "$", "month", "year", "savings"]):
+        return "bill_compare_demo"
+    return "stock_video"
+
+
 def _classify_proof_scene_type(scene: "ScenePlan") -> str:
     if not scene:
         return "stock_video"
