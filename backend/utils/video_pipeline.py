@@ -3379,6 +3379,10 @@ def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
         current_label, target_label, savings_label, yearly_savings_label, exact_values = _extract_phone_bill_values(scene)
         audit_prefix = "Carrier bill" if exact_values else "Example savings"
         _log_proof_audit(scene, audit_prefix, current_label, savings_label)
+    elif domain == "airline":
+        current_label, target_label, savings_label = _canonical_flight_savings_metrics()
+        yearly_savings_label = ""
+        _log_proof_audit(scene, "Flight price", current_label, target_label, savings_label)
     else:
         monthly_label, yearly_label = _extract_monthly_and_yearly_values(scene)
         raw_text = _clean_text(scene.subtitle or scene.source_text or "")
@@ -3407,7 +3411,7 @@ def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
 
     heading_font, heading_lines, _ = _fit_text_block(
         draw,
-        "CARRIER BILL",
+        "FLIGHT PRICE" if domain == "airline" else "CARRIER BILL",
         max_width=380,
         max_height=60,
         font_sizes=[54, 50, 46],
@@ -3415,7 +3419,7 @@ def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
         bold=True,
     )
     draw.text((sheet[0] + 42, sheet[1] + 30), heading_lines[0], font=heading_font, fill=(255, 255, 255))
-    draw.text((sheet[2] - 280, sheet[1] + 42), "MONTHLY REVIEW", font=meta_font, fill=(170, 186, 220))
+    draw.text((sheet[2] - 280, sheet[1] + 42), "TRAVEL COMPARE" if domain == "airline" else "MONTHLY REVIEW", font=meta_font, fill=(170, 186, 220))
 
     if domain == "phone_bill":
         rows = [
@@ -3428,6 +3432,14 @@ def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
         row_gap = 158
         if not exact_values:
             draw.text((sheet[0] + 42, sheet[1] + 142), "EXAMPLE SAVINGS", font=meta_font, fill=(255, 210, 64))
+    elif domain == "airline":
+        rows = [
+            ("Original fare", current_label),
+            ("Better option", target_label),
+            ("Estimated savings", savings_label),
+        ]
+        y = sheet[1] + 200
+        row_gap = 214
     else:
         rows = [("Monthly charge", monthly_label), ("Annual total", yearly_label), ("Savings", savings_label)]
         y = sheet[1] + 200
@@ -3467,6 +3479,9 @@ def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
     if domain == "phone_bill":
         footer_title = "Call and ask for the lower plan."
         footer_body = "Mention retention offers or loyalty discounts."
+    elif domain == "airline":
+        footer_title = "Compare dates before checkout."
+        footer_body = "Nearby airports and bag fees are included."
     else:
         footer_title = "Savings line item"
         footer_body = "Switch plan and keep the same coverage."
@@ -3494,12 +3509,17 @@ def _render_savings_math_clip(scene: "ScenePlan", run_id: str) -> str:
     out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_proof_math.mp4"
     frame_dir = TEMP_DIR / f"{run_id}_scene_{scene.idx}_proof_math_frames"
     frame_dir.mkdir(parents=True, exist_ok=True)
-    monthly_label, yearly_label = _extract_monthly_and_yearly_values(scene)
-    monthly_display = monthly_label.replace("/month", "/month")
-    yearly_display = yearly_label.replace("/year", "/year")
-    _log_proof_audit(scene, "Savings math", monthly_display, yearly_display)
-
     domain = _detect_problem_domain(scene)
+    if domain == "airline":
+        original_fare, better_option, estimated_savings = _canonical_flight_savings_metrics()
+        monthly_display = f"{original_fare} - {better_option}"
+        yearly_display = estimated_savings
+        _log_proof_audit(scene, "Flight savings math", original_fare, better_option, estimated_savings)
+    else:
+        monthly_label, yearly_label = _extract_monthly_and_yearly_values(scene)
+        monthly_display = monthly_label.replace("/month", "/month")
+        yearly_display = yearly_label.replace("/year", "/year")
+        _log_proof_audit(scene, "Savings math", monthly_display, yearly_display)
     fps = 10
     frame_count = max(10, int(round(duration * fps)))
     png_paths: list[Path] = []
@@ -3563,6 +3583,11 @@ def _render_savings_math_clip(scene: "ScenePlan", run_id: str) -> str:
                 note_box = [panel[0] + 54, panel[3] - 210, panel[2] - 54, panel[3] - 92]
                 draw.rounded_rectangle(note_box, radius=28, fill=(22, 34, 41))
                 draw.text((note_box[0] + 30, note_box[1] + 34), "One 10-minute call", font=sub_font, fill=(215, 226, 232))
+        elif domain == "airline":
+            draw.text((panel[0] + 54, panel[1] + 62), "ESTIMATED SAVINGS", font=label_font, fill=(116, 221, 168))
+            draw.text((panel[0] + 54, panel[1] + 230), monthly_display, font=monthly_font, fill=(255, 255, 255))
+            draw.text((panel[0] + 54, panel[1] + 650), "=", font=equals_font, fill=(116, 221, 168))
+            draw.text((panel[0] + 54, panel[1] + 860), yearly_display, font=yearly_font, fill=(255, 255, 255))
         else:
             draw.text((panel[0] + 54, panel[1] + 62), "SAVINGS MATH", font=label_font, fill=(116, 221, 168))
             draw.text((panel[0] + 54, panel[1] + 230), monthly_display, font=monthly_font, fill=(255, 255, 255))
@@ -3595,7 +3620,11 @@ def _render_before_after_demo_clip(scene: "ScenePlan", run_id: str) -> str:
     duration = float(max(1.6, (scene.end - scene.start)))
     png_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_proof_before_after.png"
     out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_proof_before_after.mp4"
-    before_label, after_label = _extract_before_after_values(scene)
+    domain = _detect_problem_domain(scene)
+    if domain == "airline":
+        before_label, after_label, _ = _canonical_flight_savings_metrics()
+    else:
+        before_label, after_label = _extract_before_after_values(scene)
     before_compact = _shorten_proof_text(before_label, max_words=3)
     after_compact = _shorten_proof_text(after_label, max_words=3)
     _log_proof_audit(scene, "Before / After", before_compact, after_compact)
@@ -3627,7 +3656,8 @@ def _render_before_after_demo_clip(scene: "ScenePlan", run_id: str) -> str:
     draw.text((before_box[0] + 34, before_box[1] + 130), before_compact, font=amount_font, fill=(255, 255, 255))
     draw.text((after_box[0] + 34, after_box[1] + 34), "AFTER", font=label_font, fill=(176, 255, 200))
     draw.text((after_box[0] + 34, after_box[1] + 130), after_compact, font=amount_font, fill=(255, 255, 255))
-    draw.text((panel[0] + 44, panel[3] - 120), "Use AI to compare the plan before you pay.", font=small_font, fill=(213, 224, 232))
+    footer_text = "Use AI to compare flight options before you pay." if domain == "airline" else "Use AI to compare the plan before you pay."
+    draw.text((panel[0] + 44, panel[3] - 120), footer_text, font=small_font, fill=(213, 224, 232))
 
     img.save(png_path, "PNG")
     _image_to_mp4(
