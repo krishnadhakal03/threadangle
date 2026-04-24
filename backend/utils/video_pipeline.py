@@ -2067,10 +2067,12 @@ def _before_after_proof_payload(scene: "ScenePlan", domain: str) -> dict[str, st
 
 def _render_before_after_proof_clip(scene: "ScenePlan", run_id: str) -> str:
     from PIL import Image, ImageDraw
+    from moviepy.editor import ImageSequenceClip
 
     duration = float(max(1.6, (scene.end - scene.start)))
-    png_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_before_after_proof.png"
     out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_before_after_proof.mp4"
+    frame_dir = TEMP_DIR / f"{run_id}_scene_{scene.idx}_before_after_proof_frames"
+    frame_dir.mkdir(parents=True, exist_ok=True)
 
     domain = _detect_problem_domain(scene)
     payload = _before_after_proof_payload(scene, domain)
@@ -2082,76 +2084,100 @@ def _render_before_after_proof_clip(scene: "ScenePlan", run_id: str) -> str:
         payload.get("right_note", ""),
     )
 
-    img = Image.new("RGB", (_CARD_W, _CARD_H), (8, 12, 18))
-    draw = ImageDraw.Draw(img)
-    for yy in range(_CARD_H):
-        t = yy / float(max(1, _CARD_H - 1))
-        col = (
-            int(11 * (1 - t) + 5 * t),
-            int(16 * (1 - t) + 11 * t),
-            int(26 * (1 - t) + 16 * t),
+    fps = 10
+    frame_count = max(10, int(round(duration * fps)))
+    png_paths: list[Path] = []
+
+    for idx in range(frame_count):
+        progress = idx / float(max(1, frame_count - 1))
+        png_path = frame_dir / f"frame_{idx:03d}.png"
+        img = Image.new("RGB", (_CARD_W, _CARD_H), (8, 12, 18))
+        draw = ImageDraw.Draw(img)
+        for yy in range(_CARD_H):
+            t = yy / float(max(1, _CARD_H - 1))
+            col = (
+                int(11 * (1 - t) + 5 * t),
+                int(16 * (1 - t) + 11 * t),
+                int(26 * (1 - t) + 16 * t),
+            )
+            draw.line([(0, yy), (_CARD_W, yy)], fill=col)
+
+        shell = [64, 180, _CARD_W - 64, _CARD_H - 360]
+        draw.rounded_rectangle(shell, radius=56, fill=(15, 20, 30), outline=(64, 82, 112), width=3)
+        if badge:
+            badge_box = [shell[0] + 42, shell[1] + 38, shell[0] + 360, shell[1] + 102]
+            draw.rounded_rectangle(badge_box, radius=28, fill=(30, 48, 80))
+
+        title_font = _try_load_font(52, bold=True)
+        left_amount_size = 96 if progress < 0.28 else 104
+        right_amount_size = 96 if progress < 0.60 else 104
+        note_font = _try_load_font(42, bold=False)
+        badge_font = _try_load_font(34, bold=True)
+
+        if badge:
+            draw.text((shell[0] + 68, shell[1] + 54), badge.upper(), font=badge_font, fill=(190, 218, 255))
+
+        left_box = [shell[0] + 38, shell[1] + 136, shell[0] + 468, shell[3] - 110]
+        right_box = [shell[0] + 472, shell[1] + 136, shell[2] - 38, shell[3] - 110]
+        draw.rounded_rectangle(left_box, radius=40, fill=(55, 27, 31))
+        draw.rounded_rectangle(right_box, radius=40, fill=(18, 63, 40))
+        divider = [shell[0] + 466, shell[1] + 170, shell[0] + 474, shell[3] - 136]
+        draw.rounded_rectangle(divider, radius=4, fill=(88, 108, 136))
+
+        def _draw_half(box: list[int], title: str, amount: str, note: str, accent: tuple[int, int, int], show_amount: bool, show_note: bool, amount_size: int) -> None:
+            draw.text((box[0] + 34, box[1] + 38), title.upper(), font=title_font, fill=accent)
+            amount_font = _try_load_font(amount_size, bold=True)
+            if show_amount:
+                amount_lines = _wrap_text(draw, amount.upper(), amount_font, max_width=box[2] - box[0] - 68, max_lines=1)
+                yy = box[1] + 146
+                for line in amount_lines:
+                    draw.text((box[0] + 34, yy), line, font=amount_font, fill=(255, 255, 255))
+                    yy += 102
+            if show_note:
+                note_lines = _wrap_text(draw, note.upper(), note_font, max_width=box[2] - box[0] - 68, max_lines=2)
+                yy = box[3] - 176
+                for line in note_lines:
+                    draw.text((box[0] + 34, yy), line, font=note_font, fill=(228, 236, 242))
+                    yy += 54
+
+        _draw_half(
+            left_box,
+            str(payload.get("left_title", "Before")),
+            str(payload.get("left_amount", "$95/mo")),
+            str(payload.get("left_note", "Overpaying")),
+            (255, 196, 196),
+            show_amount=progress >= 0.12,
+            show_note=True,
+            amount_size=left_amount_size,
         )
-        draw.line([(0, yy), (_CARD_W, yy)], fill=col)
+        _draw_half(
+            right_box,
+            str(payload.get("right_title", "After")),
+            str(payload.get("right_amount", "$65/mo")),
+            str(payload.get("right_note", "Save $360/yr")),
+            (182, 255, 196),
+            show_amount=progress >= 0.42,
+            show_note=progress >= 0.72,
+            amount_size=right_amount_size,
+        )
 
-    shell = [64, 180, _CARD_W - 64, _CARD_H - 360]
-    draw.rounded_rectangle(shell, radius=56, fill=(15, 20, 30), outline=(64, 82, 112), width=3)
-    if badge:
-        badge_box = [shell[0] + 42, shell[1] + 38, shell[0] + 360, shell[1] + 102]
-        draw.rounded_rectangle(badge_box, radius=28, fill=(30, 48, 80))
+        img.save(png_path, "PNG")
+        png_paths.append(png_path)
 
-    title_font = _try_load_font(52, bold=True)
-    amount_font = _try_load_font(96, bold=True)
-    note_font = _try_load_font(42, bold=False)
-    badge_font = _try_load_font(34, bold=True)
+    frame_pattern = frame_dir / "frame_%03d.png"
+    if _ffmpeg_frame_sequence_to_mp4(frame_pattern, out_path, fps=fps):
+        return str(out_path)
 
-    if badge:
-        draw.text((shell[0] + 68, shell[1] + 54), badge.upper(), font=badge_font, fill=(190, 218, 255))
-
-    left_box = [shell[0] + 38, shell[1] + 136, shell[0] + 468, shell[3] - 110]
-    right_box = [shell[0] + 472, shell[1] + 136, shell[2] - 38, shell[3] - 110]
-    draw.rounded_rectangle(left_box, radius=40, fill=(55, 27, 31))
-    draw.rounded_rectangle(right_box, radius=40, fill=(18, 63, 40))
-    divider = [shell[0] + 466, shell[1] + 170, shell[0] + 474, shell[3] - 136]
-    draw.rounded_rectangle(divider, radius=4, fill=(88, 108, 136))
-
-    def _draw_half(box: list[int], title: str, amount: str, note: str, accent: tuple[int, int, int]) -> None:
-        draw.text((box[0] + 34, box[1] + 38), title.upper(), font=title_font, fill=accent)
-        amount_lines = _wrap_text(draw, amount.upper(), amount_font, max_width=box[2] - box[0] - 68, max_lines=1)
-        yy = box[1] + 146
-        for line in amount_lines:
-            draw.text((box[0] + 34, yy), line, font=amount_font, fill=(255, 255, 255))
-            yy += 102
-        note_lines = _wrap_text(draw, note.upper(), note_font, max_width=box[2] - box[0] - 68, max_lines=2)
-        yy = max(yy + 24, box[3] - 176)
-        for line in note_lines:
-            draw.text((box[0] + 34, yy), line, font=note_font, fill=(228, 236, 242))
-            yy += 54
-
-    _draw_half(
-        left_box,
-        str(payload.get("left_title", "Before")),
-        str(payload.get("left_amount", "$95/mo")),
-        str(payload.get("left_note", "Overpaying")),
-        (255, 196, 196),
-    )
-    _draw_half(
-        right_box,
-        str(payload.get("right_title", "After")),
-        str(payload.get("right_amount", "$65/mo")),
-        str(payload.get("right_note", "Saved $360/yr")),
-        (182, 255, 196),
-    )
-
-    img.save(png_path, "PNG")
-    _image_to_mp4(
-        image_path=png_path,
-        out_path=out_path,
-        duration=duration,
+    clip = ImageSequenceClip([str(path) for path in png_paths if path.exists()], fps=fps)
+    clip.write_videofile(
+        str(out_path),
+        codec="libx264",
+        audio=False,
         fps=30,
-        zoom_start=1.0,
-        zoom_end=1.05,
-        pan_px=6,
+        ffmpeg_params=["-pix_fmt", "yuv420p", "-movflags", "+faststart"],
+        logger=None,
     )
+    clip.close()
     return str(out_path)
 
 
@@ -3248,64 +3274,82 @@ def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
 
 def _render_savings_math_clip(scene: "ScenePlan", run_id: str) -> str:
     from PIL import Image, ImageDraw
+    from moviepy.editor import ImageSequenceClip
 
     duration = float(max(1.6, (scene.end - scene.start)))
-    png_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_proof_math.png"
     out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_proof_math.mp4"
+    frame_dir = TEMP_DIR / f"{run_id}_scene_{scene.idx}_proof_math_frames"
+    frame_dir.mkdir(parents=True, exist_ok=True)
     monthly_label, yearly_label = _extract_monthly_and_yearly_values(scene)
     monthly_display = monthly_label.replace("/month", "/month")
     yearly_display = yearly_label.replace("/year", "/year")
     _log_proof_audit(scene, "Savings math", monthly_display, yearly_display)
 
-    img = Image.new("RGB", (_CARD_W, _CARD_H), (10, 14, 18))
-    draw = ImageDraw.Draw(img)
-    for yy in range(_CARD_H):
-        t = yy / float(max(1, _CARD_H - 1))
-        col = (
-            int(12 * (1 - t) + 2 * t),
-            int(18 * (1 - t) + 10 * t),
-            int(24 * (1 - t) + 18 * t),
-        )
-        draw.line([(0, yy), (_CARD_W, yy)], fill=col)
-
-    panel = [74, 210, _CARD_W - 74, _CARD_H - 230]
-    draw.rounded_rectangle(panel, radius=48, fill=(16, 22, 28), outline=(38, 50, 60), width=3)
-
-    label_font = _try_load_font(48, bold=True)
-    hero_font = _try_load_font(128, bold=True)
-    equals_font = _try_load_font(112, bold=True)
-    sub_font = _try_load_font(44, bold=False)
-
     domain = _detect_problem_domain(scene)
-    if domain == "phone_bill":
-        draw.text((panel[0] + 54, panel[1] + 62), "SAVE", font=label_font, fill=(116, 221, 168))
-        draw.text((panel[0] + 54, panel[1] + 240), monthly_display.replace("/month", " / MONTH"), font=hero_font, fill=(255, 255, 255))
-        draw.text((panel[0] + 54, panel[1] + 655), "=", font=equals_font, fill=(116, 221, 168))
-        draw.text((panel[0] + 54, panel[1] + 865), yearly_display.replace("/year", " / YEAR"), font=hero_font, fill=(255, 255, 255))
+    fps = 10
+    frame_count = max(10, int(round(duration * fps)))
+    png_paths: list[Path] = []
 
-        note_box = [panel[0] + 54, panel[3] - 210, panel[2] - 54, panel[3] - 92]
-        draw.rounded_rectangle(note_box, radius=28, fill=(22, 34, 41))
-        draw.text((note_box[0] + 30, note_box[1] + 34), "One 10-minute call", font=sub_font, fill=(215, 226, 232))
-    else:
-        draw.text((panel[0] + 54, panel[1] + 62), "SAVINGS MATH", font=label_font, fill=(116, 221, 168))
-        draw.text((panel[0] + 54, panel[1] + 230), monthly_display, font=hero_font, fill=(255, 255, 255))
-        draw.text((panel[0] + 54, panel[1] + 650), "=", font=equals_font, fill=(116, 221, 168))
-        draw.text((panel[0] + 54, panel[1] + 860), yearly_display, font=hero_font, fill=(255, 255, 255))
+    for idx in range(frame_count):
+        progress = idx / float(max(1, frame_count - 1))
+        png_path = frame_dir / f"frame_{idx:03d}.png"
+        img = Image.new("RGB", (_CARD_W, _CARD_H), (10, 14, 18))
+        draw = ImageDraw.Draw(img)
+        for yy in range(_CARD_H):
+            t = yy / float(max(1, _CARD_H - 1))
+            col = (
+                int(12 * (1 - t) + 2 * t),
+                int(18 * (1 - t) + 10 * t),
+                int(24 * (1 - t) + 18 * t),
+            )
+            draw.line([(0, yy), (_CARD_W, yy)], fill=col)
 
-        note_box = [panel[0] + 54, panel[3] - 230, panel[2] - 54, panel[3] - 82]
-        draw.rounded_rectangle(note_box, radius=28, fill=(22, 34, 41))
-        draw.text((note_box[0] + 30, note_box[1] + 38), "Simple payoff proof. No stock footage needed.", font=sub_font, fill=(215, 226, 232))
+        panel = [74, 210, _CARD_W - 74, _CARD_H - 230]
+        draw.rounded_rectangle(panel, radius=48, fill=(16, 22, 28), outline=(38, 50, 60), width=3)
 
-    img.save(png_path, "PNG")
-    _image_to_mp4(
-        image_path=png_path,
-        out_path=out_path,
-        duration=duration,
+        label_font = _try_load_font(48, bold=True)
+        monthly_font = _try_load_font(126 if progress < 0.42 else 132, bold=True)
+        yearly_font = _try_load_font(128 if progress < 0.86 else 138, bold=True)
+        equals_font = _try_load_font(112, bold=True)
+        sub_font = _try_load_font(44, bold=False)
+
+        if domain == "phone_bill":
+            draw.text((panel[0] + 54, panel[1] + 62), "SAVE", font=label_font, fill=(116, 221, 168))
+            if progress >= 0.12:
+                draw.text((panel[0] + 54, panel[1] + 240), monthly_display.replace("/month", " / MONTH"), font=monthly_font, fill=(255, 255, 255))
+            if progress >= 0.42:
+                draw.text((panel[0] + 54, panel[1] + 655), "=", font=equals_font, fill=(116, 221, 168))
+            if progress >= 0.60:
+                yearly_fill = (255, 255, 255) if progress < 0.86 else (210, 255, 221)
+                draw.text((panel[0] + 54, panel[1] + 865), yearly_display.replace("/year", " / YEAR"), font=yearly_font, fill=yearly_fill)
+
+            if progress >= 0.76:
+                note_box = [panel[0] + 54, panel[3] - 210, panel[2] - 54, panel[3] - 92]
+                draw.rounded_rectangle(note_box, radius=28, fill=(22, 34, 41))
+                draw.text((note_box[0] + 30, note_box[1] + 34), "One 10-minute call", font=sub_font, fill=(215, 226, 232))
+        else:
+            draw.text((panel[0] + 54, panel[1] + 62), "SAVINGS MATH", font=label_font, fill=(116, 221, 168))
+            draw.text((panel[0] + 54, panel[1] + 230), monthly_display, font=monthly_font, fill=(255, 255, 255))
+            draw.text((panel[0] + 54, panel[1] + 650), "=", font=equals_font, fill=(116, 221, 168))
+            draw.text((panel[0] + 54, panel[1] + 860), yearly_display, font=yearly_font, fill=(255, 255, 255))
+
+        img.save(png_path, "PNG")
+        png_paths.append(png_path)
+
+    frame_pattern = frame_dir / "frame_%03d.png"
+    if _ffmpeg_frame_sequence_to_mp4(frame_pattern, out_path, fps=fps):
+        return str(out_path)
+
+    clip = ImageSequenceClip([str(path) for path in png_paths if path.exists()], fps=fps)
+    clip.write_videofile(
+        str(out_path),
+        codec="libx264",
+        audio=False,
         fps=30,
-        zoom_start=1.0,
-        zoom_end=1.05,
-        pan_px=6,
+        ffmpeg_params=["-pix_fmt", "yuv420p", "-movflags", "+faststart"],
+        logger=None,
     )
+    clip.close()
     return str(out_path)
 
 
