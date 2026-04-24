@@ -3028,18 +3028,37 @@ def _render_hook_shock_clip(scene: "ScenePlan", run_id: str) -> str:
     draw.rectangle([card[0], card[1] + 44, card[2], card[1] + 92], fill=(255, 182, 66))
 
     label_font = _try_load_font(42, bold=True)
-    title_font = _try_load_font(118, bold=True)
     sub_font = _try_load_font(42, bold=False)
 
     draw.text((card[0] + 42, card[1] + 20), "CHECK THIS FIRST", font=label_font, fill=(18, 18, 20))
     if "\n" in shock_text:
         lines = [segment.strip().upper() for segment in shock_text.splitlines() if segment.strip()]
     else:
-        lines = _wrap_text(draw, shock_text.upper(), title_font, max_width=card[2] - card[0] - 96, max_lines=3)
+        lines = []
+
+    max_width = card[2] - card[0] - 96
+    available_height = 360
+    title_font = _try_load_font(118, bold=True)
+    line_height = 130
+    for font_size in [118, 112, 108, 104, 100, 96, 92]:
+        candidate_font = _try_load_font(font_size, bold=True)
+        candidate_lines = lines or _wrap_text(draw, shock_text.upper(), candidate_font, max_width=max_width, max_lines=3)
+        if not candidate_lines:
+            continue
+        widest = max(draw.textbbox((0, 0), line, font=candidate_font)[2] for line in candidate_lines)
+        candidate_line_height = int(font_size * 1.05)
+        total_height = len(candidate_lines) * candidate_line_height
+        if widest <= max_width and total_height <= available_height:
+            title_font = candidate_font
+            lines = candidate_lines
+            line_height = candidate_line_height
+            break
+    if not lines:
+        lines = [shock_text.upper()]
     y = card[1] + 170
     for line in lines:
         draw.text((card[0] + 46, y), line, font=title_font, fill=(255, 255, 255))
-        y += 130
+        y += line_height
 
     subtitle_text = "Check this before paying"
     draw.text((card[0] + 48, min(card[3] - 140, y + 14)), subtitle_text, font=sub_font, fill=(255, 210, 160))
