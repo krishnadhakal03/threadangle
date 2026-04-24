@@ -870,6 +870,31 @@ def _classify_scene_intent(scene: "ScenePlan") -> str:
     return "info_emphasis"
 
 
+def _classify_proof_scene_type(scene: "ScenePlan") -> str:
+    if not scene:
+        return "stock_video"
+
+    part = (getattr(scene, "part", "") or "").lower().strip()
+    if part in {"hook", "cta"}:
+        return "stock_video"
+
+    blob = _proof_scene_blob(scene).lower()
+    if not blob:
+        return "stock_video"
+
+    prompt_markers = ["prompt", "chatgpt", "paste", "script", "write me"]
+    bill_markers = ["phone bill", "carrier", "monthly bill", "plan"]
+    savings_markers = ["$", "per month", "per year", "360", "savings"]
+
+    if any(marker in blob for marker in prompt_markers):
+        return "prompt_demo"
+    if any(marker in blob for marker in bill_markers):
+        return "bill_demo"
+    if any(marker in blob for marker in savings_markers):
+        return "savings_math"
+    return "stock_video"
+
+
 def _choose_scene_asset_type(scene: "ScenePlan", intent: str) -> str:
     intent = (intent or "").strip()
     # Controlled rollback default: stock_video unless explicitly allowed by strategy gating.
