@@ -17,7 +17,8 @@
     .title { margin-top: 22px; font-size: 64px; line-height: 1.06; font-weight: 900; }
     .editor { margin-top: 28px; border-radius: 28px; background: #0d1623; border: 1px solid #2c3b55; padding: 28px; }
     .preview { height: 420px; border-radius: 26px; background: #1a2435; border: 1px solid #394a69; display: grid; place-items: center; font-size: 42px; line-height: 1.12; text-align: center; font-weight: 900; }
-    .timeline { margin-top: 26px; display: grid; gap: 16px; }
+    .timeline { margin-top: 26px; display: grid; gap: 16px; position: relative; }
+    .playhead { position: absolute; top: -8px; bottom: -8px; left: 58%; width: 4px; border-radius: 2px; background: #ffffff; opacity: 0; }
     .track { height: 74px; border-radius: 18px; padding: 18px 20px; font-size: 28px; font-weight: 900; color: #111821; opacity: 0; transform: translateX(-18px); }
     .visible { opacity: 1 !important; transform: translateX(0) !important; }
     .clips { background: #8bb7ff; width: 94%; }
@@ -37,13 +38,14 @@
     </div>
     <div class="content">
       <div class="eyebrow">Short Editor</div>
-      <div class="title">Edit and post</div>
+      <div class="title">Edit and export</div>
       <div class="editor">
         <div class="preview">Voice + clips + captions</div>
         <div class="timeline">
-          <div id="clips" class="track clips">Clips</div>
-          <div id="voice" class="track voice">Voice</div>
-          <div id="captions" class="track captions">Captions</div>
+          <div id="playhead" class="playhead"></div>
+          <div id="clips" class="track clips">Video clips</div>
+          <div id="voice" class="track voice">Voice track</div>
+          <div id="captions" class="track captions">Captions layer</div>
         </div>
         <div id="export" class="export">Export short</div><span id="status" class="status">Post-ready</span>
       </div>
@@ -55,6 +57,7 @@
     if (visible >= 1) document.getElementById('clips').classList.add('visible');
     if (visible >= 2) document.getElementById('voice').classList.add('visible');
     if (visible >= 3) document.getElementById('captions').classList.add('visible');
+    if (visible >= 3) document.getElementById('playhead').classList.add('visible');
     if (visible >= 4) document.getElementById('export').classList.add('visible');
     if (visible >= 4) document.getElementById('export').classList.add('active');
     if (visible >= 4) document.getElementById('status').classList.add('visible');
