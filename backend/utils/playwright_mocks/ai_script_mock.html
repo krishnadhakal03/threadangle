@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1080, initial-scale=1.0" />
+  <title>AI Script Mock</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      width: 1080px; height: 1920px; margin: 0; overflow: hidden;
+      background: linear-gradient(180deg, #07111b 0%, #0b1724 100%);
+      color: #f6f8fc; font-family: Arial, sans-serif;
+    }
+    .shell { width: 1080px; height: 1920px; padding: 72px 56px 350px; }
+    .browser { height: 100%; border-radius: 42px; overflow: hidden; border: 2px solid #2c3b55; background: #111b29; box-shadow: 0 26px 90px rgba(0,0,0,.44); }
+    .topbar { height: 118px; display: flex; align-items: center; gap: 14px; padding: 0 34px; background: #172234; border-bottom: 1px solid #2a3852; }
+    .dot { width: 18px; height: 18px; border-radius: 50%; }
+    .address { margin-left: 18px; flex: 1; height: 58px; border-radius: 18px; background: #0c1522; color: #9fb3cf; display: flex; align-items: center; padding: 0 22px; font-size: 26px; }
+    .content { padding: 38px 42px; }
+    .eyebrow { display: inline-block; padding: 12px 20px; border-radius: 999px; background: rgba(88, 132, 214, .20); color: #a9c9ff; font-size: 28px; font-weight: 800; }
+    .title { margin-top: 22px; font-size: 64px; line-height: 1.06; font-weight: 900; }
+    .panel { margin-top: 28px; border-radius: 28px; background: #0d1624; border: 1px solid #2b3a54; padding: 28px; }
+    .label { font-size: 25px; color: #95a9c8; font-weight: 800; }
+    .copy { margin-top: 12px; font-size: 40px; line-height: 1.22; font-weight: 800; white-space: pre-wrap; }
+    .cursor::after { content: ""; display: inline-block; width: 4px; height: 39px; margin-left: 8px; background: rgba(255,255,255,.8); vertical-align: -6px; }
+    .result { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .chip { min-height: 118px; border-radius: 22px; padding: 20px; background: #121f31; border: 1px solid #30415f; opacity: 0; transform: translateY(14px); }
+    .visible { opacity: 1 !important; transform: translateY(0) !important; }
+    .chip-title { font-size: 30px; font-weight: 900; color: #ffffff; }
+    .chip-sub { margin-top: 8px; font-size: 24px; line-height: 1.18; color: #9fb2cf; font-weight: 700; }
+  </style>
+</head>
+<body data-state="__STATE_JSON__" data-demo="__DATA_JSON__">
+  <div class="shell">
+    <div class="browser">
+      <div class="topbar">
+        <div class="dot" style="background:#ff605c"></div>
+        <div class="dot" style="background:#ffbd44"></div>
+        <div class="dot" style="background:#00ca4e"></div>
+        <div class="address">ai-sidekick.local/script</div>
+      </div>
+      <div class="content">
+        <div class="eyebrow">AI Assistant</div>
+        <div class="title">Ask AI for the script</div>
+        <div class="panel">
+          <div class="label">Prompt</div>
+          <div id="promptCopy" class="copy"></div>
+        </div>
+        <div class="panel">
+          <div class="label">Result outline</div>
+          <div id="resultWrap" class="result"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const state = JSON.parse(document.body.dataset.state || '{}');
+    const data = JSON.parse(document.body.dataset.demo || '{}');
+    const prompt = String(data.prompt || '');
+    const typedChars = Math.max(0, Math.min(prompt.length, Number(state.typed_chars || prompt.length)));
+    const promptNode = document.getElementById('promptCopy');
+    promptNode.textContent = prompt.slice(0, typedChars);
+    if (typedChars < prompt.length) promptNode.classList.add('cursor');
+    const wrap = document.getElementById('resultWrap');
+    const visible = Number(state.result_visible || 0);
+    (data.outline || []).slice(0, 4).forEach((item, index) => {
+      const node = document.createElement('div');
+      node.className = 'chip' + (index + 1 <= visible ? ' visible' : '');
+      node.innerHTML = '<div class="chip-title">' + item.title + '</div><div class="chip-sub">' + item.sub + '</div>';
+      wrap.appendChild(node);
+    });
+  </script>
+</body>
+</html>

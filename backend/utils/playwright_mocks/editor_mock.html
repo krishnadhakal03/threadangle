@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1080, initial-scale=1.0" />
+  <title>Editor Mock</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 1080px; height: 1920px; margin: 0; overflow: hidden; background: linear-gradient(180deg, #080d15, #101620); color: #f7f8fb; font-family: Arial, sans-serif; }
+    .shell { width: 1080px; height: 1920px; padding: 72px 56px 350px; }
+    .browser { height: 100%; border-radius: 42px; overflow: hidden; border: 2px solid #34425b; background: #121a27; box-shadow: 0 26px 90px rgba(0,0,0,.42); }
+    .topbar { height: 118px; display: flex; align-items: center; gap: 14px; padding: 0 34px; background: #1b2434; border-bottom: 1px solid #303c55; }
+    .dot { width: 18px; height: 18px; border-radius: 50%; }
+    .address { margin-left: 18px; flex: 1; height: 58px; border-radius: 18px; background: #0c1521; color: #9fb3cf; display: flex; align-items: center; padding: 0 22px; font-size: 26px; }
+    .content { padding: 38px 42px; }
+    .eyebrow { display: inline-block; padding: 12px 20px; border-radius: 999px; background: rgba(255, 214, 116, .18); color: #ffdb82; font-size: 28px; font-weight: 800; }
+    .title { margin-top: 22px; font-size: 64px; line-height: 1.06; font-weight: 900; }
+    .editor { margin-top: 28px; border-radius: 28px; background: #0d1623; border: 1px solid #2c3b55; padding: 28px; }
+    .preview { height: 420px; border-radius: 26px; background: #1a2435; border: 1px solid #394a69; display: grid; place-items: center; font-size: 42px; line-height: 1.12; text-align: center; font-weight: 900; }
+    .timeline { margin-top: 26px; display: grid; gap: 16px; }
+    .track { height: 74px; border-radius: 18px; padding: 18px 20px; font-size: 28px; font-weight: 900; color: #111821; opacity: 0; transform: translateX(-18px); }
+    .visible { opacity: 1 !important; transform: translateX(0) !important; }
+    .clips { background: #8bb7ff; width: 94%; }
+    .voice { background: #9df0bf; width: 82%; }
+    .captions { background: #ffe28a; width: 72%; }
+    .export { margin-top: 26px; border-radius: 22px; padding: 22px 28px; background: #ffffff; color: #111821; display: inline-block; font-size: 36px; font-weight: 900; opacity: 0; }
+  </style>
+</head>
+<body data-state="__STATE_JSON__" data-demo="__DATA_JSON__">
+  <div class="shell"><div class="browser">
+    <div class="topbar">
+      <div class="dot" style="background:#ff605c"></div><div class="dot" style="background:#ffbd44"></div><div class="dot" style="background:#00ca4e"></div>
+      <div class="address">ai-sidekick.local/edit</div>
+    </div>
+    <div class="content">
+      <div class="eyebrow">Short Editor</div>
+      <div class="title">Edit and post</div>
+      <div class="editor">
+        <div class="preview">Voice + clips + captions</div>
+        <div class="timeline">
+          <div id="clips" class="track clips">Clips</div>
+          <div id="voice" class="track voice">Voice</div>
+          <div id="captions" class="track captions">Captions</div>
+        </div>
+        <div id="export" class="export">Export short</div>
+      </div>
+    </div>
+  </div></div>
+  <script>
+    const state = JSON.parse(document.body.dataset.state || '{}');
+    const visible = Number(state.step_visible || 0);
+    if (visible >= 1) document.getElementById('clips').classList.add('visible');
+    if (visible >= 2) document.getElementById('voice').classList.add('visible');
+    if (visible >= 3) document.getElementById('captions').classList.add('visible');
+    if (visible >= 4) document.getElementById('export').classList.add('visible');
+  </script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1080, initial-scale=1.0" />
+  <title>Voice Mock</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 1080px; height: 1920px; margin: 0; overflow: hidden; background: linear-gradient(180deg, #101018, #07131b); color: #f7f8fb; font-family: Arial, sans-serif; }
+    .shell { width: 1080px; height: 1920px; padding: 72px 56px 350px; }
+    .browser { height: 100%; border-radius: 42px; overflow: hidden; border: 2px solid #35415a; background: #121a25; box-shadow: 0 26px 90px rgba(0,0,0,.42); }
+    .topbar { height: 118px; display: flex; align-items: center; gap: 14px; padding: 0 34px; background: #1b2433; border-bottom: 1px solid #303b53; }
+    .dot { width: 18px; height: 18px; border-radius: 50%; }
+    .address { margin-left: 18px; flex: 1; height: 58px; border-radius: 18px; background: #0d1520; color: #9fb3cf; display: flex; align-items: center; padding: 0 22px; font-size: 26px; }
+    .content { padding: 38px 42px; }
+    .eyebrow { display: inline-block; padding: 12px 20px; border-radius: 999px; background: rgba(102, 217, 170, .16); color: #9af0ca; font-size: 28px; font-weight: 800; }
+    .title { margin-top: 22px; font-size: 64px; line-height: 1.06; font-weight: 900; }
+    .card { margin-top: 28px; border-radius: 28px; background: #0d1623; border: 1px solid #2c3b55; padding: 28px; }
+    .label { font-size: 25px; color: #95a9c8; font-weight: 800; }
+    .script { margin-top: 14px; min-height: 210px; border-radius: 22px; background: #111d2e; border: 1px solid #314260; padding: 22px; font-size: 34px; line-height: 1.22; font-weight: 800; }
+    .steps { margin-top: 24px; display: grid; gap: 18px; }
+    .step { border-radius: 22px; padding: 24px; background: #121f31; border: 1px solid #30415f; font-size: 38px; font-weight: 900; opacity: .25; }
+    .step.done { opacity: 1; }
+    .ready { margin-top: 26px; border-radius: 24px; padding: 26px; background: #123321; border: 1px solid #2c6b47; font-size: 42px; font-weight: 900; color: #b7ffd4; opacity: 0; }
+    .visible { opacity: 1 !important; }
+  </style>
+</head>
+<body data-state="__STATE_JSON__" data-demo="__DATA_JSON__">
+  <div class="shell"><div class="browser">
+    <div class="topbar">
+      <div class="dot" style="background:#ff605c"></div><div class="dot" style="background:#ffbd44"></div><div class="dot" style="background:#00ca4e"></div>
+      <div class="address">ai-sidekick.local/voice</div>
+    </div>
+    <div class="content">
+      <div class="eyebrow">Voice Generator</div>
+      <div class="title">Turn script into voice</div>
+      <div class="card">
+        <div class="label">Paste script</div>
+        <div class="script">Stop spending hours making short videos. Repeat this simple workflow.</div>
+        <div class="steps">
+          <div id="pasteStep" class="step">Paste script</div>
+          <div id="voiceStep" class="step">Generate voice</div>
+        </div>
+        <div id="readyStep" class="ready">Voice ready</div>
+      </div>
+    </div>
+  </div></div>
+  <script>
+    const state = JSON.parse(document.body.dataset.state || '{}');
+    const visible = Number(state.step_visible || 0);
+    if (visible >= 1) document.getElementById('pasteStep').classList.add('done');
+    if (visible >= 2) document.getElementById('voiceStep').classList.add('done');
+    if (visible >= 3) document.getElementById('readyStep').classList.add('visible');
+  </script>
+</body>
+</html>

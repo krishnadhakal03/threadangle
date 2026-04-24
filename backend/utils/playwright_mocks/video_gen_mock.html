@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1080, initial-scale=1.0" />
+  <title>Video Gen Mock</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 1080px; height: 1920px; margin: 0; overflow: hidden; background: linear-gradient(180deg, #07121d, #11151f); color: #f7f8fb; font-family: Arial, sans-serif; }
+    .shell { width: 1080px; height: 1920px; padding: 72px 56px 350px; }
+    .browser { height: 100%; border-radius: 42px; overflow: hidden; border: 2px solid #34425b; background: #121a27; box-shadow: 0 26px 90px rgba(0,0,0,.42); }
+    .topbar { height: 118px; display: flex; align-items: center; gap: 14px; padding: 0 34px; background: #1b2434; border-bottom: 1px solid #303c55; }
+    .dot { width: 18px; height: 18px; border-radius: 50%; }
+    .address { margin-left: 18px; flex: 1; height: 58px; border-radius: 18px; background: #0c1521; color: #9fb3cf; display: flex; align-items: center; padding: 0 22px; font-size: 26px; }
+    .content { padding: 38px 42px; }
+    .eyebrow { display: inline-block; padding: 12px 20px; border-radius: 999px; background: rgba(125, 161, 255, .18); color: #b7c8ff; font-size: 28px; font-weight: 800; }
+    .title { margin-top: 22px; font-size: 64px; line-height: 1.06; font-weight: 900; }
+    .card { margin-top: 28px; border-radius: 28px; background: #0d1623; border: 1px solid #2c3b55; padding: 28px; }
+    .label { font-size: 25px; color: #95a9c8; font-weight: 800; }
+    .prompt { margin-top: 14px; border-radius: 22px; background: #111d2e; border: 1px solid #314260; padding: 22px; font-size: 35px; line-height: 1.22; font-weight: 800; }
+    .button { margin-top: 22px; display: inline-block; border-radius: 22px; padding: 20px 26px; background: #3b6cff; font-size: 34px; font-weight: 900; }
+    .preview { margin-top: 26px; height: 430px; border-radius: 26px; background: linear-gradient(135deg, #253553, #132133 60%, #21543b); border: 1px solid #3a4c70; position: relative; overflow: hidden; opacity: 0; }
+    .visible { opacity: 1 !important; }
+    .bar { position: absolute; left: 26px; right: 26px; bottom: 28px; height: 26px; border-radius: 13px; background: rgba(255,255,255,.22); }
+    .bar::after { content: ""; display: block; height: 100%; width: 72%; border-radius: 13px; background: #9ff0c1; }
+    .ready { position: absolute; left: 28px; top: 28px; padding: 14px 18px; border-radius: 18px; background: rgba(9,20,31,.78); font-size: 30px; font-weight: 900; }
+  </style>
+</head>
+<body data-state="__STATE_JSON__" data-demo="__DATA_JSON__">
+  <div class="shell"><div class="browser">
+    <div class="topbar">
+      <div class="dot" style="background:#ff605c"></div><div class="dot" style="background:#ffbd44"></div><div class="dot" style="background:#00ca4e"></div>
+      <div class="address">ai-sidekick.local/video</div>
+    </div>
+    <div class="content">
+      <div class="eyebrow">Video Generator</div>
+      <div class="title">Turn script into visuals</div>
+      <div class="card">
+        <div class="label">Prompt to video</div>
+        <div class="prompt">Creator desk setup, phone preview, simple short-form video workflow.</div>
+        <div class="button">Generate scene</div>
+        <div id="preview" class="preview"><div class="ready">Preview ready</div><div class="bar"></div></div>
+      </div>
+    </div>
+  </div></div>
+  <script>
+    const state = JSON.parse(document.body.dataset.state || '{}');
+    if (Number(state.step_visible || 0) >= 2) document.getElementById('preview').classList.add('visible');
+  </script>
+</body>
+</html>
