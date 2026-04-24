@@ -1486,6 +1486,248 @@ def _render_cta_card(scene: "ScenePlan", run_id: str) -> tuple[str, dict]:
     }
 
 
+def _proof_scene_blob(scene: "ScenePlan") -> str:
+    return _clean_text(
+        " ".join(
+            [
+                getattr(scene, "subtitle", "") or "",
+                getattr(scene, "source_text", "") or "",
+                getattr(scene, "on_screen_text", "") or "",
+            ]
+        )
+    )
+
+
+def _extract_currency_values(text: str) -> list[float]:
+    values: list[float] = []
+    for raw in re.findall(r"\$\s*([0-9]+(?:\.[0-9]{1,2})?)", text or ""):
+        try:
+            values.append(float(raw))
+        except Exception:
+            continue
+    return values
+
+
+def _format_money(value: float) -> str:
+    if abs(value - round(value)) < 0.01:
+        return f"${int(round(value))}"
+    return f"${value:.2f}".rstrip("0").rstrip(".")
+
+
+def _extract_monthly_and_yearly_values(scene: "ScenePlan") -> tuple[str, str]:
+    blob = _proof_scene_blob(scene)
+    monthly_value: Optional[float] = None
+    yearly_value: Optional[float] = None
+
+    month_match = re.search(r"\$\s*([0-9]+(?:\.[0-9]{1,2})?)\s*(?:/|per\s+)?month", blob, re.IGNORECASE)
+    year_match = re.search(r"\$\s*([0-9]+(?:\.[0-9]{1,2})?)\s*(?:/|per\s+)?year", blob, re.IGNORECASE)
+
+    if month_match:
+        monthly_value = float(month_match.group(1))
+    if year_match:
+        yearly_value = float(year_match.group(1))
+
+    if monthly_value is None:
+        values = _extract_currency_values(blob)
+        if values:
+            monthly_value = values[0]
+
+    if yearly_value is None and monthly_value is not None:
+        yearly_value = monthly_value * 12.0
+
+    if yearly_value is None:
+        values = _extract_currency_values(blob)
+        if len(values) >= 2:
+            yearly_value = values[1]
+
+    monthly_label = _format_money(monthly_value) + "/month" if monthly_value is not None else "$30/month"
+    yearly_label = _format_money(yearly_value) + "/year" if yearly_value is not None else "$360/year"
+    return monthly_label, yearly_label
+
+
+def _render_prompt_demo_clip(scene: "ScenePlan", run_id: str) -> str:
+    from PIL import Image, ImageDraw
+
+    duration = float(max(1.6, (scene.end - scene.start)))
+    png_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_proof_prompt.png"
+    out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_proof_prompt.mp4"
+
+    display = _clean_text(getattr(scene, "on_screen_text", "") or scene.subtitle or scene.source_text or "")
+    prompt_text = display or _clean_text(scene.subtitle or scene.source_text or "") or "Write me a better script for this topic."
+
+    img = Image.new("RGB", (_CARD_W, _CARD_H), (8, 10, 16))
+    draw = ImageDraw.Draw(img)
+
+    top = (14, 18, 30)
+    bottom = (4, 6, 12)
+    for yy in range(_CARD_H):
+        t = yy / float(max(1, _CARD_H - 1))
+        col = (
+            int(top[0] * (1 - t) + bottom[0] * t),
+            int(top[1] * (1 - t) + bottom[1] * t),
+            int(top[2] * (1 - t) + bottom[2] * t),
+        )
+        draw.line([(0, yy), (_CARD_W, yy)], fill=col)
+
+    card = [56, 180, _CARD_W - 56, _CARD_H - 220]
+    draw.rounded_rectangle(card, radius=54, fill=(17, 23, 36), outline=(46, 66, 104), width=4)
+    draw.rounded_rectangle([card[0], card[1], card[2], card[1] + 138], radius=54, fill=(23, 31, 49))
+    draw.rectangle([card[0], card[1] + 76, card[2], card[1] + 138], fill=(23, 31, 49))
+
+    for idx, dot_color in enumerate([(255, 95, 86), (255, 189, 46), (39, 201, 63)]):
+        x = card[0] + 42 + idx * 34
+        draw.ellipse([x, card[1] + 44, x + 20, card[1] + 64], fill=dot_color)
+
+    label_font = _try_load_font(44, bold=True)
+    title_font = _try_load_font(86, bold=True)
+    body_font = _try_load_font(56, bold=False)
+    chip_font = _try_load_font(34, bold=True)
+
+    draw.text((card[0] + 150, card[1] + 34), "AI PROMPT", font=label_font, fill=(135, 168, 255))
+    draw.text((card[0] + 70, card[1] + 188), "Prompt to paste into ChatGPT", font=title_font, fill=(255, 255, 255))
+
+    prompt_box = [card[0] + 56, card[1] + 360, card[2] - 56, card[3] - 220]
+    draw.rounded_rectangle(prompt_box, radius=34, fill=(10, 14, 24), outline=(52, 72, 110), width=3)
+    prompt_lines = _wrap_text(draw, prompt_text, body_font, max_width=prompt_box[2] - prompt_box[0] - 72, max_lines=8)
+    yy = prompt_box[1] + 46
+    for line in prompt_lines:
+        draw.text((prompt_box[0] + 36, yy), line, font=body_font, fill=(231, 237, 250))
+        yy += 72
+
+    chip_w = 320
+    chip_h = 72
+    chip_x = prompt_box[2] - chip_w - 28
+    chip_y = prompt_box[3] + 74
+    draw.rounded_rectangle([chip_x, chip_y, chip_x + chip_w, chip_y + chip_h], radius=30, fill=(37, 145, 255))
+    draw.text((chip_x + 28, chip_y + 18), "Copy this prompt", font=chip_font, fill=(255, 255, 255))
+
+    img.save(png_path, "PNG")
+    _image_to_mp4(
+        image_path=png_path,
+        out_path=out_path,
+        duration=duration,
+        fps=30,
+        zoom_start=1.0,
+        zoom_end=1.05,
+        pan_px=12,
+    )
+    return str(out_path)
+
+
+def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
+    from PIL import Image, ImageDraw
+
+    duration = float(max(1.6, (scene.end - scene.start)))
+    png_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_proof_bill.png"
+    out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_proof_bill.mp4"
+    monthly_label, yearly_label = _extract_monthly_and_yearly_values(scene)
+
+    raw_text = _clean_text(scene.subtitle or scene.source_text or "")
+    savings_match = re.search(r"\b(save|saving|savings)\b.*?(\$\s*[0-9]+(?:\.[0-9]{1,2})?)", raw_text, re.IGNORECASE)
+    savings_label = savings_match.group(2).replace(" ", "") if savings_match else yearly_label
+
+    img = Image.new("RGB", (_CARD_W, _CARD_H), (238, 241, 246))
+    draw = ImageDraw.Draw(img)
+
+    for yy in range(_CARD_H):
+        shade = 246 - int(yy * 0.018)
+        draw.line([(0, yy), (_CARD_W, yy)], fill=(shade, shade, min(255, shade + 4)))
+
+    sheet = [88, 120, _CARD_W - 88, _CARD_H - 140]
+    draw.rounded_rectangle(sheet, radius=42, fill=(255, 255, 255), outline=(214, 220, 230), width=4)
+    draw.rectangle([sheet[0], sheet[1], sheet[2], sheet[1] + 126], fill=(28, 36, 58))
+
+    heading_font = _try_load_font(54, bold=True)
+    meta_font = _try_load_font(34, bold=False)
+    value_font = _try_load_font(70, bold=True)
+    small_font = _try_load_font(42, bold=True)
+
+    draw.text((sheet[0] + 42, sheet[1] + 30), "CARRIER BILL", font=heading_font, fill=(255, 255, 255))
+    draw.text((sheet[2] - 260, sheet[1] + 42), "AUTO PAY", font=meta_font, fill=(170, 186, 220))
+
+    rows = [
+        ("Monthly charge", monthly_label),
+        ("Projected annual", yearly_label),
+        ("Potential savings", savings_label),
+    ]
+    y = sheet[1] + 220
+    for idx, (label, value) in enumerate(rows):
+        row_bottom = y + 220
+        if idx < len(rows) - 1:
+            draw.line([(sheet[0] + 42, row_bottom), (sheet[2] - 42, row_bottom)], fill=(228, 232, 238), width=3)
+        draw.text((sheet[0] + 42, y), label.upper(), font=small_font, fill=(92, 102, 120))
+        draw.text((sheet[0] + 42, y + 70), value, font=value_font, fill=(19, 28, 46))
+        y += 250
+
+    footer = [sheet[0] + 42, sheet[3] - 270, sheet[2] - 42, sheet[3] - 72]
+    draw.rounded_rectangle(footer, radius=28, fill=(235, 248, 240))
+    draw.text((footer[0] + 28, footer[1] + 30), "Savings line item", font=small_font, fill=(45, 122, 74))
+    draw.text((footer[0] + 28, footer[1] + 94), "Switch plan and keep the same coverage.", font=meta_font, fill=(66, 86, 94))
+
+    img.save(png_path, "PNG")
+    _image_to_mp4(
+        image_path=png_path,
+        out_path=out_path,
+        duration=duration,
+        fps=30,
+        zoom_start=1.0,
+        zoom_end=1.04,
+        pan_px=8,
+    )
+    return str(out_path)
+
+
+def _render_savings_math_clip(scene: "ScenePlan", run_id: str) -> str:
+    from PIL import Image, ImageDraw
+
+    duration = float(max(1.6, (scene.end - scene.start)))
+    png_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_proof_math.png"
+    out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_proof_math.mp4"
+    monthly_label, yearly_label = _extract_monthly_and_yearly_values(scene)
+
+    img = Image.new("RGB", (_CARD_W, _CARD_H), (10, 14, 18))
+    draw = ImageDraw.Draw(img)
+    for yy in range(_CARD_H):
+        t = yy / float(max(1, _CARD_H - 1))
+        col = (
+            int(12 * (1 - t) + 2 * t),
+            int(18 * (1 - t) + 10 * t),
+            int(24 * (1 - t) + 18 * t),
+        )
+        draw.line([(0, yy), (_CARD_W, yy)], fill=col)
+
+    panel = [74, 210, _CARD_W - 74, _CARD_H - 230]
+    draw.rounded_rectangle(panel, radius=48, fill=(16, 22, 28), outline=(38, 50, 60), width=3)
+
+    label_font = _try_load_font(48, bold=True)
+    hero_font = _try_load_font(128, bold=True)
+    equals_font = _try_load_font(112, bold=True)
+    sub_font = _try_load_font(44, bold=False)
+
+    draw.text((panel[0] + 54, panel[1] + 62), "SAVINGS MATH", font=label_font, fill=(116, 221, 168))
+    draw.text((panel[0] + 54, panel[1] + 230), monthly_label.replace("/month", "/mo"), font=hero_font, fill=(255, 255, 255))
+    draw.text((panel[0] + 54, panel[1] + 398), "every month", font=sub_font, fill=(173, 188, 198))
+    draw.text((panel[0] + 54, panel[1] + 650), "=", font=equals_font, fill=(116, 221, 168))
+    draw.text((panel[0] + 54, panel[1] + 860), yearly_label.replace("/year", "/year"), font=hero_font, fill=(255, 255, 255))
+    draw.text((panel[0] + 54, panel[1] + 1028), "per year", font=sub_font, fill=(173, 188, 198))
+
+    note_box = [panel[0] + 54, panel[3] - 230, panel[2] - 54, panel[3] - 82]
+    draw.rounded_rectangle(note_box, radius=28, fill=(22, 34, 41))
+    draw.text((note_box[0] + 30, note_box[1] + 38), "Simple payoff proof. No stock footage needed.", font=sub_font, fill=(215, 226, 232))
+
+    img.save(png_path, "PNG")
+    _image_to_mp4(
+        image_path=png_path,
+        out_path=out_path,
+        duration=duration,
+        fps=30,
+        zoom_start=1.0,
+        zoom_end=1.05,
+        pan_px=6,
+    )
+    return str(out_path)
+
+
 def _visual_description_tokens(visual_desc: str) -> str:
     """Extract meaningful tokens from visual description - Batch 2A"""
     if not visual_desc:
