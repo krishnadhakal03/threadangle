@@ -18,6 +18,8 @@
     .card { margin-top: 28px; border-radius: 28px; background: #0d1623; border: 1px solid #2c3b55; padding: 28px; }
     .label { font-size: 25px; color: #95a9c8; font-weight: 800; }
     .prompt { margin-top: 14px; border-radius: 22px; background: #111d2e; border: 1px solid #314260; padding: 22px; font-size: 35px; line-height: 1.22; font-weight: 800; }
+    .prompt.active { border-color: #8bb7ff; box-shadow: 0 0 0 3px rgba(139,183,255,.14); }
+    .prompt.cursor::after { content: ""; display: inline-block; width: 4px; height: 34px; margin-left: 8px; background: rgba(255,255,255,.78); vertical-align: -5px; }
     .button { margin-top: 22px; display: inline-block; border-radius: 22px; padding: 20px 26px; background: #3b6cff; font-size: 34px; font-weight: 900; }
     .button.active { box-shadow: 0 0 0 5px rgba(59,108,255,.25); }
     .loading { margin-top: 20px; height: 14px; border-radius: 999px; background: #1a2939; overflow: hidden; opacity: 0; }
@@ -42,7 +44,7 @@
       <div class="title">Turn script into visuals</div>
       <div class="card">
         <div class="label">Prompt to video</div>
-        <div class="prompt">Creator desk setup, phone preview, simple short-form video workflow.</div>
+        <div id="promptCopy" class="prompt"></div>
         <div id="button" class="button">Generate scene</div>
         <div id="loading" class="loading"></div>
         <div id="preview" class="preview"><div class="ready">Preview ready</div><div class="bar"></div></div>
@@ -51,7 +53,13 @@
   </div><div id="mouse" class="mouse"></div></div>
   <script>
     const state = JSON.parse(document.body.dataset.state || '{}');
+    const data = JSON.parse(document.body.dataset.demo || '{}');
     const visible = Number(state.step_visible || 0);
+    const prompt = String(data.prompt || 'Creator desk setup, phone preview, simple short-form video workflow.');
+    const typedChars = Math.max(0, Math.min(prompt.length, Number(state.typed_chars || prompt.length)));
+    const promptNode = document.getElementById('promptCopy');
+    promptNode.textContent = prompt.slice(0, typedChars);
+    if (typedChars < prompt.length) promptNode.classList.add('active', 'cursor');
     if (visible === 2) document.getElementById('button').classList.add('active');
     if (visible === 2) document.getElementById('loading').classList.add('visible');
     if (visible >= 3) document.getElementById('preview').classList.add('visible');

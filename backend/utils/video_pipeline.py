@@ -2632,7 +2632,9 @@ def _playwright_local_demo_data(scene: "ScenePlan", demo_type: str) -> dict[str,
                 {"title": "CTA:", "sub": "Comment GUIDE for the steps."},
             ],
         }
-    if demo_type in {"day3_voice_mock", "day3_video_mock", "day3_edit_mock"}:
+    if demo_type == "day3_video_mock":
+        return {"prompt": "Creator desk setup, phone preview, simple short-form video workflow."}
+    if demo_type in {"day3_voice_mock", "day3_edit_mock"}:
         return {}
     if demo_type == "ai_chat_typing":
         if domain == "airline":
@@ -2710,7 +2712,18 @@ def _playwright_demo_frame_states(scene: "ScenePlan", demo_type: str, fps: int =
             states.append({"typed_chars": typed_chars, "result_visible": visible})
         return states
 
-    if demo_type in {"day3_voice_mock", "day3_video_mock", "day3_edit_mock"}:
+    if demo_type == "day3_video_mock":
+        prompt = str(data.get("prompt", "") or "")
+        for idx in range(frame_count):
+            progress = idx / float(max(1, frame_count - 1))
+            typed_chars = int(round(len(prompt) * min(1.0, progress / 0.34)))
+            if progress >= 0.38:
+                typed_chars = len(prompt)
+            visible = 1 if progress < 0.44 else (2 if progress < 0.76 else 3)
+            states.append({"step_visible": visible, "typed_chars": typed_chars})
+        return states
+
+    if demo_type in {"day3_voice_mock", "day3_edit_mock"}:
         max_step = 4 if demo_type == "day3_edit_mock" else 3
         for idx in range(frame_count):
             progress = idx / float(max(1, frame_count - 1))
