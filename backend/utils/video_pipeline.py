@@ -1073,6 +1073,11 @@ def _classify_screen_demo_type(scene: "ScenePlan") -> str:
 
 
 def _classify_playwright_demo_type(scene: "ScenePlan", screen_demo_type: str) -> str:
+    # Check for Day4 real browser capture first
+    day4_step = _day4_browser_capture_step(scene)
+    if day4_step:
+        return f"day4_{day4_step}_capture"
+
     if not scene:
         return "stock_video"
     workflow_step = _day3_workflow_step(scene)
@@ -1091,8 +1096,38 @@ def _classify_playwright_demo_type(scene: "ScenePlan", screen_demo_type: str) ->
     return "stock_video"
 
 
-def _day3_workflow_enabled() -> bool:
-    return os.getenv("ENABLE_DAY3_WORKFLOW", "0") == "1"
+def _day4_browser_capture_enabled() -> bool:
+    return os.getenv("ENABLE_DAY4_BROWSER_CAPTURE", "0") == "1"
+
+
+def _day4_browser_capture_step(scene: "ScenePlan") -> str:
+    """Detect which Day4 browser capture scene this is"""
+    if not _day4_browser_capture_enabled() or not scene:
+        return ""
+
+    blob = _proof_scene_blob(scene).lower()
+
+    # Hook frame
+    if any(tok in blob for tok in ["stop making shorts", "hard way", "monster mode"]):
+        return "hook"
+
+    # ChatGPT scene
+    if any(tok in blob for tok in ["chatgpt", "ai prompt", "write script", "ask ai"]):
+        return "chatgpt"
+
+    # ElevenLabs scene
+    if any(tok in blob for tok in ["elevenlabs", "voice generation", "text to speech", "narration"]):
+        return "elevenlabs"
+
+    # Runway scene
+    if any(tok in blob for tok in ["runway", "prompt to video", "generate video", "ai video"]):
+        return "runway"
+
+    # CapCut scene
+    if any(tok in blob for tok in ["capcut", "edit timeline", "export video", "post production"]):
+        return "capcut"
+
+    return ""
 
 
 def _day3_workflow_blob(scene: "ScenePlan") -> str:
@@ -5560,6 +5595,18 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                                 return
                             except Exception as fallback_exc:
                                 print(f"[PLAYWRIGHT_DEMO] fallback scene={scene.idx} reason=screen_demo_failed:{fallback_exc}")
+
+                # Day4 Real Browser Capture
+                day4_step = _day4_browser_capture_step(scene)
+                if day4_step:
+                    try:
+                        from .browser_capture import generate_day4_browser_capture
+                        # For individual scenes, we'd need to modify this, but for now use the full workflow
+                        print(f"[DAY4_BROWSER] Would render real browser capture for scene={scene.idx} step={day4_step}")
+                        # TODO: Implement per-scene browser capture
+                        # For now, fall through to stock video
+                    except Exception as e:
+                        print(f"[DAY4_BROWSER] fallback scene={scene.idx} reason={e}")
 
                 if screen_demo_enabled and screen_demo_type in {"chat_prompt_demo", "bill_compare_demo", "call_script_demo"}:
                     try:
