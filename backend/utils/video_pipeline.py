@@ -4167,13 +4167,21 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
         print(f"[MIXED_MEDIA] experimental_mixed_media_enabled={'true' if experimental_mixed_media_enabled else 'false'}")
     proof_scenes_enabled = mode == "stock" and os.getenv("ENABLE_PROOF_SCENES", "0") == "1"
     hook_shock_enabled = mode == "stock" and os.getenv("ENABLE_HOOK_SHOCK", "0") == "1"
+    screen_demo_enabled = mode == "stock" and os.getenv("ENABLE_SCREEN_DEMOS", "0") == "1"
     proof_scene_types: dict[int, str] = {}
+    screen_demo_types: dict[int, str] = {}
     scene_domains: dict[int, str] = {}
     if mode == "stock":
         for scene in scenes:
             domain = _detect_problem_domain(scene)
             scene_domains[int(scene.idx)] = domain
             domain_qualified = domain in _DOMAIN_PACKS
+            screen_demo_type = _classify_screen_demo_type(scene) if screen_demo_enabled else "stock_video"
+            screen_demo_types[int(scene.idx)] = screen_demo_type
+            print(
+                f"[SCREEN_DEMO] enabled={'true' if screen_demo_enabled else 'false'} "
+                f"scene={scene.idx} domain={domain or 'unqualified'} demo_type={screen_demo_type}"
+            )
             proof_type = _classify_proof_scene_type(scene) if proof_scenes_enabled else "stock_video"
             proof_scene_types[int(scene.idx)] = proof_type
             print(
@@ -4275,6 +4283,7 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                 scene_intent = ""
                 scene_asset_type = "stock_video"
                 proof_type = proof_scene_types.get(int(scene.idx), "stock_video")
+                screen_demo_type = screen_demo_types.get(int(scene.idx), "stock_video")
                 scene_domain = scene_domains.get(int(scene.idx), "")
 
                 if hook_shock_enabled and _qualifies_for_hook_shock(scene, scene_domain):
@@ -4286,6 +4295,18 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                     except Exception as e:
                         print(f"[HOOK_SHOCK] fallback_stock scene={scene.idx} reason=render_failed:{e}")
                         traceback.print_exc()
+
+                if screen_demo_enabled and screen_demo_type in {"chat_prompt_demo", "bill_compare_demo", "call_script_demo"}:
+                    try:
+                        path = _render_screen_demo_clip(scene, demo_type=screen_demo_type, run_id=run_id)
+                        scene.clip_path = str(path)
+                        print(f"[SCREEN_DEMO] rendered scene={scene.idx} path={path}")
+                        return
+                    except Exception as e:
+                        print(f"[SCREEN_DEMO] fallback scene={scene.idx} reason=render_failed:{e}")
+                        traceback.print_exc()
+                elif screen_demo_enabled:
+                    print(f"[SCREEN_DEMO] fallback scene={scene.idx} reason=classified_stock_video")
 
                 if proof_scenes_enabled and proof_type in {"prompt_demo", "bill_demo", "savings_math", "before_after_demo"}:
                     try:
