@@ -1885,6 +1885,21 @@ def _extract_monthly_and_yearly_values(scene: "ScenePlan") -> tuple[str, str]:
     return monthly_label, yearly_label
 
 
+def _dominant_problem_domain(scenes: list["ScenePlan"]) -> str:
+    domain_scores: dict[str, int] = {}
+    preferred_domains = {"phone_bill", "subscriptions", "airline", "rent"}
+    for scene in scenes or []:
+        blob = _scene_domain_blob(scene)
+        for domain in preferred_domains:
+            triggers = [str(t).lower() for t in _DOMAIN_PACKS.get(domain, {}).get("keyword_triggers", [])]
+            score = sum(1 for trigger in triggers if trigger and trigger in blob)
+            if score > 0:
+                domain_scores[domain] = domain_scores.get(domain, 0) + score
+    if not domain_scores:
+        return ""
+    return max(domain_scores.items(), key=lambda item: item[1])[0]
+
+
 def _extract_phone_bill_values(scene: "ScenePlan") -> tuple[str, str, str, str, bool]:
     blob = _proof_scene_blob(scene)
     values = _extract_currency_values(blob)
@@ -2085,15 +2100,15 @@ def _render_before_after_proof_clip(scene: "ScenePlan", run_id: str) -> str:
         draw.rounded_rectangle(badge_box, radius=28, fill=(30, 48, 80))
 
     title_font = _try_load_font(50, bold=True)
-    amount_font = _try_load_font(104, bold=True)
+    amount_font = _try_load_font(88, bold=True)
     note_font = _try_load_font(44, bold=False)
     badge_font = _try_load_font(34, bold=True)
 
     if badge:
         draw.text((shell[0] + 68, shell[1] + 54), badge.upper(), font=badge_font, fill=(190, 218, 255))
 
-    left_box = [shell[0] + 38, shell[1] + 150, shell[0] + 450, shell[3] - 52]
-    right_box = [shell[0] + 490, shell[1] + 150, shell[2] - 38, shell[3] - 52]
+    left_box = [shell[0] + 38, shell[1] + 150, shell[0] + 468, shell[3] - 52]
+    right_box = [shell[0] + 472, shell[1] + 150, shell[2] - 38, shell[3] - 52]
     draw.rounded_rectangle(left_box, radius=40, fill=(55, 27, 31))
     draw.rounded_rectangle(right_box, radius=40, fill=(18, 63, 40))
     divider = [shell[0] + 466, shell[1] + 186, shell[0] + 474, shell[3] - 86]
@@ -2101,13 +2116,13 @@ def _render_before_after_proof_clip(scene: "ScenePlan", run_id: str) -> str:
 
     def _draw_half(box: list[int], title: str, amount: str, note: str, accent: tuple[int, int, int]) -> None:
         draw.text((box[0] + 34, box[1] + 38), title.upper(), font=title_font, fill=accent)
-        amount_lines = _wrap_text(draw, amount.upper(), amount_font, max_width=box[2] - box[0] - 68, max_lines=2)
-        yy = box[1] + 144
+        amount_lines = _wrap_text(draw, amount.upper(), amount_font, max_width=box[2] - box[0] - 68, max_lines=1)
+        yy = box[1] + 154
         for line in amount_lines:
             draw.text((box[0] + 34, yy), line, font=amount_font, fill=(255, 255, 255))
-            yy += 108
+            yy += 96
         note_lines = _wrap_text(draw, note.upper(), note_font, max_width=box[2] - box[0] - 68, max_lines=2)
-        yy = max(yy + 26, box[3] - 190)
+        yy = max(yy + 36, box[3] - 190)
         for line in note_lines:
             draw.text((box[0] + 34, yy), line, font=note_font, fill=(228, 236, 242))
             yy += 54
@@ -3155,7 +3170,7 @@ def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
 
     heading_font = _try_load_font(54, bold=True)
     meta_font = _try_load_font(34, bold=False)
-    value_font = _try_load_font(64, bold=True)
+    value_font = _try_load_font(82, bold=True)
     small_font = _try_load_font(38, bold=True)
 
     draw.text((sheet[0] + 42, sheet[1] + 30), "CARRIER BILL", font=heading_font, fill=(255, 255, 255))
@@ -3169,7 +3184,7 @@ def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
             ("Yearly savings", yearly_savings_label),
         ]
         y = sheet[1] + 190
-        row_gap = 190
+        row_gap = 184
         if not exact_values:
             draw.text((sheet[0] + 42, sheet[1] + 142), "EXAMPLE SAVINGS", font=meta_font, fill=(255, 210, 64))
     else:
@@ -3182,7 +3197,7 @@ def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
         if idx < len(rows) - 1:
             draw.line([(sheet[0] + 42, row_bottom), (sheet[2] - 42, row_bottom)], fill=(228, 232, 238), width=3)
         draw.text((sheet[0] + 42, y), label.upper(), font=small_font, fill=(92, 102, 120))
-        draw.text((sheet[0] + 42, y + 70), value, font=value_font, fill=(19, 28, 46))
+        draw.text((sheet[0] + 42, y + 62), value, font=value_font, fill=(19, 28, 46))
         y += row_gap
 
     footer = [sheet[0] + 42, sheet[3] - 270, sheet[2] - 42, sheet[3] - 72]
@@ -3216,9 +3231,9 @@ def _render_savings_math_clip(scene: "ScenePlan", run_id: str) -> str:
     png_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_proof_math.png"
     out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_proof_math.mp4"
     monthly_label, yearly_label = _extract_monthly_and_yearly_values(scene)
-    monthly_compact = _shorten_proof_text(monthly_label.replace("/month", "/mo"), max_words=3)
-    yearly_compact = _shorten_proof_text(yearly_label, max_words=3)
-    _log_proof_audit(scene, "Savings math", monthly_compact, yearly_compact)
+    monthly_display = monthly_label.replace("/month", "/month")
+    yearly_display = yearly_label.replace("/year", "/year")
+    _log_proof_audit(scene, "Savings math", monthly_display, yearly_display)
 
     img = Image.new("RGB", (_CARD_W, _CARD_H), (10, 14, 18))
     draw = ImageDraw.Draw(img)
@@ -3240,11 +3255,9 @@ def _render_savings_math_clip(scene: "ScenePlan", run_id: str) -> str:
     sub_font = _try_load_font(44, bold=False)
 
     draw.text((panel[0] + 54, panel[1] + 62), "SAVINGS MATH", font=label_font, fill=(116, 221, 168))
-    draw.text((panel[0] + 54, panel[1] + 230), monthly_compact, font=hero_font, fill=(255, 255, 255))
-    draw.text((panel[0] + 54, panel[1] + 398), "every month", font=sub_font, fill=(173, 188, 198))
+    draw.text((panel[0] + 54, panel[1] + 230), monthly_display, font=hero_font, fill=(255, 255, 255))
     draw.text((panel[0] + 54, panel[1] + 650), "=", font=equals_font, fill=(116, 221, 168))
-    draw.text((panel[0] + 54, panel[1] + 860), yearly_compact, font=hero_font, fill=(255, 255, 255))
-    draw.text((panel[0] + 54, panel[1] + 1028), "per year", font=sub_font, fill=(173, 188, 198))
+    draw.text((panel[0] + 54, panel[1] + 860), yearly_display, font=hero_font, fill=(255, 255, 255))
 
     note_box = [panel[0] + 54, panel[3] - 230, panel[2] - 54, panel[3] - 82]
     draw.rounded_rectangle(note_box, radius=28, fill=(22, 34, 41))
@@ -4770,8 +4783,14 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
     before_after_proof_types: dict[int, str] = {}
     scene_domains: dict[int, str] = {}
     if mode == "stock":
+        dominant_domain = _dominant_problem_domain(scenes)
         for scene in scenes:
             domain = _detect_problem_domain(scene)
+            if not domain:
+                proof_blob = _proof_scene_blob(scene).lower()
+                if dominant_domain and any(tok in proof_blob for tok in ["$", "per month", "per year", "savings", "before", "after"]):
+                    domain = dominant_domain
+                    print(f"[DOMAIN_PACK] scene={scene.idx} domain={domain} inferred_from_video_context=true")
             scene_domains[int(scene.idx)] = domain
             domain_qualified = domain in _DOMAIN_PACKS
             screen_demo_type = _classify_screen_demo_type(scene) if screen_demo_enabled else "stock_video"
@@ -4791,6 +4810,10 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                 f"scene={scene.idx} demo_type={playwright_demo_type}"
             )
             proof_type = _classify_proof_scene_type(scene) if proof_scenes_enabled else "stock_video"
+            if proof_scenes_enabled and proof_type == "stock_video" and domain_qualified:
+                proof_blob = _proof_scene_blob(scene).lower()
+                if any(tok in proof_blob for tok in ["$", "per month", "per year", "savings", "save "]):
+                    proof_type = "savings_math"
             proof_scene_types[int(scene.idx)] = proof_type
             print(
                 f"[PROOF_SCENE] enabled={'true' if proof_scenes_enabled else 'false'} "
