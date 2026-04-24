@@ -541,7 +541,40 @@ def _extract_hook_objects(text: str, max_words: int = 3) -> List[str]:
     return objects
 
 
+def _preferred_paid_ai_hook(hook: str) -> Optional[str]:
+    """Deterministic broad-audience hook treatment for free-vs-paid AI/tool scripts."""
+    tokens = set(_hook_tokens_upper(hook))
+    if not tokens:
+        return None
+
+    has_ai = "AI" in tokens
+    has_tools = any(tok in tokens for tok in {"TOOL", "TOOLS"})
+    has_free = "FREE" in tokens
+    has_paid = "PAID" in tokens
+    has_stop = "STOP" in tokens
+    has_pay = any(tok in tokens for tok in {"PAY", "PAYING"})
+    has_replace = any(tok in tokens for tok in {"REPLACE", "REPLACES", "REPLACING", "INSTEAD"})
+    count_five = any(tok in tokens for tok in {"5", "FIVE"})
+
+    if not (has_ai or has_tools):
+        return None
+    if not (has_free or has_paid or has_stop or has_pay or has_replace):
+        return None
+
+    if has_stop and has_pay and has_ai:
+        return "STOP PAYING FOR AI"
+    if count_five and has_free and has_ai and has_tools:
+        return "5 FREE AI TOOLS"
+    if has_paid and has_ai:
+        return "PAID AI? USE THESE"
+    return "FREE TOOLS > PAID AI"
+
+
 def _stock_hook_text(hook: str, pattern: str) -> str:
+    preferred_paid_ai_hook = _preferred_paid_ai_hook(hook)
+    if preferred_paid_ai_hook:
+        return preferred_paid_ai_hook
+
     raw_tokens = _hook_tokens_upper(hook)
     content_tokens = [tok for tok in raw_tokens if tok not in _HOOK_FILLER_WORDS]
     object_tokens = [tok for tok in _extract_hook_objects(hook, max_words=3) if tok not in _HOOK_ACTION_WORDS]
@@ -678,12 +711,17 @@ def _stock_cta_display_text(cta: str) -> str:
         "PLEASE", "JUST", "NOW", "TODAY", "GUYS", "HEY", "ALRIGHT",
         "AND", "OR", "THE", "A", "AN", "TO", "FOR", "OF", "IN", "ON",
         "LIKE", "COMMENT", "SUBSCRIBE", "SHARE",
+        "STACK", "STACKS", "REAL",
     }
     keep = [t for t in tokens if t not in filler]
     keep = keep or tokens[:]
 
     # Prefer short imperative patterns.
     if "FOLLOW" in keep:
+        if "AI" in keep and "TOOLS" in keep:
+            return "FOLLOW FOR AI TOOLS"
+        if "AI" in keep and "WORKFLOWS" in keep:
+            return "FOLLOW FOR AI WORKFLOWS"
         # Keep one helper word for readability if we'd get too robotic.
         base = ["FOLLOW"]
         tail = [t for t in keep if t != "FOLLOW"]
@@ -724,17 +762,17 @@ def _hook_query_templates(intent: str, object_phrase: str) -> List[str]:
     obj = _clean_text(object_phrase) or "creator workflow"
     templates = {
         "interrupt": [
-            f"creator stopping {obj} abruptly",
-            f"creator rejecting {obj} screen",
-            f"shocked creator closing {obj}",
+            f"person stop gesture reacting to {obj} screen",
+            f"creator stopping {obj} on laptop screen",
+            f"person reacting to {obj} on computer screen",
             # Generic scroll-stoppers (kept deterministic) in case the object phrase is too niche.
-            "shocked surprised person reaction close up",
-            "frustrated person laptop stressed work",
+            "person shocked at laptop screen close up",
+            "frustrated person stopping work on laptop",
         ],
         "frustration": [
-            f"creator frustrated with {obj}",
-            f"overwhelmed creator using {obj}",
-            f"stressed creator facing {obj}",
+            f"creator frustrated with {obj} on laptop",
+            f"overwhelmed creator looking at {obj} screen",
+            f"stressed person reacting to {obj} on computer",
         ],
         "proof": [
             f"{obj} showing strong growth",
@@ -747,9 +785,9 @@ def _hook_query_templates(intent: str, object_phrase: str) -> List[str]:
             f"{obj} wrong way versus right way",
         ],
         "action": [
-            f"creator building {obj} fast",
-            f"creator editing {obj} quickly",
-            f"creator launching {obj} action",
+            f"creator building {obj} on laptop",
+            f"creator editing {obj} quickly on screen",
+            f"person taking fast action on {obj} screen",
         ],
     }
     return templates.get(intent, templates["action"])
@@ -758,9 +796,9 @@ def _hook_query_templates(intent: str, object_phrase: str) -> List[str]:
 def _hook_fallback_queries() -> list[str]:
     """Deterministic strong hook-only queries (reaction/stop/surprise/face)."""
     return [
-        "person surprised reaction close up",
-        "shocked surprised person reaction close up",
-        "frustrated person laptop stressed work",
+        "person stop gesture reacting to laptop screen",
+        "person shocked at laptop screen close up",
+        "frustrated person stopping work on laptop",
         "person shocked looking at phone close up",
         "person stopping scrolling phone reaction",
     ]
@@ -1664,10 +1702,10 @@ def _scene_query_candidates(scene: ScenePlan) -> List[str]:
 
         candidates.extend(
             [
-                "shocked surprised person reaction close up",
-                "person stopping scrolling phone reaction",
+                "person stop gesture reacting to laptop screen",
+                "person shocked at laptop screen close up",
                 "person clicking laptop frustrated reaction",
-                "person surprised reaction close up",
+                "person stopping scrolling phone reaction",
             ]
         )
         candidates.extend(_hook_query_templates(intent, object_phrase))
@@ -1681,7 +1719,7 @@ def _scene_query_candidates(scene: ScenePlan) -> List[str]:
         context_words = _extract_meaningful_words(hook_seed, max_words=3)
         if context_words:
             context_phrase = " ".join(context_words[:3]).lower()
-            context_query = f"creator using {context_phrase} fast"
+            context_query = f"person reacting to {context_phrase} on computer screen"
             if context_query not in candidates:
                 candidates.append(context_query)
         candidates = candidates[:4]
@@ -1689,7 +1727,7 @@ def _scene_query_candidates(scene: ScenePlan) -> List[str]:
         # CTA must be action-oriented and explicitly "follow/phone" driven.
         # Keep deterministic and avoid weak generic success/nature clips.
         base = [
-            "creator posting video on phone social app",
+            "creator posting short video on phone",
             "person tapping follow button on phone screen",
             "creator pointing to follow button on phone",
             "hand scrolling social media feed on phone",
@@ -1697,14 +1735,17 @@ def _scene_query_candidates(scene: ScenePlan) -> List[str]:
         ]
         # If we have meaningful CTA words, include them, but enforce phone/follow token presence.
         cta_seed = _clean_text(" ".join([scene.source_text or "", scene.subtitle or "", getattr(scene, "on_screen_text", "") or ""]))
-        seed_words = _extract_meaningful_words(cta_seed, max_words=4)
+        seed_words = [
+            w for w in _extract_meaningful_words(cta_seed, max_words=4)
+            if w not in {"real", "stack", "stacks", "ideas"}
+        ]
         if seed_words:
             # Dedup common words to avoid "phone phone ... phone" style queries.
             dedup = []
             for w in seed_words:
                 if w not in dedup:
                     dedup.append(w)
-            base.insert(0, f"person tapping follow on phone {(' '.join(dedup)).lower()}")
+            base.insert(0, f"creator posting on phone for {(' '.join(dedup)).lower()}")
 
         must_have = {"phone", "scroll", "scrolling", "tap", "tapping", "follow", "creator"}
         filtered: list[str] = []
@@ -1723,8 +1764,8 @@ def _scene_query_candidates(scene: ScenePlan) -> List[str]:
         if any(tok in scene_blob for tok in ["capcut", "editing", "edit", "timeline", "captions", "auto-captions", "video"]):
             candidates.extend(
                 [
-                    "video editing timeline laptop",
-                    "editor working on video timeline screen",
+                    "video editor working on timeline close up",
+                    "editing captions on video timeline screen",
                     "creator editing short form video on computer",
                 ]
             )
@@ -1733,18 +1774,27 @@ def _scene_query_candidates(scene: ScenePlan) -> List[str]:
             candidates.extend(
                 [
                     "designer creating thumbnail on laptop screen",
-                    "graphic designer working on laptop layout",
-                    "creator making product mockup on laptop",
+                    "graphic designer editing layout on laptop screen",
+                    "creator making product mockup on laptop screen",
                 ]
             )
             scene_specific_prepended = True
         elif any(tok in scene_blob for tok in ["chatgpt", "perplexity", "research", "writing", "outline", "outlines"]):
             candidates.extend(
                 [
-                    "person typing research on laptop screen",
+                    "person typing in document on laptop close up",
                     "searching information on computer screen close up",
-                    "writer working on laptop document fast",
-                    "online research on computer screen close up",
+                    "comparing research results on laptop screen",
+                    "research workflow on laptop browser",
+                ]
+            )
+            scene_specific_prepended = True
+        elif any(tok in scene_blob for tok in ["compare", "comparison", "compare tools", "results", "search results"]):
+            candidates.extend(
+                [
+                    "search results comparison on computer screen",
+                    "person comparing tool results on laptop screen",
+                    "dashboard comparison on computer screen close up",
                 ]
             )
             scene_specific_prepended = True
@@ -2103,6 +2153,10 @@ def _score_clip_quality_for_scene(
             return 0.0, "GENERIC_NEUTRAL_FOR_HOOK"
         if environment_family in {"desk_setup", "laptop_closeup", "monitor_ui"}:
             return 0.0, "GENERIC_NEUTRAL_FOR_HOOK"
+        if environment_family == "person_reaction":
+            score += 18
+        if environment_family == "phone_hand" and any(token in query_tokens for token in {"follow", "scrolling", "phone", "tap", "tapping"}):
+            score += 8
 
         intent_keywords = {
             "interrupt": ["stop", "stopping", "rejecting", "closing", "warning", "shocked", "surprised", "reaction"],
@@ -2129,6 +2183,8 @@ def _score_clip_quality_for_scene(
 
         if intent == "action" and not any(token in all_tokens for token in ["editing", "building", "creating", "typing", "launching", "working"]):
             score -= 10
+        if not any(token in query_tokens for token in {"screen", "laptop", "phone", "computer", "clicking", "scrolling", "gesture"}):
+            score -= 10
 
     positive = ["person", "people", "action", "movement", "dynamic", "emotion"]
     score += 5 * min(sum(1 for token in positive if token in all_tokens), 2)
@@ -2151,6 +2207,23 @@ def _score_clip_quality_for_scene(
         abstract_hits = len(all_tokens.intersection(abstract_filler_tokens))
         if environment_family == "monitor_ui" and not has_business_object:
             score -= 20
+        if environment_family == "other" and abstract_hits:
+            score -= 10
+        if environment_family == "editing_timeline":
+            score += 14
+        elif environment_family in {"monitor_ui", "dashboard_screen"}:
+            score += 10
+        elif environment_family == "other" and any(tok in query_tokens for tok in {"research", "search", "results", "comparison", "browser", "perplexity", "writing", "document", "writer"}):
+            score += 8
+
+        if any(tok in query_tokens for tok in {"editing", "edit", "editor", "timeline", "captions", "capcut", "video"}):
+            score += 10
+        if any(tok in query_tokens for tok in {"research", "search", "results", "comparison", "browser", "perplexity"}):
+            score += 10
+        if any(tok in query_tokens for tok in {"design", "designer", "thumbnail", "thumbnails", "mockup", "template", "layout", "canva"}):
+            score += 10
+        if any(tok in query_tokens for tok in {"writing", "writer", "document", "outline", "outlines", "typing"}):
+            score += 8
         if abstract_hits:
             score -= 12 * min(abstract_hits, 2)
         if archetype == "abstract_graphics":
@@ -2236,6 +2309,8 @@ def _score_clip_quality_for_scene(
     elif role in {"cta"}:
         if not _has_any(["phone", "mobile", "scroll", "scrolling", "tap", "tapping", "follow", "creator", "posting", "post"]):
             return 0.0, "ROLE_EXPECT_CTA_ACTION"
+        if environment_family not in {"phone_hand", "person_reaction", "other"}:
+            score -= 8
 
     score = max(0.0, min(100.0, score))
 
@@ -2243,6 +2318,8 @@ def _score_clip_quality_for_scene(
     MIN_SCORE = 45.0
     if role_override and has_business_object and scene_part == "body":
         MIN_SCORE = 38.0
+    if tool_workflow_expected and scene_part == "body":
+        MIN_SCORE = min(MIN_SCORE, 34.0)
     if score < MIN_SCORE:
         return score, f"LOW_SCORE_{int(MIN_SCORE)}"
 
@@ -3044,7 +3121,13 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                 print(f"[FETCH] No valid video found for scene {scene.idx}")
 
         try:
-            await asyncio.gather(*[_fetch_one(scene) for scene in scenes])
+            if mode == "stock":
+                # Deterministic visual diversity scoring depends on the previously accepted scenes.
+                # Run stock fetches in order so "adjacent repeat" checks reflect real scene order.
+                for scene in scenes:
+                    await _fetch_one(scene)
+            else:
+                await asyncio.gather(*[_fetch_one(scene) for scene in scenes])
         except Exception as e:
             print(f"[FETCH] Exception during scene clip fetching: {e}")
             traceback.print_exc()
