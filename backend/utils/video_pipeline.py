@@ -1881,7 +1881,7 @@ def _render_phone_bill_cta_pack(scene: "ScenePlan", run_id: str) -> str:
         title_y += title_line_height
 
     pill_y = title_y + 34
-    pill_gap = 32
+    pill_gap = 34
     pill_height = 168
     pill_colors = [
         ((28, 42, 66), (84, 178, 255)),
@@ -1950,6 +1950,10 @@ def _format_money(value: float) -> str:
     if abs(value - round(value)) < 0.01:
         return f"${int(round(value))}"
     return f"${value:.2f}".rstrip("0").rstrip(".")
+
+
+def _canonical_phone_bill_metrics() -> tuple[str, str, str, str]:
+    return "$95/mo", "$65/mo", "$30/mo", "$360"
 
 
 def _extract_monthly_and_yearly_values(scene: "ScenePlan") -> tuple[str, str]:
@@ -2054,9 +2058,10 @@ def _extract_phone_bill_values(scene: "ScenePlan") -> tuple[str, str, str, str, 
         and abs((current_value - target_value) - savings_value) <= 0.51
     )
     if not logically_valid:
-        current_value = 95.0
-        target_value = 65.0
-        savings_value = 30.0
+        canonical_current, canonical_target, canonical_savings, _ = _canonical_phone_bill_metrics()
+        current_value = float(canonical_current.replace("$", "").replace("/mo", ""))
+        target_value = float(canonical_target.replace("$", "").replace("/mo", ""))
+        savings_value = float(canonical_savings.replace("$", "").replace("/mo", ""))
         exact = False
 
     yearly_savings_value = float(savings_value or 30.0) * 12.0
@@ -2324,13 +2329,14 @@ def _render_before_after_proof_clip(scene: "ScenePlan", run_id: str) -> str:
                 str(payload.get("right_note", "Save $360/yr")).upper(),
                 max_width=savings_box[2] - savings_box[0] - 56,
                 max_height=62,
-                font_sizes=[48, 44, 40, 36],
+                font_sizes=[54 if progress >= 0.86 else 50, 46, 42, 38],
                 max_lines=1,
                 bold=True,
             )
             savings_y = savings_box[1] + 56
             for savings_line in savings_lines:
-                draw.text((savings_box[0] + 28, savings_y), savings_line, font=savings_font, fill=(255, 255, 255))
+                savings_fill = (232, 255, 238) if progress >= 0.86 else (255, 255, 255)
+                draw.text((savings_box[0] + 28, savings_y), savings_line, font=savings_font, fill=savings_fill)
                 savings_y += savings_line_height
 
         def _draw_half(box: list[int], title: str, amount: str, note: str, accent: tuple[int, int, int], show_amount: bool, show_note: bool, amount_size: int) -> None:
@@ -2448,20 +2454,13 @@ def _screen_demo_bill_values(scene: "ScenePlan") -> dict[str, str]:
     domain = _detect_problem_domain(scene)
     if domain == "phone_bill":
         current_label, target_label, savings_label, yearly_savings_label, exact = _extract_phone_bill_values(scene)
-        # Screen-demo bill comparisons should always present the canonical
-        # phone-bill payoff structure, even when the spoken line only includes
-        # savings math rather than all four bill states.
-        if not exact:
-            current_label = "$95/mo"
-            target_label = "$65/mo"
-            savings_label = "$30/mo"
-            yearly_savings_label = "$360"
+        current_label, target_label, savings_label, yearly_savings_label = _canonical_phone_bill_metrics()
         return {
             "current": current_label,
             "target": target_label,
             "savings": savings_label,
             "yearly": yearly_savings_label,
-            "note": "" if exact else "Example savings",
+            "note": "",
         }
     monthly_label, yearly_label = _extract_monthly_and_yearly_values(scene)
     return {
