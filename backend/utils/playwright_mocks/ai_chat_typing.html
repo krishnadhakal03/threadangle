@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1080, initial-scale=1.0" />
+  <title>AI Chat Typing Mock</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      width: 1080px; height: 1920px; margin: 0; padding: 0; overflow: hidden;
+      background:
+        radial-gradient(circle at top, rgba(74, 118, 190, 0.18), transparent 36%),
+        linear-gradient(180deg, #09111a 0%, #081018 100%);
+      font-family: Arial, sans-serif; color: #f5f7fb;
+    }
+    .shell { width: 1080px; height: 1920px; padding: 72px 56px 360px; }
+    .browser {
+      width: 100%; height: 100%; border-radius: 42px; overflow: hidden;
+      border: 2px solid #2a3449; background: #101824; box-shadow: 0 24px 88px rgba(0, 0, 0, 0.42);
+    }
+    .topbar {
+      height: 118px; display: flex; align-items: center; gap: 14px; padding: 0 34px;
+      background: #171f2d; border-bottom: 1px solid #29324a;
+    }
+    .dot { width: 18px; height: 18px; border-radius: 50%; }
+    .address {
+      margin-left: 18px; flex: 1; height: 58px; border-radius: 18px; background: #0d1420;
+      color: #93a6c4; display: flex; align-items: center; padding: 0 22px; font-size: 26px;
+    }
+    .content { padding: 36px 42px 240px; }
+    .eyebrow {
+      display: inline-block; padding: 14px 22px; border-radius: 999px;
+      background: rgba(83,124,196,0.18); color: #9ec2ff; font-size: 28px; font-weight: 700;
+    }
+    .title { margin-top: 22px; font-size: 66px; line-height: 1.06; font-weight: 800; letter-spacing: -1px; }
+    .card {
+      margin-top: 30px; border-radius: 30px; background: rgba(12, 19, 31, 0.96);
+      border: 1px solid #273248; padding: 30px;
+    }
+    .label { font-size: 26px; color: #93a6c4; font-weight: 700; }
+    .copy { font-size: 44px; line-height: 1.22; font-weight: 700; color: #ffffff; white-space: pre-wrap; }
+    .prompt-box, .response-box {
+      border-radius: 24px; padding: 28px; margin-top: 22px;
+      background: #121a29; border: 1px solid #2a3650;
+    }
+    .response-box {
+      background: #102118; border-color: #2e5b45; opacity: 0; transform: translateY(18px);
+    }
+    .visible { opacity: 1 !important; transform: translateY(0) !important; }
+    .copy.cursor::after {
+      content: ""; display: inline-block; width: 4px; height: 44px; margin-left: 8px;
+      background: rgba(255,255,255,0.78); vertical-align: -6px;
+    }
+  </style>
+</head>
+<body data-state="__STATE_JSON__" data-demo="__DATA_JSON__">
+  <div class="shell">
+    <div class="browser">
+      <div class="topbar">
+        <div class="dot" style="background:#ff605c"></div>
+        <div class="dot" style="background:#ffbd44"></div>
+        <div class="dot" style="background:#00ca4e"></div>
+        <div class="address">file://local-mock/ai_chat_typing.html</div>
+      </div>
+      <div class="content">
+        <div class="eyebrow">AI Assistant</div>
+        <div class="title">Prompt Walkthrough</div>
+        <div class="card">
+          <div class="prompt-box">
+            <div class="label">Prompt</div>
+            <div id="promptCopy" class="copy" data-full=""></div>
+          </div>
+          <div id="responseBox" class="response-box">
+            <div class="label">AI Assistant</div>
+            <div id="responseCopy" class="copy"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const state = JSON.parse(document.body.dataset.state || '{}');
+    const data = JSON.parse(document.body.dataset.demo || '{}');
+    const promptNode = document.getElementById('promptCopy');
+    const responseNode = document.getElementById('responseCopy');
+    const responseBox = document.getElementById('responseBox');
+    const fullPrompt = String(data.prompt || '');
+    const typedChars = Math.max(0, Math.min(fullPrompt.length, Number(state.typed_chars || fullPrompt.length)));
+    promptNode.dataset.full = fullPrompt;
+    promptNode.textContent = fullPrompt.slice(0, typedChars);
+    if (typedChars < fullPrompt.length) promptNode.classList.add('cursor');
+    responseNode.textContent = String(data.response || '');
+    if (state.response_visible) responseBox.classList.add('visible');
+  </script>
+</body>
+</html>

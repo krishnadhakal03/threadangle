@@ -33,6 +33,7 @@ ASSETS_DIR = BASE_DIR / "generated_videos"
 RAW_DIR = ASSETS_DIR / "raw"
 TEMP_DIR = ASSETS_DIR / "temp"
 CACHE_DIR = ASSETS_DIR / "cache"
+PLAYWRIGHT_MOCK_DIR = Path(__file__).resolve().parent / "playwright_mocks"
 
 FAST_TARGET_W = int(os.getenv("VIDEO_TARGET_W", "1080"))
 FAST_TARGET_H = int(os.getenv("VIDEO_TARGET_H", "1920"))
@@ -1082,6 +1083,8 @@ def _classify_playwright_demo_type(scene: "ScenePlan", screen_demo_type: str) ->
         return "stock_video"
     if screen_demo_type == "chat_prompt_demo":
         return "ai_chat_typing"
+    if domain == "airline" and screen_demo_type == "bill_compare_demo":
+        return "travel_compare_mock"
     return "stock_video"
 
 
@@ -2499,16 +2502,31 @@ def _screen_demo_template_data(scene: "ScenePlan", demo_type: str) -> dict[str, 
 
 
 def _playwright_local_demo_data(scene: "ScenePlan", demo_type: str) -> dict[str, object]:
+    domain = _detect_problem_domain(scene)
     if demo_type == "ai_chat_typing":
+        if domain == "airline":
+            return {
+                "prompt": "Compare flight prices using flexible dates, nearby airports, and baggage fees.",
+                "response": "Use flexible dates, check nearby airports, and compare baggage fees before booking.",
+            }
         prompt, response = _screen_demo_prompt_lines(scene)
         return {"prompt": prompt, "response": response}
     if demo_type == "search_results_mock":
+        if domain == "airline":
+            return {
+                "query": "flexible date flight savings",
+                "results": [
+                    {"title": "Flexible-date fare calendar", "sub": "Compare a few days before and after your route."},
+                    {"title": "Nearby airport scan", "sub": "Check alternate airports before picking the first fare."},
+                    {"title": "Baggage fee check", "sub": "Add carry-on and checked bag fees before deciding."},
+                ],
+            }
         return {
             "query": "best phone plan savings",
             "results": [
-                "Carrier savings checklist",
-                "Questions to ask retention",
-                "How to compare plan fees",
+                {"title": "Carrier savings checklist", "sub": "Check your current plan, discounts, and line-item fees."},
+                {"title": "Questions to ask retention", "sub": "Use a short call script to ask for the lowest plan."},
+                {"title": "How to compare plan fees", "sub": "Compare the monthly bill, taxes, and yearly savings."},
             ],
         }
     if demo_type == "spreadsheet_savings_mock":
@@ -2518,6 +2536,18 @@ def _playwright_local_demo_data(scene: "ScenePlan", demo_type: str) -> dict[str,
                 ["Unlimited", "$95", "$65", "$30"],
                 ["Fees", "$12", "$4", "$8"],
                 ["Yearly", "$1140", "$780", "$360"],
+            ],
+        }
+    if demo_type == "travel_compare_mock":
+        return {
+            "query": "Compare flight prices using flexible dates, nearby airports, and baggage fees.",
+            "before": "$824",
+            "after": "$712",
+            "save": "$112",
+            "results": [
+                "Flexible dates found a lower Tuesday return.",
+                "Nearby airport option cut the fare before baggage.",
+                "Baggage-fee check kept the cheaper fare cheaper.",
             ],
         }
     return {}
@@ -2560,7 +2590,24 @@ def _playwright_demo_frame_states(scene: "ScenePlan", demo_type: str, fps: int =
             states.append({"row_visible": row_visible})
         return states
 
+    if demo_type == "travel_compare_mock":
+        for idx in range(frame_count):
+            progress = idx / float(max(1, frame_count - 1))
+            visible = 1 if progress < 0.30 else (2 if progress < 0.60 else 3)
+            states.append({"result_visible": visible})
+        return states
+
     return [{} for _ in range(frame_count)]
+
+
+def _playwright_mock_template_path(demo_type: str) -> Path:
+    mapping = {
+        "ai_chat_typing": PLAYWRIGHT_MOCK_DIR / "ai_chat_typing.html",
+        "search_results_mock": PLAYWRIGHT_MOCK_DIR / "search_results_mock.html",
+        "spreadsheet_savings_mock": PLAYWRIGHT_MOCK_DIR / "spreadsheet_savings_mock.html",
+        "travel_compare_mock": PLAYWRIGHT_MOCK_DIR / "travel_compare_mock.html",
+    }
+    return mapping.get(demo_type, PLAYWRIGHT_MOCK_DIR / "ai_chat_typing.html")
 
 
 def _playwright_local_demo_html(scene: "ScenePlan", demo_type: str, state: Optional[dict] = None) -> str:
@@ -2569,175 +2616,11 @@ def _playwright_local_demo_html(scene: "ScenePlan", demo_type: str, state: Optio
 
     state = state or {}
     data = _playwright_local_demo_data(scene, demo_type)
-    state_json = html.escape(json.dumps(state))
-
-    base_css = """
-    <style>
-      * { box-sizing: border-box; }
-      html, body {
-        width: 1080px; height: 1920px; margin: 0; padding: 0; overflow: hidden;
-        background: linear-gradient(180deg, #09111a 0%, #081018 100%);
-        font-family: Arial, sans-serif; color: #f5f7fb;
-      }
-      body {
-        background:
-          radial-gradient(circle at top, rgba(74, 118, 190, 0.18), transparent 36%),
-          linear-gradient(180deg, #09111a 0%, #081018 100%);
-      }
-      .shell {
-        width: 1080px; height: 1920px; padding: 72px 56px 360px;
-      }
-      .browser {
-        width: 100%; height: 100%; border-radius: 42px; overflow: hidden;
-        border: 2px solid #2a3449; background: #101824; box-shadow: 0 24px 88px rgba(0, 0, 0, 0.42);
-      }
-      .topbar {
-        height: 118px; display: flex; align-items: center; gap: 14px; padding: 0 34px;
-        background: #171f2d; border-bottom: 1px solid #29324a;
-      }
-      .dot { width: 18px; height: 18px; border-radius: 50%; }
-      .address {
-        margin-left: 18px; flex: 1; height: 58px; border-radius: 18px;
-        background: #0d1420; color: #93a6c4; display: flex; align-items: center;
-        padding: 0 22px; font-size: 26px;
-      }
-      .content { padding: 36px 42px 240px; }
-      .eyebrow {
-        display: inline-block; padding: 14px 22px; border-radius: 999px;
-        background: rgba(83,124,196,0.18); color: #9ec2ff; font-size: 28px; font-weight: 700;
-      }
-      .title { margin-top: 22px; font-size: 66px; line-height: 1.06; font-weight: 800; letter-spacing: -1px; }
-      .card {
-        margin-top: 30px; border-radius: 30px; background: rgba(12, 19, 31, 0.96);
-        border: 1px solid #273248; padding: 30px;
-      }
-      .label { font-size: 26px; color: #93a6c4; font-weight: 700; }
-      .copy { font-size: 44px; line-height: 1.22; font-weight: 700; color: #ffffff; white-space: pre-wrap; }
-      .prompt-box, .response-box, .result, .sheet-row {
-        border-radius: 24px; padding: 28px; margin-top: 22px;
-        background: #121a29; border: 1px solid #2a3650;
-      }
-      .response-box {
-        background: #102118; border-color: #2e5b45;
-        opacity: 0; transform: translateY(18px);
-      }
-      .result, .sheet-row {
-        opacity: 0; transform: translateY(16px);
-      }
-      .visible {
-        opacity: 1 !important; transform: translateY(0) !important;
-      }
-      .copy.cursor::after {
-        content: ""; display: inline-block; width: 4px; height: 44px; margin-left: 8px;
-        background: rgba(255,255,255,0.78); vertical-align: -6px;
-      }
-      .result-title { font-size: 36px; font-weight: 800; color: #ffffff; }
-      .result-sub { margin-top: 10px; font-size: 24px; color: #8fa3c1; }
-      .sheet-header, .sheet-row {
-        display: grid; grid-template-columns: 1.1fr 0.9fr 0.9fr 0.9fr; gap: 18px; align-items: center;
-      }
-      .sheet-header {
-        margin-top: 30px; padding: 0 6px; font-size: 24px; color: #90a6c6; font-weight: 700;
-      }
-      .sheet-row { font-size: 34px; font-weight: 700; color: #ffffff; }
-      .pos { color: #92efb2; }
-    </style>
-    """
-
-    script = """
-    <script>
-      window.addEventListener('DOMContentLoaded', () => {
-        const state = JSON.parse(document.body.dataset.state || '{}');
-        const typed = document.querySelector('[data-typed]');
-        if (typed) {
-          const full = typed.dataset.full || '';
-          const chars = Math.max(0, Math.min(full.length, Number(state.typed_chars || full.length)));
-          typed.textContent = full.slice(0, chars);
-          if (chars < full.length) typed.classList.add('cursor');
-        }
-        if (state.response_visible) {
-          const node = document.querySelector('.response-box');
-          if (node) node.classList.add('visible');
-        }
-        document.querySelectorAll('[data-show-idx]').forEach((node) => {
-          const idx = Number(node.dataset.showIdx || '0');
-          const resultVisible = Number(state.result_visible || 0);
-          const rowVisible = Number(state.row_visible || 0);
-          const callVisible = Number(state.call_visible || 0);
-          if (idx <= resultVisible || idx <= rowVisible || idx <= callVisible) {
-            node.classList.add('visible');
-          }
-        });
-      });
-    </script>
-    """
-
-    header = """
-    <div class="shell">
-      <div class="browser">
-        <div class="topbar">
-          <div class="dot" style="background:#ff605c"></div>
-          <div class="dot" style="background:#ffbd44"></div>
-          <div class="dot" style="background:#00ca4e"></div>
-          <div class="address">local-demo://playwright-poc</div>
-        </div>
-        <div class="content">
-    """
-    footer = """
-        </div>
-      </div>
-    </div>
-    """
-
-    if demo_type == "ai_chat_typing":
-        prompt = html.escape(str(data.get("prompt", "") or ""))
-        response = html.escape(str(data.get("response", "") or ""))
-        body = (
-            "<div class='eyebrow'>AI Assistant</div>"
-            "<div class='title'>Prompt Walkthrough</div>"
-            "<div class='card'>"
-            "<div class='prompt-box'><div class='label'>Prompt</div>"
-            f"<div class='copy' data-typed data-full='{prompt}'></div></div>"
-            f"<div class='response-box'><div class='label'>AI Assistant</div><div class='copy'>{response}</div></div>"
-            "</div>"
-        )
-    elif demo_type == "search_results_mock":
-        results = list(data.get("results", []))[:3]
-        result_html = "".join(
-            f"<div class='result' data-show-idx='{idx + 1}'><div class='result-title'>{html.escape(str(item))}</div>"
-            "<div class='result-sub'>Local mock results for a savings workflow.</div></div>"
-            for idx, item in enumerate(results)
-        )
-        body = (
-            "<div class='eyebrow'>Search Mock</div>"
-            "<div class='title'>Check options before you call</div>"
-            "<div class='card'>"
-            f"<div class='label'>Query</div><div class='copy'>{html.escape(str(data.get('query', '')))}</div>"
-            f"{result_html}</div>"
-        )
-    else:
-        headers = list(data.get("headers", []))[:4]
-        rows = list(data.get("rows", []))[:3]
-        header_html = "".join(f"<div>{html.escape(str(item))}</div>" for item in headers)
-        row_html = "".join(
-            "<div class='sheet-row' data-show-idx='{idx}'>".format(idx=idx + 1)
-            + "".join(
-                f"<div class='{'pos' if col_idx == 3 else ''}'>{html.escape(str(cell))}</div>"
-                for col_idx, cell in enumerate(row[:4])
-            )
-            + "</div>"
-            for idx, row in enumerate(rows)
-        )
-        body = (
-            "<div class='eyebrow'>Savings Sheet</div>"
-            "<div class='title'>Compare the payoff clearly</div>"
-            "<div class='card'>"
-            f"<div class='sheet-header'>{header_html}</div>{row_html}</div>"
-        )
-
+    template = _playwright_mock_template_path(demo_type).read_text(encoding="utf-8")
     return (
-        f"<html><head>{base_css}</head><body data-state=\"{state_json}\">"
-        f"{header}{body}{footer}{script}</body></html>"
+        template
+        .replace("__STATE_JSON__", html.escape(json.dumps(state)))
+        .replace("__DATA_JSON__", html.escape(json.dumps(data)))
     )
 
 

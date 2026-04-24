@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1080, initial-scale=1.0" />
+  <title>Travel Compare Mock</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      width: 1080px; height: 1920px; margin: 0; padding: 0; overflow: hidden;
+      background:
+        radial-gradient(circle at top, rgba(74, 118, 190, 0.18), transparent 36%),
+        linear-gradient(180deg, #09111a 0%, #081018 100%);
+      font-family: Arial, sans-serif; color: #f5f7fb;
+    }
+    .shell { width: 1080px; height: 1920px; padding: 72px 56px 360px; }
+    .browser {
+      width: 100%; height: 100%; border-radius: 42px; overflow: hidden;
+      border: 2px solid #2a3449; background: #101824; box-shadow: 0 24px 88px rgba(0, 0, 0, 0.42);
+    }
+    .topbar {
+      height: 118px; display: flex; align-items: center; gap: 14px; padding: 0 34px;
+      background: #171f2d; border-bottom: 1px solid #29324a;
+    }
+    .dot { width: 18px; height: 18px; border-radius: 50%; }
+    .address {
+      margin-left: 18px; flex: 1; height: 58px; border-radius: 18px; background: #0d1420;
+      color: #93a6c4; display: flex; align-items: center; padding: 0 22px; font-size: 26px;
+    }
+    .content { padding: 36px 42px 240px; }
+    .eyebrow {
+      display: inline-block; padding: 14px 22px; border-radius: 999px;
+      background: rgba(83,124,196,0.18); color: #9ec2ff; font-size: 28px; font-weight: 700;
+    }
+    .title { margin-top: 22px; font-size: 66px; line-height: 1.06; font-weight: 800; letter-spacing: -1px; }
+    .query-box, .results-box, .summary-box {
+      margin-top: 28px; border-radius: 30px; background: rgba(12, 19, 31, 0.96);
+      border: 1px solid #273248; padding: 28px;
+    }
+    .label { font-size: 26px; color: #93a6c4; font-weight: 700; }
+    .copy { font-size: 44px; line-height: 1.22; font-weight: 700; color: #ffffff; white-space: pre-wrap; }
+    .result {
+      border-radius: 24px; padding: 24px; margin-top: 18px;
+      background: #121a29; border: 1px solid #2a3650; opacity: 0; transform: translateY(16px);
+    }
+    .visible { opacity: 1 !important; transform: translateY(0) !important; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; margin-top: 22px; }
+    .metric { border-radius: 24px; padding: 24px; background: #121a29; border: 1px solid #2a3650; }
+    .metric-name { font-size: 24px; color: #93a6c4; font-weight: 700; }
+    .metric-value { margin-top: 10px; font-size: 56px; font-weight: 800; color: #ffffff; }
+    .metric-save .metric-value { color: #92efb2; }
+  </style>
+</head>
+<body data-state="__STATE_JSON__" data-demo="__DATA_JSON__">
+  <div class="shell">
+    <div class="browser">
+      <div class="topbar">
+        <div class="dot" style="background:#ff605c"></div>
+        <div class="dot" style="background:#ffbd44"></div>
+        <div class="dot" style="background:#00ca4e"></div>
+        <div class="address">file://local-mock/travel_compare_mock.html</div>
+      </div>
+      <div class="content">
+        <div class="eyebrow">Travel Compare</div>
+        <div class="title">Flight savings check</div>
+        <div class="query-box">
+          <div class="label">Prompt</div>
+          <div id="queryCopy" class="copy"></div>
+        </div>
+        <div class="results-box">
+          <div class="label">Mock result</div>
+          <div id="resultWrap"></div>
+        </div>
+        <div class="summary-box">
+          <div class="label">Savings summary</div>
+          <div class="grid">
+            <div class="metric"><div class="metric-name">Before</div><div id="beforeValue" class="metric-value"></div></div>
+            <div class="metric"><div class="metric-name">After</div><div id="afterValue" class="metric-value"></div></div>
+            <div class="metric metric-save"><div class="metric-name">Save</div><div id="saveValue" class="metric-value"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const state = JSON.parse(document.body.dataset.state || '{}');
+    const data = JSON.parse(document.body.dataset.demo || '{}');
+    document.getElementById('queryCopy').textContent = String(data.query || '');
+    document.getElementById('beforeValue').textContent = String(data.before || '$824');
+    document.getElementById('afterValue').textContent = String(data.after || '$712');
+    document.getElementById('saveValue').textContent = String(data.save || '$112');
+    const wrap = document.getElementById('resultWrap');
+    const visible = Number(state.result_visible || 0);
+    (data.results || []).slice(0, 3).forEach((item, index) => {
+      const node = document.createElement('div');
+      node.className = 'result' + (index + 1 <= visible ? ' visible' : '');
+      node.innerHTML = '<div class=\"copy\" style=\"font-size:34px\">' + item + '</div>';
+      wrap.appendChild(node);
+    });
+  </script>
+</body>
+</html>
