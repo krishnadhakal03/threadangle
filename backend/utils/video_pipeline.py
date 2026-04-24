@@ -1799,6 +1799,7 @@ def _render_phone_bill_cta_pack(scene: "ScenePlan", run_id: str) -> str:
     duration = float(max(1.8, (scene.end - scene.start)))
     png_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_cta_phone_bill.png"
     out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_cta_phone_bill.mp4"
+    engagement_cta_enabled = os.getenv("ENABLE_ENGAGEMENT_CTA", "0") == "1"
 
     _, _, _, yearly_label, _ = _extract_phone_bill_values(scene)
     yearly_cta = yearly_label.replace("/year", "/year").replace("/yr", "/year")
@@ -1808,8 +1809,13 @@ def _render_phone_bill_cta_pack(scene: "ScenePlan", run_id: str) -> str:
     lines = [
         "Call carrier this week",
         f"Save {yearly_cta}",
-        "Send to someone overpaying",
+        "Comment BILL for prompt" if engagement_cta_enabled else "Send to someone overpaying",
     ]
+    print(
+        f"[ENGAGEMENT_CTA] scene={getattr(scene, 'idx', 'unknown')} "
+        f"enabled={'true' if engagement_cta_enabled else 'false'} "
+        f"variant={'comment_bill' if engagement_cta_enabled else 'default_fallback'}"
+    )
 
     img = Image.new("RGB", (_CARD_W, _CARD_H), (8, 10, 16))
     draw = ImageDraw.Draw(img)
