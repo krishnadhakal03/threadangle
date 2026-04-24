@@ -1711,6 +1711,95 @@ def _extract_monthly_and_yearly_values(scene: "ScenePlan") -> tuple[str, str]:
     return monthly_label, yearly_label
 
 
+def _hook_shock_text(scene: "ScenePlan", domain: str) -> str:
+    raw = _clean_text(getattr(scene, "on_screen_text", "") or scene.subtitle or scene.source_text or "")
+    pack = _DOMAIN_PACKS.get(domain or "", {})
+    if domain == "phone_bill":
+        return "Most people overpay for this."
+    if domain == "subscriptions":
+        return "Check this before you get charged again."
+    if domain == "airline":
+        return "Don't book flights before asking AI this."
+    if domain == "rent":
+        return "Check this before you accept the rent hike."
+    if domain == "creator_tools":
+        return "Before you pay, check this."
+    words = re.findall(r"[A-Za-z0-9'$-]+", raw)
+    if words:
+        return " ".join(words[:6]).strip().capitalize() + "."
+    labels = pack.get("proof_card_labels", [])
+    if isinstance(labels, list) and labels:
+        return f"Check this before you pay for {str(labels[0]).lower()}."
+    return "Before you pay, check this."
+
+
+def _qualifies_for_hook_shock(scene: "ScenePlan", domain: str) -> bool:
+    if not scene or (getattr(scene, "part", "") or "").lower().strip() != "hook":
+        return False
+    blob = _scene_domain_blob(scene)
+    if domain in {"phone_bill", "subscriptions", "airline", "rent", "generic_money_problem"}:
+        return True
+    qualifying_markers = [
+        "overpay", "overpaying", "before you pay", "save money", "bill", "problem",
+        "delay", "rent", "charges", "carrier", "flight", "subscription",
+    ]
+    return any(marker in blob for marker in qualifying_markers)
+
+
+def _render_hook_shock_clip(scene: "ScenePlan", run_id: str) -> str:
+    from PIL import Image, ImageDraw
+
+    duration = float(max(1.6, (scene.end - scene.start)))
+    png_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_hook_shock.png"
+    out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_hook_shock.mp4"
+    domain = _detect_problem_domain(scene)
+    shock_text = _hook_shock_text(scene, domain)
+
+    img = Image.new("RGB", (_CARD_W, _CARD_H), (14, 12, 10))
+    draw = ImageDraw.Draw(img)
+    top = (34, 20, 14)
+    bottom = (8, 8, 8)
+    for yy in range(_CARD_H):
+        t = yy / float(max(1, _CARD_H - 1))
+        col = (
+            int(top[0] * (1 - t) + bottom[0] * t),
+            int(top[1] * (1 - t) + bottom[1] * t),
+            int(top[2] * (1 - t) + bottom[2] * t),
+        )
+        draw.line([(0, yy), (_CARD_W, yy)], fill=col)
+
+    card = [72, 290, _CARD_W - 72, _CARD_H - 310]
+    draw.rounded_rectangle(card, radius=56, fill=(18, 18, 20), outline=(255, 182, 66), width=5)
+    draw.rounded_rectangle([card[0], card[1], card[2], card[1] + 92], radius=56, fill=(255, 182, 66))
+    draw.rectangle([card[0], card[1] + 44, card[2], card[1] + 92], fill=(255, 182, 66))
+
+    label_font = _try_load_font(42, bold=True)
+    title_font = _try_load_font(118, bold=True)
+    sub_font = _try_load_font(42, bold=False)
+
+    draw.text((card[0] + 42, card[1] + 20), "CHECK THIS FIRST", font=label_font, fill=(18, 18, 20))
+    lines = _wrap_text(draw, shock_text.upper(), title_font, max_width=card[2] - card[0] - 96, max_lines=3)
+    y = card[1] + 170
+    for line in lines:
+        draw.text((card[0] + 46, y), line, font=title_font, fill=(255, 255, 255))
+        y += 130
+
+    domain_line = domain.replace("_", " ").upper()
+    draw.text((card[0] + 46, card[3] - 130), domain_line, font=sub_font, fill=(255, 210, 160))
+
+    img.save(png_path, "PNG")
+    _image_to_mp4(
+        image_path=png_path,
+        out_path=out_path,
+        duration=duration,
+        fps=30,
+        zoom_start=1.0,
+        zoom_end=1.05,
+        pan_px=10,
+    )
+    return str(out_path)
+
+
 def _render_prompt_demo_clip(scene: "ScenePlan", run_id: str) -> str:
     from PIL import Image, ImageDraw
 
@@ -3294,16 +3383,23 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
     if mode == "stock":
         print(f"[MIXED_MEDIA] experimental_mixed_media_enabled={'true' if experimental_mixed_media_enabled else 'false'}")
     proof_scenes_enabled = mode == "stock" and os.getenv("ENABLE_PROOF_SCENES", "0") == "1"
+    hook_shock_enabled = mode == "stock" and os.getenv("ENABLE_HOOK_SHOCK", "0") == "1"
     proof_scene_types: dict[int, str] = {}
+    scene_domains: dict[int, str] = {}
     if mode == "stock":
         for scene in scenes:
-            _detect_problem_domain(scene)
+            domain = _detect_problem_domain(scene)
+            scene_domains[int(scene.idx)] = domain
             proof_type = _classify_proof_scene_type(scene) if proof_scenes_enabled else "stock_video"
             proof_scene_types[int(scene.idx)] = proof_type
             print(
                 f"[PROOF_SCENE] enabled={'true' if proof_scenes_enabled else 'false'} "
                 f"scene={scene.idx} proof_type={proof_type}"
             )
+            if (scene.part or "").lower().strip() == "hook":
+                print(
+                    f"[HOOK_SHOCK] scene={scene.idx} enabled={'true' if hook_shock_enabled else 'false'}"
+                )
 
     asset_strategy: Optional[dict[int, dict]] = None
     stock_video_scenes = scenes
@@ -3392,6 +3488,17 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                 scene_intent = ""
                 scene_asset_type = "stock_video"
                 proof_type = proof_scene_types.get(int(scene.idx), "stock_video")
+                scene_domain = scene_domains.get(int(scene.idx), "generic_money_problem")
+
+                if hook_shock_enabled and _qualifies_for_hook_shock(scene, scene_domain):
+                    try:
+                        path = _render_hook_shock_clip(scene, run_id=run_id)
+                        scene.clip_path = str(path)
+                        print(f"[HOOK_SHOCK] rendered scene={scene.idx} path={path}")
+                        return
+                    except Exception as e:
+                        print(f"[HOOK_SHOCK] fallback_stock scene={scene.idx} reason=render_failed:{e}")
+                        traceback.print_exc()
 
                 if proof_scenes_enabled and proof_type in {"prompt_demo", "bill_demo", "savings_math"}:
                     try:
