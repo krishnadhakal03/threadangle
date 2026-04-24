@@ -3082,11 +3082,24 @@ def _render_screen_demo_clip(scene: "ScenePlan", demo_type: str, run_id: str) ->
     return str(out_path)
 
 
+def _phone_bill_hook_variant() -> str:
+    configured = _clean_text(os.getenv("PHONE_BILL_HOOK_VARIANT", "")).lower()
+    variants = {
+        "1": "Most people overpay $30/month for phone service",
+        "2": "Before paying your phone bill, check this",
+        "3": "Your carrier may be overcharging you",
+        "overpay_30": "Most people overpay $30/month for phone service",
+        "check_before_paying": "Before paying your phone bill, check this",
+        "carrier_overcharging": "Your carrier may be overcharging you",
+    }
+    return variants.get(configured, "Before paying your phone bill, check this")
+
+
 def _hook_shock_text(scene: "ScenePlan", domain: str) -> str:
     raw = _clean_text(getattr(scene, "on_screen_text", "") or scene.subtitle or scene.source_text or "")
     pack = _DOMAIN_PACKS.get(domain or "", {})
     if domain == "phone_bill":
-        return "STOP OVERPAYING\nFOR PHONE SERVICE"
+        return _phone_bill_hook_variant()
     if domain == "subscriptions":
         return "Check this before you get charged again."
     if domain == "airline":
