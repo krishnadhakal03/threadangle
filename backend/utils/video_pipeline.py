@@ -2210,9 +2210,9 @@ def _screen_demo_call_lines(scene: "ScenePlan") -> list[str]:
     domain = _detect_problem_domain(scene)
     if domain == "phone_bill":
         return [
-            "I saw competitor pricing.",
-            "Can you check retention offers?",
-            "What is the lowest plan available?",
+            "I saw competitor pricing at $65.",
+            "Can you match that?",
+            "Check retention offers too.",
         ]
     return [
         "I found a lower price elsewhere.",
