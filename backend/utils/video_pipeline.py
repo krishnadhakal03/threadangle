@@ -1057,10 +1057,10 @@ def _classify_screen_demo_type(scene: "ScenePlan") -> str:
     if not blob:
         return "stock_video"
 
-    if any(marker in blob for marker in ["chatgpt", "prompt", "paste", "write me"]):
-        return "chat_prompt_demo"
     if any(marker in blob for marker in ["call script", "carrier", "retention"]):
         return "call_script_demo"
+    if any(marker in blob for marker in ["chatgpt", "prompt", "paste", "write me"]):
+        return "chat_prompt_demo"
     if any(marker in blob for marker in ["bill", "$", "month", "year", "savings"]):
         return "bill_compare_demo"
     return "stock_video"
