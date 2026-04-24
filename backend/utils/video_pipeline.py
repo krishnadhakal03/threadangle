@@ -2550,6 +2550,18 @@ def _screen_demo_template_data(scene: "ScenePlan", demo_type: str) -> dict[str, 
 
 def _playwright_local_demo_data(scene: "ScenePlan", demo_type: str) -> dict[str, object]:
     domain = _detect_problem_domain(scene)
+    if demo_type == "day3_script_mock":
+        return {
+            "prompt": "Write a 15-second short video script about saving money with AI.",
+            "outline": [
+                {"title": "Hook", "sub": "Stop the scroll fast."},
+                {"title": "Problem", "sub": "Making shorts takes too long."},
+                {"title": "AI solution", "sub": "Use a repeatable workflow."},
+                {"title": "CTA", "sub": "Ask viewers to save it."},
+            ],
+        }
+    if demo_type in {"day3_voice_mock", "day3_video_mock", "day3_edit_mock"}:
+        return {}
     if demo_type == "ai_chat_typing":
         if domain == "airline":
             return {
@@ -2607,6 +2619,40 @@ def _playwright_demo_frame_states(scene: "ScenePlan", demo_type: str, fps: int =
     data = _playwright_local_demo_data(scene, demo_type)
 
     states: list[dict] = []
+    if demo_type == "day3_script_mock":
+        prompt = str(data.get("prompt", "") or "")
+        for idx in range(frame_count):
+            progress = idx / float(max(1, frame_count - 1))
+            typed_chars = int(round(len(prompt) * min(1.0, progress / 0.38)))
+            if progress >= 0.42:
+                typed_chars = len(prompt)
+            visible = 0
+            if progress >= 0.48:
+                visible = 1
+            if progress >= 0.60:
+                visible = 2
+            if progress >= 0.72:
+                visible = 3
+            if progress >= 0.84:
+                visible = 4
+            states.append({"typed_chars": typed_chars, "result_visible": visible})
+        return states
+
+    if demo_type in {"day3_voice_mock", "day3_video_mock", "day3_edit_mock"}:
+        max_step = 4 if demo_type == "day3_edit_mock" else 3
+        for idx in range(frame_count):
+            progress = idx / float(max(1, frame_count - 1))
+            if progress < 0.34:
+                visible = 1
+            elif progress < 0.64:
+                visible = 2
+            elif progress < 0.84:
+                visible = 3
+            else:
+                visible = max_step
+            states.append({"step_visible": visible})
+        return states
+
     if demo_type == "ai_chat_typing":
         prompt = str(data.get("prompt", "") or "")
         for idx in range(frame_count):
@@ -2656,6 +2702,10 @@ def _playwright_mock_template_path(demo_type: str) -> Path:
         "search_results_mock": PLAYWRIGHT_MOCK_DIR / "search_results_mock.html",
         "spreadsheet_savings_mock": PLAYWRIGHT_MOCK_DIR / "spreadsheet_savings_mock.html",
         "travel_compare_mock": PLAYWRIGHT_MOCK_DIR / "travel_compare_mock.html",
+        "day3_script_mock": PLAYWRIGHT_MOCK_DIR / "ai_script_mock.html",
+        "day3_voice_mock": PLAYWRIGHT_MOCK_DIR / "voice_mock.html",
+        "day3_video_mock": PLAYWRIGHT_MOCK_DIR / "video_gen_mock.html",
+        "day3_edit_mock": PLAYWRIGHT_MOCK_DIR / "editor_mock.html",
     }
     return mapping.get(demo_type, PLAYWRIGHT_MOCK_DIR / "ai_chat_typing.html")
 
@@ -2692,12 +2742,14 @@ def _render_playwright_html_sequence(html_paths: list[Path], png_paths: list[Pat
             f"const pngPaths = {repr(png_list)};\n"
             "(async () => {\n"
             "  const browser = await chromium.launch({ headless: true });\n"
-            "  const page = await browser.newPage({ viewport: { width: 1080, height: 1920 }, deviceScaleFactor: 1 });\n"
+            "  const context = await browser.newContext({ viewport: { width: 1080, height: 1920 }, deviceScaleFactor: 1 });\n"
+            "  const page = await context.newPage();\n"
             "  for (let i = 0; i < htmlPaths.length; i += 1) {\n"
             "    await page.goto('file:///' + htmlPaths[i].replace(/\\\\/g, '/'));\n"
             "    await page.waitForTimeout(90);\n"
             "    await page.screenshot({ path: pngPaths[i], type: 'png' });\n"
             "  }\n"
+            "  await context.close();\n"
             "  await browser.close();\n"
             "})().catch((err) => { console.error(err && err.message ? err.message : err); process.exit(1); });\n"
         ),
@@ -3203,6 +3255,8 @@ def _phone_bill_hook_variant() -> str:
 def _hook_shock_text(scene: "ScenePlan", domain: str) -> str:
     raw = _clean_text(getattr(scene, "on_screen_text", "") or scene.subtitle or scene.source_text or "")
     pack = _DOMAIN_PACKS.get(domain or "", {})
+    if _day3_workflow_step(scene) == "hook":
+        return "Stop spending hours\nmaking short videos"
     if domain == "phone_bill":
         return _phone_bill_hook_variant()
     if domain == "subscriptions":
@@ -3225,6 +3279,8 @@ def _hook_shock_text(scene: "ScenePlan", domain: str) -> str:
 def _qualifies_for_hook_shock(scene: "ScenePlan", domain: str) -> bool:
     if not scene or (getattr(scene, "part", "") or "").lower().strip() != "hook":
         return False
+    if _day3_workflow_step(scene) == "hook":
+        return True
     if domain not in _DOMAIN_PACKS:
         return False
     blob = _scene_domain_blob(scene)
@@ -3291,7 +3347,12 @@ def _render_hook_shock_clip(scene: "ScenePlan", run_id: str) -> str:
         draw.text((card[0] + 46, y), line, font=title_font, fill=(255, 255, 255))
         y += line_height
 
-    subtitle_text = "Save before you pay" if domain == "airline" else "Check this before paying"
+    if _day3_workflow_step(scene) == "hook":
+        subtitle_text = "Use this AI workflow instead"
+    elif domain == "airline":
+        subtitle_text = "Save before you pay"
+    else:
+        subtitle_text = "Check this before paying"
     sub_font, sub_lines, sub_line_height = _fit_text_block(
         draw,
         subtitle_text,
@@ -5163,6 +5224,13 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
     if mode == "stock":
         dominant_domain = _dominant_problem_domain(scenes)
         for scene in scenes:
+            workflow_step = _day3_workflow_step(scene)
+            print(
+                f"[DAY3_WORKFLOW] enabled={'true' if _day3_workflow_enabled() else 'false'} "
+                f"scene={scene.idx} step={workflow_step or 'none'}"
+            )
+            if workflow_step:
+                print(f"[WORKFLOW_STEP] scene={scene.idx} step={workflow_step}")
             domain = _detect_problem_domain(scene)
             if not domain:
                 proof_blob = _proof_scene_blob(scene).lower()
@@ -5227,7 +5295,7 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                     f"domain={domain or 'unqualified'} qualified={'true' if hook_qualified else 'false'}"
                 )
             if (scene.part or "").lower().strip() == "cta":
-                cta_pack_qualified = domain == "phone_bill"
+                cta_pack_qualified = domain == "phone_bill" or workflow_step == "cta"
                 print(
                     f"[CTA_PACK] scene={scene.idx} enabled={'true' if cta_pack_enabled else 'false'} "
                     f"domain={domain or 'unqualified'} qualified={'true' if cta_pack_qualified else 'false'}"
@@ -5235,6 +5303,8 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
 
     asset_strategy: Optional[dict[int, dict]] = None
     stock_video_scenes = scenes
+    if mode == "stock" and _day3_workflow_enabled():
+        stock_video_scenes = [s for s in scenes if not _day3_workflow_step(s)]
     if mode == "stock" and experimental_mixed_media_enabled:
         asset_strategy = _apply_scene_asset_strategy(scenes)
         stock_video_scenes = [
@@ -5325,6 +5395,7 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                 before_after_proof_type = before_after_proof_types.get(int(scene.idx), "stock_video")
                 pattern_interrupt_type = pattern_interrupt_types.get(int(scene.idx), "stock_video")
                 scene_domain = scene_domains.get(int(scene.idx), "")
+                workflow_step = _day3_workflow_step(scene)
 
                 if pattern_interrupt_enabled and pattern_interrupt_type == "pattern_interrupt":
                     try:
@@ -5349,10 +5420,19 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
                     try:
                         path = _render_playwright_local_demo(scene, demo_type=playwright_demo_type, run_id=run_id)
                         scene.clip_path = str(path)
-                        print(f"[PLAYWRIGHT_DEMO] rendered scene={scene.idx} path={path}")
+                        print(f"[PLAYWRIGHT_DEMO] rendered scene={scene.idx} demo_type={playwright_demo_type} path={path}")
                         return
                     except Exception as e:
                         print(f"[PLAYWRIGHT_DEMO] fallback scene={scene.idx} reason={e}")
+                        if workflow_step in {"script", "voice", "video", "edit"} and os.getenv("ENABLE_LOCAL_BROWSER_FALLBACK", "0") == "1":
+                            try:
+                                fallback_demo = "chat_prompt_demo" if workflow_step == "script" else "call_script_demo"
+                                path = _render_screen_demo_clip(scene, demo_type=fallback_demo, run_id=run_id)
+                                scene.clip_path = str(path)
+                                print(f"[PLAYWRIGHT_DEMO] fallback_rendered scene={scene.idx} demo_type={fallback_demo} path={path}")
+                                return
+                            except Exception as fallback_exc:
+                                print(f"[PLAYWRIGHT_DEMO] fallback scene={scene.idx} reason=screen_demo_failed:{fallback_exc}")
 
                 if screen_demo_enabled and screen_demo_type in {"chat_prompt_demo", "bill_compare_demo", "call_script_demo"}:
                     try:
