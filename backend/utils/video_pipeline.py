@@ -3032,7 +3032,10 @@ def _render_hook_shock_clip(scene: "ScenePlan", run_id: str) -> str:
     sub_font = _try_load_font(42, bold=False)
 
     draw.text((card[0] + 42, card[1] + 20), "CHECK THIS FIRST", font=label_font, fill=(18, 18, 20))
-    lines = _wrap_text(draw, shock_text.upper(), title_font, max_width=card[2] - card[0] - 96, max_lines=3)
+    if "\n" in shock_text:
+        lines = [segment.strip().upper() for segment in shock_text.splitlines() if segment.strip()]
+    else:
+        lines = _wrap_text(draw, shock_text.upper(), title_font, max_width=card[2] - card[0] - 96, max_lines=3)
     y = card[1] + 170
     for line in lines:
         draw.text((card[0] + 46, y), line, font=title_font, fill=(255, 255, 255))
