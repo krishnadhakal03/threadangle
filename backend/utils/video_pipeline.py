@@ -2626,10 +2626,10 @@ def _playwright_local_demo_data(scene: "ScenePlan", demo_type: str) -> dict[str,
         return {
             "prompt": "Write a 15-second short video script about saving money with AI.",
             "outline": [
-                {"title": "Hook", "sub": "Stop the scroll fast."},
-                {"title": "Problem", "sub": "Making shorts takes too long."},
-                {"title": "AI solution", "sub": "Use a repeatable workflow."},
-                {"title": "CTA", "sub": "Ask viewers to save it."},
+                {"title": "Hook:", "sub": "Stop spending hours."},
+                {"title": "Problem:", "sub": "Making shorts takes too long."},
+                {"title": "AI solution:", "sub": "Use a repeatable workflow."},
+                {"title": "CTA:", "sub": "Comment GUIDE for the steps."},
             ],
         }
     if demo_type in {"day3_voice_mock", "day3_video_mock", "day3_edit_mock"}:
