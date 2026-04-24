@@ -1003,6 +1003,10 @@ def _detect_problem_domain(scene: "ScenePlan") -> str:
     if not scene:
         print("[DOMAIN_PACK] scene=unknown domain=unqualified")
         return ""
+    domain_override = _clean_text(getattr(scene, "domain_override", "") or "").lower()
+    if domain_override in _DOMAIN_PACKS:
+        print(f"[DOMAIN_PACK] scene={getattr(scene, 'idx', 'unknown')} domain={domain_override}")
+        return domain_override
 
     blob = _scene_domain_blob(scene)
     phone_bill_priority_triggers = [
@@ -1842,14 +1846,24 @@ def _render_phone_bill_cta_pack(scene: "ScenePlan", run_id: str) -> str:
 
     draw.text((panel[0] + 42, panel[1] + 22), "NEXT STEP", font=label_font, fill=(10, 16, 24))
     if engagement_cta_enabled:
-        chip_font = _try_load_font(36, bold=True)
+        chip_font = _try_load_font(28, bold=True)
         chip_text = "Comment BILL for prompt"
-        chip_w, chip_h = 404, 74
-        chip_x = panel[2] - chip_w - 42
-        chip_y = panel[1] + 112
-        draw.rounded_rectangle([chip_x, chip_y, chip_x + chip_w, chip_y + chip_h], radius=28, fill=(36, 48, 78))
-        draw.rounded_rectangle([chip_x + 6, chip_y + 6, chip_x + chip_w - 6, chip_y + chip_h - 6], radius=24, outline=(126, 176, 255), width=2)
-        draw.text((chip_x + 24, chip_y + 20), chip_text, font=chip_font, fill=(233, 241, 255))
+        chip_w, chip_h = 340, 58
+        chip_x = panel[2] - chip_w - 28
+        chip_y = panel[1] + 18
+        draw.rounded_rectangle([chip_x, chip_y, chip_x + chip_w, chip_y + chip_h], radius=24, fill=(36, 48, 78))
+        draw.rounded_rectangle([chip_x + 4, chip_y + 4, chip_x + chip_w - 4, chip_y + chip_h - 4], radius=20, outline=(126, 176, 255), width=2)
+        chip_font, chip_lines, chip_line_height = _fit_text_block(
+            draw,
+            chip_text,
+            max_width=chip_w - 30,
+            max_height=chip_h - 16,
+            font_sizes=[28, 26, 24, 22],
+            max_lines=1,
+            bold=True,
+        )
+        chip_text_y = chip_y + max(10, int((chip_h - chip_line_height) / 2))
+        draw.text((chip_x + 16, chip_text_y), chip_lines[0], font=chip_font, fill=(233, 241, 255))
 
     title = "LOWER YOUR PHONE BILL"
     title_font, title_lines, title_line_height = _fit_text_block(
@@ -2031,10 +2045,19 @@ def _extract_phone_bill_values(scene: "ScenePlan") -> tuple[str, str, str, str, 
         savings_value = current_value - target_value
 
     exact = current_value is not None and target_value is not None and savings_value is not None
-    if not exact:
+    logically_valid = bool(
+        exact
+        and current_value is not None
+        and target_value is not None
+        and savings_value is not None
+        and current_value > target_value
+        and abs((current_value - target_value) - savings_value) <= 0.51
+    )
+    if not logically_valid:
         current_value = 95.0
         target_value = 65.0
         savings_value = 30.0
+        exact = False
 
     yearly_savings_value = float(savings_value or 30.0) * 12.0
     return (
@@ -2105,7 +2128,7 @@ def _before_after_proof_payload(scene: "ScenePlan", domain: str) -> dict[str, st
             "right_title": "After",
             "right_amount": target_label,
             "right_note": f"Save {yearly_savings_label}/yr",
-            "badge": "" if exact else "Example savings",
+            "badge": "Carrier Bill Reset",
         }
 
     before_label, after_label = _extract_before_after_values(scene)
