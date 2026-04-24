@@ -1861,6 +1861,208 @@ def _log_proof_audit(scene: "ScenePlan", *text_groups: str) -> None:
     print(f"[PROOF_AUDIT] scene={getattr(scene, 'idx', 'unknown')} card_text=\"{card_text}\"")
 
 
+def _screen_demo_prompt_lines(scene: "ScenePlan") -> tuple[str, str]:
+    domain = _detect_problem_domain(scene)
+    blob = _proof_scene_blob(scene).lower()
+    if domain == "phone_bill":
+        if any(tok in blob for tok in ["call", "script", "retention"]):
+            prompt = "Write me a phone carrier retention script to lower my monthly bill."
+            response = "Start by asking about loyalty discounts and competitor pricing."
+        else:
+            prompt = "Help me lower my phone bill with one short prompt."
+            response = "Ask for retention offers, plan downgrades, and fee reductions."
+    else:
+        prompt = _clean_text(scene.subtitle or scene.source_text or "Help me solve this problem fast.")
+        response = "Here is a simple plan with one clear next step."
+    return _shorten_proof_text(prompt, max_words=18), _shorten_proof_text(response, max_words=18)
+
+
+def _screen_demo_bill_values(scene: "ScenePlan") -> dict[str, str]:
+    domain = _detect_problem_domain(scene)
+    if domain == "phone_bill":
+        current_label, target_label, savings_label, yearly_savings_label, exact = _extract_phone_bill_values(scene)
+        return {
+            "current": current_label,
+            "target": target_label,
+            "savings": savings_label,
+            "yearly": yearly_savings_label,
+            "note": "" if exact else "Example savings",
+        }
+    monthly_label, yearly_label = _extract_monthly_and_yearly_values(scene)
+    return {
+        "current": monthly_label.replace("/month", "/mo"),
+        "target": "$65/mo",
+        "savings": "$30/mo",
+        "yearly": yearly_label.replace("/year", ""),
+        "note": "Example savings",
+    }
+
+
+def _screen_demo_call_lines(scene: "ScenePlan") -> list[str]:
+    domain = _detect_problem_domain(scene)
+    if domain == "phone_bill":
+        return [
+            "I saw competitor pricing.",
+            "Can you check retention offers?",
+            "What is the lowest plan available?",
+        ]
+    return [
+        "I found a lower price elsewhere.",
+        "Can you review the available options?",
+        "What is the best plan today?",
+    ]
+
+
+def _screen_demo_template_data(scene: "ScenePlan", demo_type: str) -> dict[str, object]:
+    if demo_type == "chat_prompt_demo":
+        prompt, response = _screen_demo_prompt_lines(scene)
+        return {"prompt": prompt, "response": response}
+    if demo_type == "bill_compare_demo":
+        return _screen_demo_bill_values(scene)
+    if demo_type == "call_script_demo":
+        return {"lines": _screen_demo_call_lines(scene)}
+    return {}
+
+
+def _screen_demo_html(scene: "ScenePlan", demo_type: str, state: Optional[dict] = None) -> str:
+    import html
+
+    state = state or {}
+    data = _screen_demo_template_data(scene, demo_type)
+    typed_chars = int(state.get("typed_chars", 0) or 0)
+    response_visible = bool(state.get("response_visible", False))
+    call_visible = int(state.get("call_visible", 3) or 3)
+    note = html.escape(str(data.get("note", "") or ""))
+
+    base_css = """
+    <style>
+      * { box-sizing: border-box; }
+      html, body {
+        width: 1080px; height: 1920px; margin: 0; padding: 0; overflow: hidden;
+        background: linear-gradient(180deg, #0a1018 0%, #090d12 100%);
+        font-family: Arial, sans-serif; color: #f5f7fb;
+      }
+      .screen {
+        width: 1080px; height: 1920px; padding: 88px 64px;
+        background: radial-gradient(circle at top, rgba(64,90,132,0.24), transparent 42%), #0a1018;
+      }
+      .browser {
+        width: 100%; height: 100%; border-radius: 44px; overflow: hidden;
+        background: #111722; border: 2px solid #2a3242; box-shadow: 0 24px 90px rgba(0,0,0,0.38);
+      }
+      .topbar {
+        height: 118px; display: flex; align-items: center; gap: 14px; padding: 0 34px;
+        background: #171f2d; border-bottom: 1px solid #283042;
+      }
+      .dot { width: 18px; height: 18px; border-radius: 50%; }
+      .address {
+        margin-left: 18px; flex: 1; height: 58px; border-radius: 18px; background: #0d1420;
+        color: #93a6c4; display: flex; align-items: center; padding: 0 22px; font-size: 26px;
+      }
+      .content { padding: 46px 42px 42px; }
+      .pill {
+        display: inline-block; padding: 14px 22px; border-radius: 999px;
+        background: rgba(83,124,196,0.18); color: #9ec2ff; font-size: 28px; font-weight: 700;
+      }
+      .title { margin-top: 22px; font-size: 70px; line-height: 1.08; font-weight: 800; letter-spacing: -1px; }
+      .card {
+        margin-top: 34px; border-radius: 32px; background: #0c131f; border: 1px solid #273248;
+        padding: 32px;
+      }
+      .prompt-box, .response-box, .script-line, .metric {
+        border-radius: 26px; background: #121a29; border: 1px solid #2a3650;
+      }
+      .prompt-box, .response-box { padding: 30px 32px; }
+      .label { font-size: 28px; color: #93a6c4; font-weight: 700; letter-spacing: 0.3px; }
+      .copy {
+        margin-top: 18px; font-size: 46px; line-height: 1.22; color: #ffffff; font-weight: 700;
+        white-space: pre-wrap;
+      }
+      .response-box { margin-top: 24px; background: #0f1f18; border-color: #2c5641; }
+      .metric-grid { margin-top: 34px; display: grid; grid-template-columns: 1fr; gap: 22px; }
+      .metric { padding: 26px 28px; }
+      .metric .row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+      .metric .name { font-size: 32px; color: #9fb1cb; font-weight: 700; }
+      .metric .value { font-size: 64px; color: #ffffff; font-weight: 800; }
+      .note { margin-top: 24px; font-size: 28px; color: #ffd97a; font-weight: 700; }
+      .script-list { margin-top: 34px; display: flex; flex-direction: column; gap: 18px; }
+      .script-line { padding: 28px 30px; font-size: 42px; line-height: 1.22; font-weight: 700; color: #ffffff; }
+    </style>
+    """
+
+    header = """
+    <div class="screen">
+      <div class="browser">
+        <div class="topbar">
+          <div class="dot" style="background:#ff605c"></div>
+          <div class="dot" style="background:#ffbd44"></div>
+          <div class="dot" style="background:#00ca4e"></div>
+          <div class="address">local-demo://screen-demo</div>
+        </div>
+        <div class="content">
+    """
+    footer = """
+        </div>
+      </div>
+    </div>
+    """
+
+    if demo_type == "chat_prompt_demo":
+        prompt = str(data.get("prompt", "") or "")
+        response = str(data.get("response", "") or "")
+        typed_prompt = html.escape(prompt[: max(0, min(len(prompt), typed_chars))])
+        if typed_chars < len(prompt):
+            typed_prompt += "<span style='opacity:0.7'>|</span>"
+        response_block = ""
+        if response_visible:
+            response_block = (
+                f"<div class='response-box'><div class='label'>AI Assistant</div>"
+                f"<div class='copy'>{html.escape(response)}</div></div>"
+            )
+        body = (
+            "<div class='pill'>AI Assistant</div>"
+            "<div class='title'>Prompt Demo</div>"
+            "<div class='card'>"
+            "<div class='prompt-box'><div class='label'>Prompt</div>"
+            f"<div class='copy'>{typed_prompt}</div></div>"
+            f"{response_block}"
+            "</div>"
+        )
+        return f"<html><head>{base_css}</head><body>{header}{body}{footer}</body></html>"
+
+    if demo_type == "bill_compare_demo":
+        body = (
+            "<div class='pill'>Plan Review</div>"
+            "<div class='title'>Bill Comparison</div>"
+            "<div class='metric-grid'>"
+            f"<div class='metric'><div class='row'><div class='name'>Current</div><div class='value'>{html.escape(str(data.get('current', '$95/mo')))}</div></div></div>"
+            f"<div class='metric'><div class='row'><div class='name'>Target</div><div class='value'>{html.escape(str(data.get('target', '$65/mo')))}</div></div></div>"
+            f"<div class='metric'><div class='row'><div class='name'>Savings</div><div class='value'>{html.escape(str(data.get('savings', '$30/mo')))}</div></div></div>"
+            f"<div class='metric'><div class='row'><div class='name'>Yearly</div><div class='value'>{html.escape(str(data.get('yearly', '$360')))}</div></div></div>"
+            "</div>"
+            + (f"<div class='note'>{note}</div>" if note else "")
+        )
+        return f"<html><head>{base_css}</head><body>{header}{body}{footer}</body></html>"
+
+    if demo_type == "call_script_demo":
+        lines = [html.escape(str(line)) for line in list(data.get("lines", []))[: max(0, min(3, call_visible))]]
+        lines_html = "".join(f"<div class='script-line'>{line}</div>" for line in lines)
+        body = (
+            "<div class='pill'>Call Script</div>"
+            "<div class='title'>What To Say</div>"
+            f"<div class='script-list'>{lines_html}</div>"
+        )
+        return f"<html><head>{base_css}</head><body>{header}{body}{footer}</body></html>"
+
+    return f"<html><head>{base_css}</head><body>{header}<div class='title'>Screen Demo</div>{footer}</body></html>"
+
+
+def _write_screen_demo_html(scene: "ScenePlan", demo_type: str, run_id: str, frame_idx: int, state: Optional[dict] = None) -> Path:
+    html_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_{demo_type}_{frame_idx:03d}.html"
+    html_path.write_text(_screen_demo_html(scene, demo_type, state=state), encoding="utf-8")
+    return html_path
+
+
 def _hook_shock_text(scene: "ScenePlan", domain: str) -> str:
     raw = _clean_text(getattr(scene, "on_screen_text", "") or scene.subtitle or scene.source_text or "")
     pack = _DOMAIN_PACKS.get(domain or "", {})
