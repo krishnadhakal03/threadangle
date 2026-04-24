@@ -2177,7 +2177,7 @@ def _render_before_after_proof_clip(scene: "ScenePlan", run_id: str) -> str:
             badge_box = [shell[0] + 42, shell[1] + 38, shell[0] + 360, shell[1] + 102]
             draw.rounded_rectangle(badge_box, radius=28, fill=(30, 48, 80))
 
-        title_font = _try_load_font(52, bold=True)
+        title_font = _try_load_font(48, bold=True)
         left_amount_size = 96 if progress < 0.28 else 104
         right_amount_size = 96 if progress < 0.60 else 104
         note_font = _try_load_font(42, bold=False)
@@ -2186,12 +2186,32 @@ def _render_before_after_proof_clip(scene: "ScenePlan", run_id: str) -> str:
         if badge:
             draw.text((shell[0] + 68, shell[1] + 54), badge.upper(), font=badge_font, fill=(190, 218, 255))
 
-        left_box = [shell[0] + 38, shell[1] + 136, shell[0] + 468, shell[3] - 110]
-        right_box = [shell[0] + 472, shell[1] + 136, shell[2] - 38, shell[3] - 110]
+        left_box = [shell[0] + 38, shell[1] + 136, shell[0] + 450, shell[3] - 226]
+        right_box = [shell[0] + 486, shell[1] + 136, shell[2] - 38, shell[3] - 226]
         draw.rounded_rectangle(left_box, radius=40, fill=(55, 27, 31))
         draw.rounded_rectangle(right_box, radius=40, fill=(18, 63, 40))
-        divider = [shell[0] + 466, shell[1] + 170, shell[0] + 474, shell[3] - 136]
+        divider = [shell[0] + 466, shell[1] + 210, shell[0] + 474, shell[3] - 276]
         draw.rounded_rectangle(divider, radius=4, fill=(88, 108, 136))
+        arrow_box = [shell[0] + 420, shell[1] + 392, shell[0] + 520, shell[1] + 492]
+        draw.ellipse(arrow_box, fill=(28, 38, 56), outline=(108, 136, 174), width=3)
+        arrow_font = _try_load_font(56, bold=True)
+        draw.text((arrow_box[0] + 28, arrow_box[1] + 14), "→", font=arrow_font, fill=(214, 228, 244))
+        savings_box = [shell[0] + 48, shell[3] - 170, shell[2] - 48, shell[3] - 52]
+        draw.rounded_rectangle(savings_box, radius=34, fill=(20, 28, 42), outline=(74, 98, 136), width=3)
+        draw.text((savings_box[0] + 28, savings_box[1] + 18), "SAVINGS", font=badge_font, fill=(147, 189, 255))
+        savings_font, savings_lines, savings_line_height = _fit_text_block(
+            draw,
+            str(payload.get("right_note", "Save $360/yr")).upper(),
+            max_width=savings_box[2] - savings_box[0] - 56,
+            max_height=62,
+            font_sizes=[48, 44, 40, 36],
+            max_lines=1,
+            bold=True,
+        )
+        savings_y = savings_box[1] + 56
+        for savings_line in savings_lines:
+            draw.text((savings_box[0] + 28, savings_y), savings_line, font=savings_font, fill=(255, 255, 255))
+            savings_y += savings_line_height
 
         def _draw_half(box: list[int], title: str, amount: str, note: str, accent: tuple[int, int, int], show_amount: bool, show_note: bool, amount_size: int) -> None:
             title_font_fit, title_lines, _ = _fit_text_block(
@@ -2228,7 +2248,7 @@ def _render_before_after_proof_clip(scene: "ScenePlan", run_id: str) -> str:
                     max_lines=2,
                     bold=False,
                 )
-                yy = box[3] - 176
+                yy = box[3] - 146
                 for line in note_lines:
                     draw.text((box[0] + 34, yy), line, font=note_font_fit, fill=(228, 236, 242))
                     yy += note_line_height
