@@ -1108,14 +1108,14 @@ def _day3_workflow_step(scene: "ScenePlan") -> str:
         return "hook"
     if part == "cta" and any(tok in blob for tok in ["comment guide", "full workflow", "save this", "try later"]):
         return "cta"
-    if any(tok in blob for tok in ["15-second script", "ask ai", "write a", "script"]):
-        return "script"
     if any(tok in blob for tok in ["voice", "narration", "generate voice", "turn that script into voice"]):
         return "voice"
     if any(tok in blob for tok in ["visual", "visuals", "prompt to video", "generate scene", "create simple visuals"]):
         return "video"
     if any(tok in blob for tok in ["edit", "post", "timeline", "clips together", "export short"]):
         return "edit"
+    if any(tok in blob for tok in ["15-second script", "ask ai", "write a", "script"]):
+        return "script"
     return ""
 
 
