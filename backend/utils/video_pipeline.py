@@ -1075,6 +1075,9 @@ def _classify_screen_demo_type(scene: "ScenePlan") -> str:
 def _classify_playwright_demo_type(scene: "ScenePlan", screen_demo_type: str) -> str:
     if not scene:
         return "stock_video"
+    workflow_step = _day3_workflow_step(scene)
+    if workflow_step in {"script", "voice", "video", "edit"}:
+        return f"day3_{workflow_step}_mock"
     part = (getattr(scene, "part", "") or "").lower().strip()
     if part in {"hook", "cta"}:
         return "stock_video"
@@ -1086,6 +1089,34 @@ def _classify_playwright_demo_type(scene: "ScenePlan", screen_demo_type: str) ->
     if domain == "airline" and screen_demo_type == "bill_compare_demo":
         return "travel_compare_mock"
     return "stock_video"
+
+
+def _day3_workflow_enabled() -> bool:
+    return os.getenv("ENABLE_DAY3_WORKFLOW", "0") == "1"
+
+
+def _day3_workflow_blob(scene: "ScenePlan") -> str:
+    return _proof_scene_blob(scene).lower()
+
+
+def _day3_workflow_step(scene: "ScenePlan") -> str:
+    if not _day3_workflow_enabled() or not scene:
+        return ""
+    part = (getattr(scene, "part", "") or "").lower().strip()
+    blob = _day3_workflow_blob(scene)
+    if part == "hook" and any(tok in blob for tok in ["short video", "short videos", "ai workflow", "spending hours"]):
+        return "hook"
+    if part == "cta" and any(tok in blob for tok in ["comment guide", "full workflow", "save this", "try later"]):
+        return "cta"
+    if any(tok in blob for tok in ["15-second script", "ask ai", "write a", "script"]):
+        return "script"
+    if any(tok in blob for tok in ["voice", "narration", "generate voice", "turn that script into voice"]):
+        return "voice"
+    if any(tok in blob for tok in ["visual", "visuals", "prompt to video", "generate scene", "create simple visuals"]):
+        return "video"
+    if any(tok in blob for tok in ["edit", "post", "timeline", "clips together", "export short"]):
+        return "edit"
+    return ""
 
 
 def _classify_proof_scene_type(scene: "ScenePlan") -> str:
