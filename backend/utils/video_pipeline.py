@@ -2196,8 +2196,13 @@ def _screen_demo_frame_states(scene: "ScenePlan", demo_type: str, fps: int = 10)
     if demo_type == "call_script_demo":
         for idx in range(frame_count):
             progress = idx / float(max(1, frame_count - 1))
-            visible = min(3, 1 + int(progress * 3.2))
-            states.append({"call_visible": visible})
+            if progress < 0.30:
+                visible = 1
+            elif progress < 0.62:
+                visible = 2
+            else:
+                visible = 3
+            states.append({"call_visible": visible, "call_progress": progress})
         return states
 
     if demo_type == "bill_compare_demo":
@@ -2241,7 +2246,7 @@ def _render_screen_demo_frame_fallback(scene: "ScenePlan", demo_type: str, state
         )
         draw.line([(0, yy), (_CARD_W, yy)], fill=col)
 
-    browser = [56, 96, _CARD_W - 56, _CARD_H - 110]
+    browser = [56, 84, _CARD_W - 56, _CARD_H - 250]
     draw.rounded_rectangle(browser, radius=42, fill=(17, 23, 34), outline=(48, 62, 84), width=3)
     topbar = [browser[0], browser[1], browser[2], browser[1] + 126]
     draw.rounded_rectangle(topbar, radius=42, fill=(24, 31, 45))
@@ -2261,7 +2266,7 @@ def _render_screen_demo_frame_fallback(scene: "ScenePlan", demo_type: str, state
     small_font = _try_load_font(30, bold=False)
 
     content_x = browser[0] + 42
-    content_y = browser[1] + 168
+    content_y = browser[1] + 152
     pill_w = 220
     draw.rounded_rectangle([content_x, content_y, content_x + pill_w, content_y + 56], radius=28, fill=(35, 62, 102))
     pill_text = {
@@ -2321,9 +2326,11 @@ def _render_screen_demo_frame_fallback(scene: "ScenePlan", demo_type: str, state
         draw.text((content_x, content_y + 88), "What To Say", font=title_font, fill=(255, 255, 255))
         yy = content_y + 236
         visible = int(state.get("call_visible", 3) or 3)
-        for line in list(data.get("lines", []))[: max(0, min(3, visible))]:
+        for line_idx, line in enumerate(list(data.get("lines", []))[: max(0, min(3, visible))]):
             box = [content_x, yy, browser[2] - 42, yy + 150]
-            draw.rounded_rectangle(box, radius=28, fill=(13, 19, 30), outline=(44, 58, 78), width=2)
+            fill_color = (13, 19, 30) if line_idx < max(0, visible - 1) else (18, 28, 42)
+            outline_color = (44, 58, 78) if line_idx < max(0, visible - 1) else (92, 132, 198)
+            draw.rounded_rectangle(box, radius=28, fill=fill_color, outline=outline_color, width=2)
             line_text = _wrap_text(draw, str(line), body_font, max_width=box[2] - box[0] - 50, max_lines=2)
             ly = box[1] + 34
             for part in line_text:
@@ -2436,12 +2443,7 @@ def _hook_shock_text(scene: "ScenePlan", domain: str) -> str:
     raw = _clean_text(getattr(scene, "on_screen_text", "") or scene.subtitle or scene.source_text or "")
     pack = _DOMAIN_PACKS.get(domain or "", {})
     if domain == "phone_bill":
-        upper = raw.upper()
-        if any(tok in upper for tok in ["LOWER", "SAVE", "CUT"]):
-            return "LOWER YOUR PHONE BILL"
-        if any(tok in upper for tok in ["SERVICE", "CARRIER", "PLAN"]):
-            return "STOP OVERPAYING FOR PHONE SERVICE"
-        return "YOUR PHONE BILL IS TOO HIGH"
+        return "STOP OVERPAYING\nFOR PHONE SERVICE"
     if domain == "subscriptions":
         return "Check this before you get charged again."
     if domain == "airline":
@@ -4981,7 +4983,7 @@ def assemble_video(scenes: List[ScenePlan], run_id: str, fps: int = 30, audio_pa
             clip = clip.fx(vfx.resize, lambda t: 1 + 0.02 * (t / max(0.01, clip.duration)))
         if not FAST_DISABLE_EFFECTS:
             fade_d = min(0.12, max(0.0, clip.duration * 0.25))
-            if fade_d > 0.01:
+            if fade_d > 0.01 and len(clips) > 0:
                 clip = clip.fadein(fade_d).fadeout(fade_d)
         clips.append(clip)
 
