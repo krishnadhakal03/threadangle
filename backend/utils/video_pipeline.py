@@ -1747,6 +1747,25 @@ def _extract_before_after_values(scene: "ScenePlan") -> tuple[str, str]:
     return before_label, after_label
 
 
+def _shorten_proof_text(text: str, max_words: int = 12) -> str:
+    words = re.findall(r"[A-Za-z0-9'$/%.-]+", _clean_text(text))
+    if not words:
+        return ""
+    filler = {
+        "the", "that", "this", "with", "into", "your", "just", "really", "very",
+        "line", "lines", "today", "right", "barely", "same", "still",
+    }
+    compact = [word for word in words if word.lower() not in filler]
+    compact = compact or words
+    return " ".join(compact[:max_words]).strip()
+
+
+def _log_proof_audit(scene: "ScenePlan", *text_groups: str) -> None:
+    groups = [_clean_text(group) for group in text_groups if _clean_text(group)]
+    card_text = " | ".join(groups[:3])
+    print(f"[PROOF_AUDIT] scene={getattr(scene, 'idx', 'unknown')} card_text=\"{card_text}\"")
+
+
 def _hook_shock_text(scene: "ScenePlan", domain: str) -> str:
     raw = _clean_text(getattr(scene, "on_screen_text", "") or scene.subtitle or scene.source_text or "")
     pack = _DOMAIN_PACKS.get(domain or "", {})
@@ -1844,7 +1863,11 @@ def _render_prompt_demo_clip(scene: "ScenePlan", run_id: str) -> str:
     out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_proof_prompt.mp4"
 
     display = _clean_text(getattr(scene, "on_screen_text", "") or scene.subtitle or scene.source_text or "")
-    prompt_text = display or _clean_text(scene.subtitle or scene.source_text or "") or "Write me a better script for this topic."
+    prompt_text = _shorten_proof_text(
+        display or _clean_text(scene.subtitle or scene.source_text or "") or "Write me a better script for this topic.",
+        max_words=12,
+    )
+    _log_proof_audit(scene, "AI PROMPT", prompt_text, "Copy this prompt")
 
     img = Image.new("RGB", (_CARD_W, _CARD_H), (8, 10, 16))
     draw = ImageDraw.Draw(img)
@@ -1869,28 +1892,28 @@ def _render_prompt_demo_clip(scene: "ScenePlan", run_id: str) -> str:
         x = card[0] + 42 + idx * 34
         draw.ellipse([x, card[1] + 44, x + 20, card[1] + 64], fill=dot_color)
 
-    label_font = _try_load_font(44, bold=True)
+    label_font = _try_load_font(52, bold=True)
     title_font = _try_load_font(86, bold=True)
-    body_font = _try_load_font(56, bold=False)
-    chip_font = _try_load_font(34, bold=True)
+    body_font = _try_load_font(66, bold=False)
+    chip_font = _try_load_font(42, bold=True)
 
     draw.text((card[0] + 150, card[1] + 34), "AI PROMPT", font=label_font, fill=(135, 168, 255))
-    draw.text((card[0] + 70, card[1] + 188), "Prompt to paste into ChatGPT", font=title_font, fill=(255, 255, 255))
+    draw.text((card[0] + 70, card[1] + 188), "Paste this into ChatGPT", font=title_font, fill=(255, 255, 255))
 
-    prompt_box = [card[0] + 56, card[1] + 360, card[2] - 56, card[3] - 220]
+    prompt_box = [card[0] + 56, card[1] + 360, card[2] - 56, card[3] - 240]
     draw.rounded_rectangle(prompt_box, radius=34, fill=(10, 14, 24), outline=(52, 72, 110), width=3)
-    prompt_lines = _wrap_text(draw, prompt_text, body_font, max_width=prompt_box[2] - prompt_box[0] - 72, max_lines=8)
-    yy = prompt_box[1] + 46
+    prompt_lines = _wrap_text(draw, prompt_text, body_font, max_width=prompt_box[2] - prompt_box[0] - 88, max_lines=4)
+    yy = prompt_box[1] + 58
     for line in prompt_lines:
-        draw.text((prompt_box[0] + 36, yy), line, font=body_font, fill=(231, 237, 250))
-        yy += 72
+        draw.text((prompt_box[0] + 44, yy), line, font=body_font, fill=(231, 237, 250))
+        yy += 88
 
-    chip_w = 320
-    chip_h = 72
-    chip_x = prompt_box[2] - chip_w - 28
-    chip_y = prompt_box[3] + 74
+    chip_w = 420
+    chip_h = 88
+    chip_x = prompt_box[0]
+    chip_y = prompt_box[3] + 56
     draw.rounded_rectangle([chip_x, chip_y, chip_x + chip_w, chip_y + chip_h], radius=30, fill=(37, 145, 255))
-    draw.text((chip_x + 28, chip_y + 18), "Copy this prompt", font=chip_font, fill=(255, 255, 255))
+    draw.text((chip_x + 32, chip_y + 22), "Copy this prompt", font=chip_font, fill=(255, 255, 255))
 
     img.save(png_path, "PNG")
     _image_to_mp4(
@@ -1916,6 +1939,10 @@ def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
     raw_text = _clean_text(scene.subtitle or scene.source_text or "")
     savings_match = re.search(r"\b(save|saving|savings)\b.*?(\$\s*[0-9]+(?:\.[0-9]{1,2})?)", raw_text, re.IGNORECASE)
     savings_label = savings_match.group(2).replace(" ", "") if savings_match else yearly_label
+    monthly_label = _shorten_proof_text(monthly_label, max_words=3)
+    yearly_label = _shorten_proof_text(yearly_label, max_words=3)
+    savings_label = _shorten_proof_text(savings_label, max_words=3)
+    _log_proof_audit(scene, "Carrier bill", monthly_label, savings_label)
 
     img = Image.new("RGB", (_CARD_W, _CARD_H), (238, 241, 246))
     draw = ImageDraw.Draw(img)
@@ -1936,11 +1963,7 @@ def _render_bill_demo_clip(scene: "ScenePlan", run_id: str) -> str:
     draw.text((sheet[0] + 42, sheet[1] + 30), "CARRIER BILL", font=heading_font, fill=(255, 255, 255))
     draw.text((sheet[2] - 260, sheet[1] + 42), "AUTO PAY", font=meta_font, fill=(170, 186, 220))
 
-    rows = [
-        ("Monthly charge", monthly_label),
-        ("Projected annual", yearly_label),
-        ("Potential savings", savings_label),
-    ]
+    rows = [("Monthly charge", monthly_label), ("Annual total", yearly_label), ("Savings", savings_label)]
     y = sheet[1] + 220
     for idx, (label, value) in enumerate(rows):
         row_bottom = y + 220
@@ -1975,6 +1998,9 @@ def _render_savings_math_clip(scene: "ScenePlan", run_id: str) -> str:
     png_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_proof_math.png"
     out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_proof_math.mp4"
     monthly_label, yearly_label = _extract_monthly_and_yearly_values(scene)
+    monthly_compact = _shorten_proof_text(monthly_label.replace("/month", "/mo"), max_words=3)
+    yearly_compact = _shorten_proof_text(yearly_label, max_words=3)
+    _log_proof_audit(scene, "Savings math", monthly_compact, yearly_compact)
 
     img = Image.new("RGB", (_CARD_W, _CARD_H), (10, 14, 18))
     draw = ImageDraw.Draw(img)
@@ -1996,10 +2022,10 @@ def _render_savings_math_clip(scene: "ScenePlan", run_id: str) -> str:
     sub_font = _try_load_font(44, bold=False)
 
     draw.text((panel[0] + 54, panel[1] + 62), "SAVINGS MATH", font=label_font, fill=(116, 221, 168))
-    draw.text((panel[0] + 54, panel[1] + 230), monthly_label.replace("/month", "/mo"), font=hero_font, fill=(255, 255, 255))
+    draw.text((panel[0] + 54, panel[1] + 230), monthly_compact, font=hero_font, fill=(255, 255, 255))
     draw.text((panel[0] + 54, panel[1] + 398), "every month", font=sub_font, fill=(173, 188, 198))
     draw.text((panel[0] + 54, panel[1] + 650), "=", font=equals_font, fill=(116, 221, 168))
-    draw.text((panel[0] + 54, panel[1] + 860), yearly_label.replace("/year", "/year"), font=hero_font, fill=(255, 255, 255))
+    draw.text((panel[0] + 54, panel[1] + 860), yearly_compact, font=hero_font, fill=(255, 255, 255))
     draw.text((panel[0] + 54, panel[1] + 1028), "per year", font=sub_font, fill=(173, 188, 198))
 
     note_box = [panel[0] + 54, panel[3] - 230, panel[2] - 54, panel[3] - 82]
@@ -2026,6 +2052,9 @@ def _render_before_after_demo_clip(scene: "ScenePlan", run_id: str) -> str:
     png_path = TEMP_DIR / f"{run_id}_scene_{scene.idx}_proof_before_after.png"
     out_path = RAW_DIR / f"{run_id}_scene_{scene.idx}_proof_before_after.mp4"
     before_label, after_label = _extract_before_after_values(scene)
+    before_compact = _shorten_proof_text(before_label, max_words=3)
+    after_compact = _shorten_proof_text(after_label, max_words=3)
+    _log_proof_audit(scene, "Before / After", before_compact, after_compact)
 
     img = Image.new("RGB", (_CARD_W, _CARD_H), (8, 12, 18))
     draw = ImageDraw.Draw(img)
@@ -2051,9 +2080,9 @@ def _render_before_after_demo_clip(scene: "ScenePlan", run_id: str) -> str:
     draw.rounded_rectangle(before_box, radius=34, fill=(42, 25, 26))
     draw.rounded_rectangle(after_box, radius=34, fill=(18, 58, 36))
     draw.text((before_box[0] + 34, before_box[1] + 34), "BEFORE", font=label_font, fill=(255, 190, 190))
-    draw.text((before_box[0] + 34, before_box[1] + 130), before_label, font=amount_font, fill=(255, 255, 255))
+    draw.text((before_box[0] + 34, before_box[1] + 130), before_compact, font=amount_font, fill=(255, 255, 255))
     draw.text((after_box[0] + 34, after_box[1] + 34), "AFTER", font=label_font, fill=(176, 255, 200))
-    draw.text((after_box[0] + 34, after_box[1] + 130), after_label, font=amount_font, fill=(255, 255, 255))
+    draw.text((after_box[0] + 34, after_box[1] + 130), after_compact, font=amount_font, fill=(255, 255, 255))
     draw.text((panel[0] + 44, panel[3] - 120), "Use AI to compare the plan before you pay.", font=small_font, fill=(213, 224, 232))
 
     img.save(png_path, "PNG")
