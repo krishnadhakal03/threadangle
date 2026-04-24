@@ -3328,7 +3328,7 @@ def _hook_shock_text(scene: "ScenePlan", domain: str) -> str:
     raw = _clean_text(getattr(scene, "on_screen_text", "") or scene.subtitle or scene.source_text or "")
     pack = _DOMAIN_PACKS.get(domain or "", {})
     if _day3_workflow_step(scene) == "hook":
-        return "Stop spending hours\nmaking short videos"
+        return "Stop spending\nhours making\nshort videos"
     if domain == "phone_bill":
         return _phone_bill_hook_variant()
     if domain == "subscriptions":
@@ -3401,13 +3401,23 @@ def _render_hook_shock_clip(scene: "ScenePlan", run_id: str) -> str:
     else:
         lines = []
 
-    hook_font_sizes = [92, 86, 80, 74, 68, 62] if domain == "airline" else [116, 110, 104, 98, 92, 86, 80]
-    hook_max_lines = 4 if domain == "airline" else 3
+    if _day3_workflow_step(scene) == "hook":
+        hook_font_sizes = [88, 82, 76, 70, 64]
+        hook_max_lines = 3
+        hook_max_height = 390
+    elif domain == "airline":
+        hook_font_sizes = [92, 86, 80, 74, 68, 62]
+        hook_max_lines = 4
+        hook_max_height = 430
+    else:
+        hook_font_sizes = [116, 110, 104, 98, 92, 86, 80]
+        hook_max_lines = 3
+        hook_max_height = 340
     title_font, fitted_lines, line_height = _fit_text_block(
         draw,
         shock_text.upper(),
         max_width=int((card[2] - card[0]) * 0.9),
-        max_height=430 if domain == "airline" else 340,
+        max_height=hook_max_height,
         font_sizes=hook_font_sizes,
         max_lines=hook_max_lines,
         bold=True,
