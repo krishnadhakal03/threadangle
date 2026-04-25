@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "One Prompt Summarizer",
+  "version": "0.1.0",
+  "description": "Demo Chrome extension that summarizes the current webpage.",
+  "permissions": ["activeTab", "scripting", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Summarize page"
+  }
+}
