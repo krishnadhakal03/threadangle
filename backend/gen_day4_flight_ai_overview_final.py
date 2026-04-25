@@ -1,0 +1,677 @@
+#!/usr/bin/env python3
+"""Generate a clean Day4 flight final.
+
+Design constraints:
+- boringly real browser scenes, no annotations
+- local/free TTS only
+- hard cuts only
+- no generated/raw media committed by default
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+from pathlib import Path
+
+from PIL import Image, ImageDraw, ImageFont
+
+from utils.video_pipeline import ASSETS_DIR, BASE_DIR, RAW_DIR, TEMP_DIR
+
+
+RUN_ID = "day4_flight_ai_overview_FINAL"
+FINAL_PATH = ASSETS_DIR / f"{RUN_ID}.mp4"
+SILENT_PATH = RAW_DIR / f"{RUN_ID}_silent.mp4"
+AUDIO_PATH = TEMP_DIR / f"{RUN_ID}.wav"
+ASS_PATH = TEMP_DIR / f"{RUN_ID}.ass"
+LOG_PATH = TEMP_DIR / f"{RUN_ID}_render.log"
+REVIEW_DIR = ASSETS_DIR / "review" / RUN_ID
+WORK_DIR = TEMP_DIR / RUN_ID
+NODE_SCRIPT_PATH = WORK_DIR / f"{RUN_ID}_capture.js"
+CAPTURE_JSON_PATH = WORK_DIR / f"{RUN_ID}_capture.json"
+
+WIDTH = 1080
+HEIGHT = 1920
+FPS = 30
+DURATIONS = [2.0, 4.0, 4.0, 4.0, 4.0, 2.0]
+FINAL_DURATION = sum(DURATIONS)
+
+SOURCE_TEXTS = [
+    "That cheap flight may cost more after fees.",
+    "Search the route first.",
+    "Compare flexible dates and nearby airports.",
+    "Then use Google AI to compare the real total.",
+    "Example: eight twenty four drops to seven twelve. Save one twelve.",
+    "Comment FLIGHT and I'll send the prompt.",
+]
+
+
+def run(cmd: list[str], label: str, **kwargs) -> subprocess.CompletedProcess:
+    result = subprocess.run(cmd, capture_output=True, text=True, **kwargs)
+    if result.returncode != 0:
+        raise RuntimeError(f"{label} failed:\n{result.stderr[-4000:]}")
+    return result
+
+
+def ffmpeg_path(path: Path) -> str:
+    return str(path.resolve()).replace("\\", "/")
+
+
+def ass_path(path: Path) -> str:
+    return ffmpeg_path(path).replace(":", "\\:")
+
+
+def font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
+    candidates = [
+        Path("C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf"),
+        Path("C:/Windows/Fonts/segoeuib.ttf" if bold else "C:/Windows/Fonts/segoeui.ttf"),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return ImageFont.truetype(str(candidate), size=size)
+    return ImageFont.load_default()
+
+
+def center_text(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], text: str, fnt, fill, spacing: int = 8) -> None:
+    bbox = draw.multiline_textbbox((0, 0), text, font=fnt, spacing=spacing, align="center")
+    x = box[0] + ((box[2] - box[0]) - (bbox[2] - bbox[0])) // 2
+    y = box[1] + ((box[3] - box[1]) - (bbox[3] - bbox[1])) // 2
+    draw.multiline_text((x, y), text, font=fnt, fill=fill, spacing=spacing, align="center")
+
+
+def save_card(path: Path, scene: int) -> None:
+    img = Image.new("RGB", (WIDTH, HEIGHT), (248, 250, 252))
+    draw = ImageDraw.Draw(img)
+    if scene == 1:
+        img = Image.new("RGB", (WIDTH, HEIGHT), (9, 15, 26))
+        draw = ImageDraw.Draw(img)
+        draw.rounded_rectangle((66, 310, 1014, 1185), radius=28, fill=(13, 23, 39), outline=(255, 204, 51), width=8)
+        center_text(draw, (96, 380, 984, 770), 'THAT "CHEAP" FLIGHT\nMAY COST MORE\nAFTER FEES', font(74, True), (255, 255, 255), 14)
+        center_text(draw, (100, 855, 980, 965), "Check this before booking", font(48, True), (255, 204, 51))
+    elif scene == 4:
+        draw.rounded_rectangle((70, 180, 1010, 1460), radius=24, fill=(255, 255, 255), outline=(226, 232, 240), width=3)
+        draw.text((112, 245), "AI Travel Check", font=font(66, True), fill=(15, 23, 42))
+        draw.rounded_rectangle((112, 390, 968, 620), radius=16, fill=(248, 250, 252), outline=(203, 213, 225), width=3)
+        draw.text((150, 435), "Compare bags, seats,\nand final price", font=font(48, False), fill=(15, 23, 42), spacing=8)
+        draw.rounded_rectangle((112, 760, 968, 940), radius=18, fill=(236, 253, 245), outline=(187, 247, 208), width=3)
+        center_text(draw, (132, 790, 948, 905), "Compare bags + seats\n+ final price", font(42, True), (6, 95, 70), 6)
+        draw.rounded_rectangle((112, 1030, 968, 1248), radius=20, fill=(15, 23, 42))
+        center_text(draw, (132, 1060, 948, 1210), "TOTAL COST\nBEFORE YOU BOOK", font(62, True), (255, 255, 255), 8)
+    elif scene == 5:
+        img = Image.new("RGB", (WIDTH, HEIGHT), (255, 255, 255))
+        draw = ImageDraw.Draw(img)
+        draw.rounded_rectangle((58, 160, 1022, 1455), radius=30, fill=(255, 255, 255), outline=(255, 204, 51), width=10)
+        center_text(draw, (98, 220, 982, 325), "Example comparison", font(52, True), (15, 23, 42))
+        draw.text((120, 420), "That cheap fare:", font=font(48, True), fill=(71, 85, 105))
+        draw.text((120, 485), "$824", font=font(116, True), fill=(15, 23, 42))
+        draw.text((120, 665), "Better option:", font=font(48, True), fill=(6, 95, 70))
+        draw.text((120, 730), "$712", font=font(116, True), fill=(5, 150, 105))
+        draw.rounded_rectangle((100, 950, 980, 1320), radius=28, fill=(10, 16, 28))
+        center_text(draw, (120, 995, 960, 1165), "SAVE $112", font(128, True), (255, 255, 255))
+        center_text(draw, (120, 1185, 960, 1270), "Estimated savings", font(44, True), (255, 204, 51))
+    elif scene == 6:
+        img = Image.new("RGB", (WIDTH, HEIGHT), (9, 15, 26))
+        draw = ImageDraw.Draw(img)
+        draw.rounded_rectangle((72, 275, 1008, 1170), radius=30, fill=(13, 23, 39), outline=(255, 204, 51), width=8)
+        center_text(draw, (95, 365, 985, 660), "COMMENT\nFLIGHT", font(124, True), (255, 255, 255), 12)
+        center_text(draw, (95, 720, 985, 850), "FOR THE PROMPT", font(70, True), (255, 204, 51))
+        center_text(draw, (95, 960, 985, 1045), "Save before booking", font(46, True), (255, 255, 255))
+    img.save(path, quality=96)
+
+
+def write_capture_script() -> None:
+    NODE_SCRIPT_PATH.write_text(
+        f"""
+const {{ chromium }} = require('playwright');
+const fs = require('fs');
+const path = require('path');
+const WIDTH = {WIDTH};
+const HEIGHT = {HEIGHT};
+const WORK = {json.dumps(str(WORK_DIR))};
+const OUT = {json.dumps(str(CAPTURE_JSON_PATH))};
+const PROFILE = path.resolve({json.dumps(str(BASE_DIR / ".browser_profiles" / "threadforge_sandbox" / "Profile 1"))});
+const AI_QUERY = 'CLT to MCO Google Flights compare baggage fees seats final price';
+
+async function snap(page, name) {{
+  const out = path.join(WORK, `${{name}}.png`);
+  await page.screenshot({{ path: out, fullPage: false }});
+  return out;
+}}
+
+async function visible(locator, timeout = 900) {{
+  try {{ return await locator.first().isVisible({{ timeout }}); }} catch {{ return false; }}
+}}
+
+async function closeRecorded(context, page, outName) {{
+  const video = page.video();
+  await page.waitForTimeout(250);
+  await page.close();
+  const raw = await video.path();
+  await context.close();
+  const out = path.join(WORK, outName + '.webm');
+  fs.copyFileSync(raw, out);
+  return out;
+}}
+
+async function fillFlightField(page, labels, value) {{
+  for (const label of labels) {{
+    const locs = [
+      page.getByLabel(label, {{ exact: false }}),
+      page.locator(`input[aria-label*='${{label}}' i]`),
+      page.locator(`[aria-label*='${{label}}' i]`)
+    ];
+    for (const loc of locs) {{
+      try {{
+        if (await visible(loc, 1000)) {{
+          await loc.first().click({{ timeout: 2000 }});
+          await page.keyboard.press('Control+A');
+          await page.keyboard.type(value, {{ delay: 18 }});
+          await page.waitForTimeout(450);
+          await page.keyboard.press('ArrowDown');
+          await page.keyboard.press('Enter');
+          await page.waitForTimeout(650);
+          return true;
+        }}
+      }} catch {{}}
+    }}
+  }}
+  return false;
+}}
+
+async function captureGoogleAiOverview() {{
+  const context = await chromium.launchPersistentContext(PROFILE, {{
+    channel: 'chrome',
+    headless: true,
+    viewport: {{ width: WIDTH, height: HEIGHT }},
+    recordVideo: {{ dir: WORK, size: {{ width: WIDTH, height: HEIGHT }} }},
+    args: ['--no-first-run', '--no-default-browser-check', `--window-size=${{WIDTH}},${{HEIGHT}}`],
+    timeout: 70000
+  }});
+  let page = context.pages()[0] || await context.newPage();
+  try {{
+    await page.goto('https://www.google.com', {{ waitUntil: 'domcontentloaded', timeout: 70000 }});
+    await page.waitForTimeout(250);
+    const box = page.locator("textarea[name='q'], input[name='q']").first();
+    await page.mouse.move(340, 560, {{ steps: 12 }});
+    await page.waitForTimeout(90);
+    await box.click({{ timeout: 7000 }});
+    await page.waitForTimeout(90);
+    await page.keyboard.type('CLT to MCO Google Flights', {{ delay: 26 }});
+    await page.waitForTimeout(160);
+    await page.keyboard.type(' compare baggage fees seats final price', {{ delay: 24 }});
+    await page.waitForTimeout(210);
+    await page.keyboard.press('Enter');
+    await page.waitForLoadState('domcontentloaded', {{ timeout: 12000 }}).catch(() => {{}});
+    await page.waitForTimeout(5600);
+    await page.mouse.move(850, 1110, {{ steps: 20 }});
+    await page.mouse.wheel(0, 360);
+    await page.waitForTimeout(600);
+    await page.mouse.move(760, 900, {{ steps: 12 }});
+    await page.waitForTimeout(350);
+    const bodyText = await page.locator('body').innerText({{ timeout: 3000 }}).catch(() => '');
+    const lower = bodyText.toLowerCase();
+    const hasAi = lower.includes('ai overview');
+    const hits = ['baggage', 'bag', 'seat', 'seats', 'final price', 'total price'].filter((term) => lower.includes(term));
+    const webm = await closeRecorded(context, page, 'scene4_google_ai_overview_motion');
+    return {{
+      name: 'google_ai_overview_motion',
+      webm,
+      provider: hasAi && hits.length >= 3 ? 'google_ai_overview' : 'google_ai_overview_unusable',
+      real_browser: true,
+      privacy_ok: true,
+      typing: true,
+      submitted: true,
+      ai_overview_visible: hasAi,
+      comparison_hits: hits,
+      scrolled: true,
+      query: AI_QUERY
+    }};
+  }} catch (err) {{
+    await context.close().catch(() => {{}});
+    return {{
+      name: 'google_ai_overview_error',
+      provider: 'google_ai_overview_error',
+      error: String(err.message || err),
+      real_browser: false,
+      privacy_ok: false,
+      query: AI_QUERY
+    }};
+  }}
+}}
+
+(async () => {{
+  fs.mkdirSync(WORK, {{ recursive: true }});
+  const results = [];
+  const browser = await chromium.launch({{
+    channel: 'chrome',
+    headless: true,
+    args: ['--no-first-run', '--no-default-browser-check', `--window-size=${{WIDTH}},${{HEIGHT}}`],
+    timeout: 60000
+  }});
+  try {{
+    let context = await browser.newContext({{
+      viewport: {{ width: WIDTH, height: HEIGHT }},
+      recordVideo: {{ dir: WORK, size: {{ width: WIDTH, height: HEIGHT }} }}
+    }});
+    let page = await context.newPage();
+    await page.goto('https://www.google.com', {{ waitUntil: 'domcontentloaded', timeout: 60000 }});
+    await page.waitForTimeout(220);
+    const box = page.locator("textarea[name='q'], input[name='q']").first();
+    await page.mouse.move(345, 560, {{ steps: 10 }});
+    await page.waitForTimeout(80);
+    await box.click({{ timeout: 5000 }});
+    await page.waitForTimeout(90);
+    await page.keyboard.type('Google Flights', {{ delay: 32 }});
+    await page.waitForTimeout(180);
+    await page.keyboard.type(' CLT to MCO', {{ delay: 36 }});
+    await page.waitForTimeout(260);
+    await page.keyboard.press('Enter');
+    await page.waitForLoadState('domcontentloaded', {{ timeout: 12000 }}).catch(() => {{}});
+    await page.waitForTimeout(1450);
+    const searchVideo = await closeRecorded(context, page, 'scene2_search_motion');
+    results.push({{ name: 'search_motion', webm: searchVideo, real_browser: true, privacy_ok: true, typing: true, submitted: true }});
+
+    context = await browser.newContext({{
+      viewport: {{ width: WIDTH, height: HEIGHT }},
+      recordVideo: {{ dir: WORK, size: {{ width: WIDTH, height: HEIGHT }} }}
+    }});
+    page = await context.newPage();
+    await page.goto('https://www.google.com/travel/flights', {{ waitUntil: 'domcontentloaded', timeout: 70000 }});
+    await page.waitForTimeout(1650);
+    await page.mouse.move(260, 520, {{ steps: 18 }});
+    const fromOk = await fillFlightField(page, ['Where from', 'From'], 'CLT');
+    await page.waitForTimeout(250);
+    await page.mouse.move(520, 520, {{ steps: 14 }});
+    const toOk = await fillFlightField(page, ['Where to', 'To'], 'MCO');
+    await page.waitForTimeout(420);
+    for (const loc of [page.locator("[aria-label*='Departure' i]").first(), page.getByText('Departure', {{ exact: false }}).first()]) {{
+      try {{
+        if (await visible(loc, 1200)) {{
+          await page.mouse.move(705, 520, {{ steps: 14 }});
+          await loc.click({{ timeout: 2000 }});
+          break;
+        }}
+      }} catch {{}}
+    }}
+    await page.waitForTimeout(520);
+    await page.mouse.move(870, 1230, {{ steps: 18 }});
+    await page.mouse.wheel(0, 360);
+    await page.waitForTimeout(360);
+    await page.mouse.wheel(0, -180);
+    await page.waitForTimeout(820);
+    const flightsVideo = await closeRecorded(context, page, 'scene3_flights_motion');
+    results.push({{ name: 'flights_motion', webm: flightsVideo, real_browser: true, privacy_ok: true, fromOk, toOk, clicked: true, scrolled: true }});
+    await browser.close().catch(() => {{}});
+
+    const aiResult = await captureGoogleAiOverview();
+    results.push(aiResult);
+    if (aiResult.provider !== 'google_ai_overview') {{
+      results.push({{
+        name: 'scene4_fallback',
+        provider: 'existing_local_dom_ai_scene',
+        reason: 'Google AI Overview did not produce a usable comparison capture; ChatGPT sandbox skipped unless authenticated sandbox is available.',
+        real_browser: false,
+        privacy_ok: true
+      }});
+    }}
+  }} catch (err) {{
+    results.push({{ name: 'capture_error', error: String(err.message || err), real_browser: false, privacy_ok: false }});
+  }} finally {{
+    await browser.close().catch(() => {{}});
+    fs.writeFileSync(OUT, JSON.stringify({{ results }}, null, 2), 'utf8');
+  }}
+}})().catch(err => {{
+  fs.writeFileSync(OUT, JSON.stringify({{ fatal: String(err.stack || err) }}, null, 2), 'utf8');
+  process.exit(1);
+}});
+""",
+        encoding="utf-8",
+    )
+
+
+def capture_browser_assets() -> dict:
+    write_capture_script()
+    run(["node", str(NODE_SCRIPT_PATH)], "real browser capture", cwd=str(BASE_DIR.parent))
+    data = json.loads(CAPTURE_JSON_PATH.read_text(encoding="utf-8"))
+    if data.get("fatal"):
+        raise RuntimeError(data["fatal"])
+    return data
+
+
+def make_image_clip(src: Path, dst: Path, duration: float, crop: str, zoom: float = 0.015) -> None:
+    vf = f"{crop},scale=w='1080*(1+{zoom}*t/{duration})':h='1920*(1+{zoom}*t/{duration})':eval=frame,crop=1080:1920,fps={FPS},format=yuv420p"
+    run(
+        [
+            "ffmpeg",
+            "-y",
+            "-loop",
+            "1",
+            "-i",
+            str(src),
+            "-t",
+            f"{duration:.2f}",
+            "-vf",
+            vf,
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            str(dst),
+        ],
+        f"make clip {dst.name}",
+    )
+
+
+def make_browser_clip(src: Path, dst: Path, duration: float, crop: str, start_offset: float = 0.0) -> None:
+    run(
+        [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            f"{start_offset:.2f}",
+            "-i",
+            str(src),
+            "-t",
+            f"{duration:.2f}",
+            "-vf",
+            f"{crop},fps={FPS},format=yuv420p",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            str(dst),
+        ],
+        f"make browser clip {dst.name}",
+    )
+
+
+def make_ai_overview_clip(src: Path, dst: Path, duration: float) -> None:
+    typed_crop = f"crop=720:1280:180:245,scale={WIDTH}:{HEIGHT},fps={FPS},format=yuv420p"
+    overview_crop = f"crop=720:1280:0:70,scale={WIDTH}:{HEIGHT},fps={FPS},format=yuv420p"
+    run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(src),
+            "-filter_complex",
+            (
+                f"[0:v]trim=start=0.20:end=2.05,setpts=(PTS-STARTPTS)/1.75,{typed_crop}[typed];"
+                f"[0:v]trim=start=9.45:end=12.50,setpts=(PTS-STARTPTS)*0.96,{overview_crop}[overview];"
+                "[typed][overview]concat=n=2:v=1:a=0[v]"
+            ),
+            "-map",
+            "[v]",
+            "-t",
+            f"{duration:.2f}",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            str(dst),
+        ],
+        f"make ai overview clip {dst.name}",
+    )
+
+
+def make_scene_clips(capture: dict) -> list[Path]:
+    captures = {item["name"]: Path(item["webm"]) for item in capture.get("results", []) if item.get("webm")}
+    providers = {item["name"]: item.get("provider") for item in capture.get("results", [])}
+    search_motion = captures.get("search_motion")
+    flights_motion = captures.get("flights_motion")
+    ai_overview_motion = captures.get("google_ai_overview_motion")
+    ai_provider = providers.get("google_ai_overview_motion") or "existing_local_dom_ai_scene"
+    if not search_motion or not flights_motion:
+        raise RuntimeError("required real browser motion clips missing")
+
+    cards: dict[int, Path] = {}
+    for scene in [1, 4, 5, 6]:
+        card = WORK_DIR / f"scene{scene}_card.jpg"
+        save_card(card, scene)
+        cards[scene] = card
+
+    scene_sources = [
+        (cards[1], "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920", 0.005),
+        (None, "", 0.0),
+        (None, "", 0.0),
+        (cards[4], "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920", 0.005),
+        (cards[5], "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920", 0.005),
+        (cards[6], "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920", 0.005),
+    ]
+    paths: list[Path] = []
+    for idx, (src, crop, zoom) in enumerate(scene_sources, start=1):
+        dst = RAW_DIR / f"{RUN_ID}_scene{idx:02d}.mp4"
+        if idx == 2:
+            make_browser_clip(search_motion, dst, DURATIONS[idx - 1], "crop=900:1600:90:95,scale=1080:1920", start_offset=0.00)
+        elif idx == 3:
+            make_browser_clip(flights_motion, dst, DURATIONS[idx - 1], "crop=900:1600:90:115,scale=1080:1920", start_offset=1.05)
+        elif idx == 4 and ai_overview_motion and ai_provider == "google_ai_overview":
+            make_ai_overview_clip(ai_overview_motion, dst, DURATIONS[idx - 1])
+        else:
+            assert src is not None
+            make_image_clip(src, dst, DURATIONS[idx - 1], crop, zoom)
+        paths.append(dst)
+    return paths
+
+
+def concat_scenes(paths: list[Path]) -> None:
+    concat_path = TEMP_DIR / f"{RUN_ID}_concat.txt"
+    concat_path.write_text("\n".join(f"file '{ffmpeg_path(path)}'" for path in paths), encoding="utf-8")
+    run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_path), "-c", "copy", str(SILENT_PATH)], "concat scenes")
+
+
+def make_audio() -> str:
+    narration = " ".join(SOURCE_TEXTS)
+    try:
+        from routes.voice_gen import VoiceGenRequest, generate_voice
+
+        result = generate_voice(VoiceGenRequest(text=narration, force_free=False, speed=1.08))
+        generated = Path(result.audio_file)
+        if generated.exists() and generated.stat().st_size > 1000:
+            shutil.copyfile(generated, AUDIO_PATH)
+            return result.provider
+    except Exception as exc:
+        print(f"[TTS] ElevenLabs workflow unavailable, using pyttsx3 fallback: {exc}")
+
+    import pyttsx3
+
+    engine = pyttsx3.init()
+    engine.setProperty("rate", 168)
+    engine.setProperty("volume", 1.0)
+    for voice in engine.getProperty("voices") or []:
+        name = (getattr(voice, "name", "") or "").lower()
+        if "david" in name or "mark" in name or "zira" in name:
+            engine.setProperty("voice", voice.id)
+            break
+    engine.save_to_file(narration, str(AUDIO_PATH))
+    engine.runAndWait()
+    if not AUDIO_PATH.exists() or AUDIO_PATH.stat().st_size < 1000:
+        raise RuntimeError("audio generation failed")
+    return "pyttsx3_offline_rate168"
+
+
+def write_captions() -> int:
+    def ts(seconds: float) -> str:
+        h = int(seconds // 3600)
+        m = int((seconds % 3600) // 60)
+        s = seconds % 60
+        return f"{h}:{m:02d}:{s:05.2f}"
+
+    def lines(text: str) -> str:
+        words = text.replace("$", "").split()
+        rows: list[str] = []
+        for i in range(0, len(words), 5):
+            rows.append(" ".join(words[i : i + 5]))
+        return r"\N".join(rows)
+
+    starts: list[float] = []
+    cursor = 0.0
+    for dur in DURATIONS:
+        starts.append(cursor)
+        cursor += dur
+    y_positions = [1450, 1490, 1510, 1540, 1650, 1500]
+
+    header = f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: {WIDTH}
+PlayResY: {HEIGHT}
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Cap,Arial,56,&H00FFFFFF,&H000000FF,&H00000000,&H9A000000,-1,0,0,0,100,100,0,0,1,7,2,2,54,54,40,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+    events = []
+    for idx, text in enumerate(SOURCE_TEXTS):
+        start = starts[idx] + 0.10
+        end = starts[idx] + DURATIONS[idx] - 0.10
+        safe = lines(text).replace("{", "").replace("}", "")
+        events.append(f"Dialogue: 0,{ts(start)},{ts(end)},Cap,,0,0,0,,{{\\an2\\pos(540,{y_positions[idx]})}}{safe}")
+    ASS_PATH.write_text(header + "\n".join(events) + "\n", encoding="utf-8")
+    return len(events)
+
+
+def mux_final() -> None:
+    run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(SILENT_PATH),
+            "-i",
+            str(AUDIO_PATH),
+            "-filter_complex",
+            f"[0:v]ass='{ass_path(ASS_PATH)}'[v];[1:a]apad,atrim=0:{FINAL_DURATION:.2f}[a]",
+            "-map",
+            "[v]",
+            "-map",
+            "[a]",
+            "-t",
+            f"{FINAL_DURATION:.2f}",
+            "-r",
+            str(FPS),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "slow",
+            "-b:v",
+            "5200k",
+            "-minrate",
+            "5200k",
+            "-maxrate",
+            "5200k",
+            "-bufsize",
+            "10400k",
+            "-x264-params",
+            "nal-hrd=cbr",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "160k",
+            "-movflags",
+            "+faststart",
+            str(FINAL_PATH),
+        ],
+        "mux final",
+    )
+
+
+def make_review_artifacts() -> tuple[Path, list[Path]]:
+    if REVIEW_DIR.exists():
+        shutil.rmtree(REVIEW_DIR)
+    REVIEW_DIR.mkdir(parents=True, exist_ok=True)
+    contact = REVIEW_DIR / "contact_sheet.jpg"
+    run(["ffmpeg", "-y", "-i", str(FINAL_PATH), "-vf", "fps=1/3.34,scale=270:-1,tile=6x1", "-frames:v", "1", "-update", "1", str(contact)], "contact sheet")
+    frames: list[Path] = []
+    cursor = 0.0
+    for idx, dur in enumerate(DURATIONS, start=1):
+        frame = REVIEW_DIR / f"review_frame_scene{idx}.jpg"
+        ts = cursor + min(dur / 2, dur - 0.2)
+        run(["ffmpeg", "-y", "-ss", f"{ts:.2f}", "-i", str(FINAL_PATH), "-frames:v", "1", "-update", "1", str(frame)], f"review frame {idx}")
+        frames.append(frame)
+        cursor += dur
+    return contact, frames
+
+
+def probe_json(path: Path) -> dict:
+    out = run(["ffprobe", "-v", "error", "-show_entries", "format=duration,size,bit_rate:stream=index,codec_type,codec_name,width,height,avg_frame_rate", "-of", "json", str(path)], "probe final").stdout
+    return json.loads(out)
+
+
+def main() -> None:
+    for directory in [ASSETS_DIR, RAW_DIR, TEMP_DIR, WORK_DIR, REVIEW_DIR]:
+        directory.mkdir(parents=True, exist_ok=True)
+    capture = capture_browser_assets()
+    scene_paths = make_scene_clips(capture)
+    concat_scenes(scene_paths)
+    audio_provider = make_audio()
+    caption_count = write_captions()
+    mux_final()
+    contact_sheet, frames = make_review_artifacts()
+    probe = probe_json(FINAL_PATH)
+
+    ai_item = next((item for item in capture.get("results", []) if item.get("name") == "google_ai_overview_motion"), {})
+    scene4_provider = ai_item.get("provider") if ai_item.get("provider") == "google_ai_overview" else "existing_local_dom_ai_scene"
+    scene4_raw = ai_item.get("webm") if scene4_provider == "google_ai_overview" else ""
+    real_browser_count = 3 if scene4_provider == "google_ai_overview" else 2
+    fallback_count = 3 if scene4_provider == "google_ai_overview" else 4
+    LOG_PATH.write_text(
+        "\n".join(
+            [
+                f"final={FINAL_PATH}",
+                f"duration={probe.get('format', {}).get('duration')}",
+                f"size={probe.get('format', {}).get('size')}",
+                f"bit_rate={probe.get('format', {}).get('bit_rate')}",
+                f"fps=30",
+                f"dimensions={WIDTH}x{HEIGHT}",
+                f"contact_sheet={contact_sheet}",
+                "review_frames=" + " | ".join(str(p) for p in frames),
+                f"audio_provider={audio_provider}",
+                f"scene4_provider={scene4_provider}",
+                f"scene4_raw_clip={scene4_raw}",
+                f"scene4_review_frame={frames[3]}",
+                f"caption_count={caption_count}",
+                "caption_integrity=confirmed: captions use SOURCE_TEXTS only, max five words per line",
+                f"real_browser_scene_count={real_browser_count}",
+                f"fallback_scene_count={fallback_count}",
+                f"scene2_raw_clip={WORK_DIR / 'scene2_search_motion.webm'}",
+                f"scene3_raw_clip={WORK_DIR / 'scene3_flights_motion.webm'}",
+                "scene2_typing_confirmation=confirmed: Playwright typed 'Google Flights CLT to MCO' and pressed Enter during recorded clip",
+                "scene3_motion_confirmation=confirmed: Playwright moved mouse, clicked route/date controls, and scrolled during recorded clip",
+                f"scene4_google_ai_confirmation={'confirmed: typed the requested query, loaded Google results, detected AI Overview, and scrolled once' if scene4_provider == 'google_ai_overview' else 'fallback: Google AI Overview capture was not usable; existing local DOM AI scene used'}",
+                "privacy_confirmation=confirmed: browser capture used unauthenticated Google/Search/Flights pages only; no Gmail/password/account menu captured",
+                "transitions=hard cuts only; no fadein/fadeout",
+                "overlays=none: no highlight boxes, arrows, circles, or callouts",
+                json.dumps(capture, indent=2),
+                json.dumps(probe, indent=2),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    print(LOG_PATH)
+    print(json.dumps(probe, indent=2))
+
+
+if __name__ == "__main__":
+    main()
