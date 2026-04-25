@@ -16,6 +16,7 @@ build/
 
 backend/generated_videos/
 backend/generated_assets/
+backend/.browser_profiles/
 backend/assets/voice_cache/
 assets/voice_cache/
 assets/*.wav
