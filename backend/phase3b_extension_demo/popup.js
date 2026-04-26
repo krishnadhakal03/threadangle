@@ -1,4 +1,4 @@
-const button = document.getElementById("summarize");
+// live edit from Codex POCconst button = document.getElementById("summarize");
 const result = document.getElementById("result");
 
 function summarizeText(text) {
