@@ -1,0 +1,6 @@
+{
+  "template_id": "real_browser_proof_short",
+  "variables": ["hook_text", "prompt_text", "proof_number", "cta_word", "user_assets"],
+  "provider_order": ["user locked asset", "user proof insert", "Playwright capture", "generated card", "local DOM reconstruction"],
+  "scenes": ["hook", "browser search", "AI/browser proof", "proof card", "CTA"]
+}

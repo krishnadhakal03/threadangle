@@ -1,0 +1,13 @@
+{
+  "template_id": "money_proof_short",
+  "variables": [
+    "hook_text",
+    "before_items",
+    "after_items",
+    "proof_number",
+    "prompt_text",
+    "cta_word",
+    "user_assets"
+  ],
+  "scenes": ["hook", "before cost", "AI/proof", "replacement math", "payoff", "CTA"]
+}

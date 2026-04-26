@@ -6,7 +6,7 @@ load_dotenv(Path(__file__).resolve().parent / ".env")
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
-from routes import auth, generate, payments, free, contact, admin, cms, blog
+from routes import auth, generate, payments, free, contact, admin, cms, blog, storyboard
 from routes.newsletter import router as newsletter_router
 from routes.calendar import router as calendar_router
 from routes.social_auth import router as social_auth_router
@@ -91,6 +91,7 @@ app.include_router(voice_gen_router)
 app.include_router(batch_router)
 app.include_router(analytics_router)
 app.include_router(ab_testing_router)
+app.include_router(storyboard.router)
 
 @app.get("/")
 async def root():
@@ -231,4 +232,3 @@ async def test_stripe_endpoint():
         return {"status": "success", "products": [p.name for p in products.data]}
     except Exception as e:
         return {"status": "error", "detail": str(e)}
-

@@ -1,6 +1,7 @@
 .venv/
 .venv-1/
 backend/venv/
+backend/.browser_profiles/
 __pycache__/
 *.py[cod]
 .pytest_cache/

@@ -1,0 +1,6 @@
+{
+  "template_id": "build_tutorial_wide",
+  "format": "wide_16x9",
+  "variables": ["final_result", "prompt_text", "code_steps", "terminal_command", "browser_demo", "cta_word"],
+  "scenes": ["final result first", "prompt", "code generation", "terminal", "browser demo", "CTA"]
+}
