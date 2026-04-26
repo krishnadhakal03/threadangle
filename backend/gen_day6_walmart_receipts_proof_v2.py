@@ -68,6 +68,7 @@ SCREENSHOTS = {
     "benefits": ASSET_DIR / "04_walmart_benefits.jpeg",
     "savings": ASSET_DIR / "05_walmart_savings.jpeg",
     "dashboard": ASSET_DIR / "06_walmart_dashboard.jpeg",
+    "google_ai_proof": ASSET_DIR / "07_google_ai_mode_proof.png",
 }
 
 PROMPT = (
@@ -255,37 +256,50 @@ def make_frame_scene(scene_id: int, duration: float, drawer) -> Path:
 def write_ai_dom() -> tuple[Path, Path]:
     html = WORK_DIR / "day6_local_ai.html"
     js = WORK_DIR / "day6_local_ai_capture.js"
+    proof_uri = SCREENSHOTS["google_ai_proof"].resolve().as_uri()
     html.write_text(
         f"""<!doctype html>
 <html><head><meta charset="utf-8"><style>
 html,body{{margin:0;width:{WIDTH}px;height:{HEIGHT}px;background:#f7f9fc;font-family:Arial,Helvetica,sans-serif;color:#0f172a;overflow:hidden}}
-.wrap{{padding:86px 58px}} .panel{{background:white;border:1px solid #dbe3ee;box-shadow:0 18px 48px rgba(15,23,42,.12);min-height:1390px;padding:34px}}
-.top{{font-size:34px;font-weight:900;margin-bottom:26px}} .note{{background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:22px;font-size:28px;line-height:1.34;color:#475569;margin-bottom:28px;opacity:0}}
+.proof{{position:absolute;inset:0;background:#fff;opacity:1;transition:opacity .22s linear;overflow:hidden}}
+.proof img{{position:absolute;width:1980px;height:auto;left:-455px;top:12px;filter:contrast(1.03)}}
+.proofTag{{position:absolute;left:62px;bottom:155px;background:#0f172a;color:white;border-radius:16px;padding:20px 26px;font-size:30px;font-weight:900;box-shadow:0 12px 34px rgba(15,23,42,.24)}}
+.wrap{{padding:86px 58px;opacity:0;transition:opacity .22s linear}} .panel{{background:white;border:1px solid #dbe3ee;box-shadow:0 18px 48px rgba(15,23,42,.12);min-height:1390px;padding:34px}}
+.top{{font-size:34px;font-weight:900;margin-bottom:18px}} .recon{{font-size:22px;color:#64748b;margin-bottom:22px;font-weight:800}} .note{{background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:22px;font-size:28px;line-height:1.34;color:#475569;margin-bottom:28px;opacity:0}}
 .prompt{{background:#0f172a;color:white;border-radius:18px;padding:28px;font-size:35px;line-height:1.22;min-height:350px}}
 .cursor{{display:inline-block;width:4px;height:38px;background:#34d399;vertical-align:-7px;animation:blink .7s steps(1) infinite}}
-.answer{{opacity:0;transform:translateY(16px);margin-top:22px;background:#ecfdf5;border:1px solid #bbf7d0;border-radius:18px;padding:22px 26px;font-size:34px;line-height:1.24;font-weight:900;color:#065f46;transition:all .25s ease-out}}
+.answer{{opacity:0;transform:translateY(16px);margin-top:16px;background:#ecfdf5;border:1px solid #bbf7d0;border-radius:18px;padding:19px 24px;font-size:31px;line-height:1.22;font-weight:900;color:#065f46;transition:all .25s ease-out}}
 .answer.dim{{background:#f0fdf4;color:#047857}}
+.sources{{opacity:0;margin-top:18px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:18px;padding:18px;display:grid;grid-template-columns:1fr;gap:10px;transition:opacity .24s ease-out}}
+.source{{background:white;border:1px solid #e2e8f0;border-radius:14px;padding:14px 16px;font-size:24px;font-weight:800;color:#0f172a}}
+.source span{{display:block;color:#2563eb;font-size:20px;margin-top:4px}}
 .dot{{position:absolute;width:18px;height:18px;border-radius:50%;background:#0f172a;left:850px;top:520px;box-shadow:0 0 0 7px rgba(15,23,42,.14);transition:all .45s ease}}
 @keyframes blink{{50%{{opacity:0}}}}
-</style></head><body><div class="wrap"><div class="panel">
+</style></head><body>
+<div class="proof" id="proof"><img src="{proof_uri}" /><div class="proofTag">Real Google AI Mode screenshot</div></div>
+<div class="wrap" id="wrap"><div class="panel">
 <div class="top">AI cost check</div>
+<div class="recon">Visual reconstruction based on the real screenshot</div>
 <div class="dot" id="dot"></div>
 <div class="note" id="note">Situation pasted:<br>$42/month rides to Walmart<br>$11/month Peacock<br>No car</div>
 <div class="prompt"><span id="typed"></span><span class="cursor"></span></div>
-<div class="answer" id="a1">Walmart+ covers grocery delivery.</div>
-<div class="answer" id="a2">Peacock is included.</div>
-<div class="answer dim" id="a3">About $12.95/month before cashback.</div>
+<div class="answer" id="a1">Instead of paying $53/month...</div>
+<div class="answer" id="a2">Walmart+ is $12.95/month.</div>
+<div class="answer dim" id="a3">Delivery plus Peacock in one place.</div>
+<div class="sources" id="sources"><div class="source">Free Shipping and Free Delivery from Your Store <span>Walmart</span></div><div class="source">Walmart+ Membership <span>Walmart.com</span></div><div class="source">Walmart+ Streaming Benefits <span>Walmart.com</span></div></div>
 </div></div>
 <script>
 const text = {json.dumps(PROMPT)};
 const typed = document.getElementById('typed');
-setTimeout(() => {{ document.getElementById('note').style.opacity=1; }}, 350);
+setTimeout(() => {{ document.getElementById('proof').style.opacity=0; document.getElementById('wrap').style.opacity=1; }}, 1420);
+setTimeout(() => {{ document.getElementById('note').style.opacity=1; }}, 1660);
 let i=0;
-function typeNext(){{ if(i <= text.length){{ typed.textContent = text.slice(0, i++); setTimeout(typeNext, 15); }} }}
-setTimeout(typeNext, 850);
-setTimeout(() => {{ const d=document.getElementById('dot'); d.style.left='915px'; d.style.top='710px'; }}, 2300);
+function typeNext(){{ if(i <= text.length){{ typed.textContent = text.slice(0, i++); setTimeout(typeNext, 9); }} }}
+setTimeout(typeNext, 1880);
+setTimeout(() => {{ const d=document.getElementById('dot'); d.style.left='915px'; d.style.top='710px'; }}, 3150);
 function show(id, delay){{ setTimeout(() => {{ const a=document.getElementById(id); a.style.opacity=1; a.style.transform='translateY(0)'; }}, delay); }}
-show('a1', 3970); show('a2', 4380); show('a3', 4790);
+show('a1', 4300); show('a2', 4620); show('a3', 4940);
+setTimeout(() => {{ document.getElementById('sources').style.opacity=1; }}, 5200);
 </script></body></html>""",
         encoding="utf-8",
     )
@@ -298,7 +312,7 @@ const path = require('path');
   const context = await browser.newContext({ viewport:{width:__WIDTH__,height:__HEIGHT__}, recordVideo:{dir:work,size:{width:__WIDTH__,height:__HEIGHT__}} });
   const page = await context.newPage();
   await page.goto('file:///' + path.resolve(work, 'day6_local_ai.html').replace(/\\\\/g, '/'));
-  await page.waitForTimeout(6100);
+  await page.waitForTimeout(6400);
   const video = page.video();
   await page.close();
   const raw = await video.path();
@@ -483,6 +497,12 @@ def make_review_artifacts() -> tuple[Path, list[Path]]:
     for idx, thumb in enumerate(thumbs):
         sheet.paste(thumb, (idx * 270, 0))
     sheet.save(contact, quality=92)
+    proof_frame = REVIEW_DIR / "proof_frame_google_ai_mode_screenshot.jpg"
+    scene3_start = sum(DURATIONS[:2])
+    run(
+        ["ffmpeg", "-y", "-ss", f"{scene3_start + 0.70:.2f}", "-i", str(FINAL_PATH), "-frames:v", "1", "-update", "1", str(proof_frame)],
+        "google ai proof frame",
+    )
     return contact, frames
 
 
@@ -528,12 +548,13 @@ def main() -> None:
                 f"dimensions={WIDTH}x{HEIGHT}",
                 f"audio_provider={audio_provider}",
                 f"contact_sheet={contact}",
+                f"proof_frame_google_ai_mode_screenshot={REVIEW_DIR / 'proof_frame_google_ai_mode_screenshot.jpg'}",
                 "review_frames=" + " | ".join(str(p) for p in frames),
                 f"caption_count={caption_count}",
                 "caption_sync_confirmation=confirmed: captions regenerated after scene-fitted final audio; max five words per event; ending captions share the fixed final scene window",
                 "privacy_confirmation=confirmed: staged screenshots are masked/cropped for status bars, account/address/name/balance areas; no Gmail/password/private docs used",
                 "no_paid_credits_confirmation=confirmed: no ElevenLabs, no RunwayML, no paid APIs",
-                "ai_tool_mode=local DOM AI assistant via Playwright",
+                "ai_tool_mode=user-provided real Google AI Mode screenshot proof insert plus local DOM visual reconstruction; not claimed as live Google capture",
                 "retention_fixes_landed=confirmed: scene1/2 interactive pan/scroll/crop motion, progressive AI reveal, clean still payoff card, punchier offline narration, emphasized money captions",
                 "screenshots_used=" + " | ".join(str(p) for p in SCREENSHOTS.values()),
                 "transitions=hard cuts only",
