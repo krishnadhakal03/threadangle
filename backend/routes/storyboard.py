@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from storyboard.preview import generate_scene_previews
 from storyboard.qa import run_qa
-from storyboard.schema import load_storyboard, save_storyboard
+from storyboard.schema import VisualSource, load_storyboard, save_storyboard
 
 
 router = APIRouter(prefix="/api/storyboard", tags=["Storyboard"])
@@ -47,7 +47,7 @@ def replace_scene(project_id: str, scene_id: str, request: ReplaceRequest):
         if scene.scene_id == scene_id:
             scene.asset_path = request.asset_path
             if request.visual_source:
-                scene.visual_source = request.visual_source
+                scene.visual_source = VisualSource(request.visual_source)
             save_storyboard(storyboard, path)
             return {"scene_id": scene_id, "asset_path": request.asset_path}
     raise HTTPException(status_code=404, detail="scene not found")

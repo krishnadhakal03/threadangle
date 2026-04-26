@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from .render import regenerate_audio_captions_and_restitch, render_draft_video, render_locked_visuals
-from .schema import load_storyboard, save_storyboard
+from .schema import ProviderStatus, VisualSource, load_storyboard, save_storyboard
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -34,8 +34,9 @@ def cmd_replace(args: argparse.Namespace) -> None:
     for scene in storyboard.scenes:
         if scene.scene_id == args.scene_id:
             scene.asset_path = args.asset_path
-            scene.visual_source = args.visual_source or scene.visual_source
-            scene.provider_status = "pending"
+            if args.visual_source:
+                scene.visual_source = VisualSource(args.visual_source)
+            scene.provider_status = ProviderStatus.pending
             break
     else:
         raise SystemExit(f"scene not found: {args.scene_id}")
