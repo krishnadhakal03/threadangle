@@ -21,7 +21,7 @@ from PIL import Image, ImageDraw, ImageFont
 from utils.video_pipeline import ASSETS_DIR, RAW_DIR, TEMP_DIR
 
 
-RUN_ID = "phase3b_widescreen_real_coding_poc_v2"
+RUN_ID = "phase3b_widescreen_real_coding_poc_v3"
 WIDTH = 1920
 HEIGHT = 1080
 FPS = 30
@@ -43,24 +43,25 @@ SEGMENTS = [
         "name": "hook_extension_working",
         "source": BROWSER_CAPTURE,
         "start": 22.0,
-        "duration": 4.0,
-        "caption": "This extension came from one prompt.",
-        "overlay": "THIS EXTENSION\nCAME FROM ONE PROMPT",
+        "duration": 3.0,
+        "caption": "Can one AI prompt build a Chrome extension?",
+        "overlay": "CAN ONE AI PROMPT\nBUILD A CHROME EXTENSION?",
         "requirement": "extension working on webpage",
     },
     {
-        "name": "payoff_result_close",
+        "name": "wow_payoff_summary",
         "source": BROWSER_CAPTURE,
-        "start": 26.0,
-        "duration": 3.5,
-        "caption": "Here is the working result first.",
+        "start": 24.0,
+        "duration": 4.0,
+        "caption": "It turns a long article into a concise summary.",
+        "overlay": "LONG ARTICLE\nTO CLEAN SUMMARY",
         "requirement": "extension working on webpage",
     },
     {
         "name": "vscode_editing_live",
         "source": VSCODE_CAPTURE,
         "start": 0.0,
-        "duration": 3.5,
+        "duration": 3.0,
         "caption": "Now rewind to the real build.",
         "requirement": "VS Code editing",
     },
@@ -68,7 +69,7 @@ SEGMENTS = [
         "name": "vscode_file_tree",
         "source": VSCODE_CAPTURE,
         "start": 3.5,
-        "duration": 3.5,
+        "duration": 3.0,
         "caption": "The extension files are real.",
         "requirement": "code generation",
     },
@@ -76,7 +77,7 @@ SEGMENTS = [
         "name": "codex_prompt_start",
         "source": VSCODE_CAPTURE,
         "start": 8.0,
-        "duration": 4.0,
+        "duration": 3.5,
         "caption": "I typed the prompt into Codex.",
         "requirement": "prompt typed into Codex",
     },
@@ -84,7 +85,7 @@ SEGMENTS = [
         "name": "codex_prompt_full",
         "source": VSCODE_CAPTURE,
         "start": 12.0,
-        "duration": 4.0,
+        "duration": 3.5,
         "caption": "Build a summarizer from one prompt.",
         "requirement": "prompt typed into Codex",
     },
@@ -92,7 +93,7 @@ SEGMENTS = [
         "name": "load_unpacked",
         "source": BROWSER_CAPTURE,
         "start": 7.0,
-        "duration": 4.0,
+        "duration": 3.5,
         "caption": "Then I loaded it unpacked in Chrome.",
         "requirement": "load unpacked extension in browser",
     },
@@ -100,7 +101,7 @@ SEGMENTS = [
         "name": "bug_terminal_error",
         "source": VSCODE_CAPTURE,
         "start": 22.0,
-        "duration": 4.0,
+        "duration": 3.5,
         "caption": "The first test hit a popup bug.",
         "overlay": "BUG:\nPOPUP COULD NOT\nFIND THE PAGE",
         "requirement": "terminal command run",
@@ -109,7 +110,7 @@ SEGMENTS = [
         "name": "fix_prompt_terminal",
         "source": VSCODE_CAPTURE,
         "start": 26.0,
-        "duration": 4.0,
+        "duration": 3.5,
         "caption": "So I asked for a fix.",
         "overlay": "FIX:\nTARGET THE OPEN TAB",
         "requirement": "terminal command run",
@@ -118,7 +119,7 @@ SEGMENTS = [
         "name": "terminal_command_run",
         "source": VSCODE_CAPTURE,
         "start": 30.0,
-        "duration": 4.0,
+        "duration": 3.0,
         "caption": "Then I ran the command again.",
         "requirement": "terminal command run",
     },
@@ -126,7 +127,7 @@ SEGMENTS = [
         "name": "demo_webpage",
         "source": BROWSER_CAPTURE,
         "start": 12.0,
-        "duration": 4.0,
+        "duration": 3.5,
         "caption": "The test page stayed local.",
         "requirement": "extension working on webpage",
     },
@@ -134,7 +135,7 @@ SEGMENTS = [
         "name": "browser_summary_click",
         "source": BROWSER_CAPTURE,
         "start": 18.0,
-        "duration": 4.0,
+        "duration": 3.5,
         "caption": "Then I clicked summarize.",
         "requirement": "extension working on webpage",
     },
@@ -144,29 +145,30 @@ SEGMENTS = [
         "start": 22.0,
         "duration": 4.0,
         "caption": "The extension read the page.",
+        "overlay": "WORKING SUMMARY",
         "requirement": "extension working on webpage",
     },
     {
         "name": "closing_extension_result",
         "source": BROWSER_CAPTURE,
         "start": 26.0,
-        "duration": 4.0,
-        "caption": "This was built in minutes.",
-        "overlay": "BUILT IN MINUTES",
+        "duration": 3.5,
+        "caption": "Next I will build bigger tools with AI.",
+        "overlay": "BIGGER AI TOOLS NEXT",
         "requirement": "extension working on webpage",
     },
     {
         "name": "closing_full_build_tease",
         "source": BROWSER_CAPTURE,
         "start": 22.0,
-        "duration": 3.5,
-        "caption": "The full build can go deeper.",
-        "overlay": "FULL BUILD NEXT",
+        "duration": 3.0,
+        "caption": "Comment EXTENSION for the full build.",
+        "overlay": "COMMENT EXTENSION\nFOR FULL BUILD",
         "requirement": "extension working on webpage",
     },
 ]
 
-CTA_DURATION = 4.0
+CTA_DURATION = 4.5
 
 
 def run(cmd: list[str], label: str, **kwargs) -> subprocess.CompletedProcess:
@@ -230,10 +232,10 @@ def make_cta_clip() -> Path:
     img = Image.new("RGB", (WIDTH, HEIGHT), (8, 13, 24))
     draw = ImageDraw.Draw(img)
     draw.rounded_rectangle((260, 180, 1660, 900), radius=36, fill=(14, 24, 39), outline=(82, 196, 255), width=8)
-    center_text(draw, (300, 260, 1620, 375), "THIS WAS BUILT", font(72, True), (255, 255, 255))
-    center_text(draw, (300, 385, 1620, 510), "IN MINUTES", font(94, True), (82, 196, 255))
-    center_text(draw, (300, 575, 1620, 690), "COMMENT EXTENSION", font(82, True), (255, 255, 255))
-    center_text(draw, (300, 710, 1620, 810), "FOR FULL BUILD", font(70, True), (82, 196, 255))
+    center_text(draw, (300, 245, 1620, 360), "NEXT:", font(72, True), (82, 196, 255))
+    center_text(draw, (300, 380, 1620, 500), "BIGGER AI TOOLS", font(82, True), (255, 255, 255))
+    center_text(draw, (300, 555, 1620, 665), "COMMENT EXTENSION", font(82, True), (255, 255, 255))
+    center_text(draw, (300, 700, 1620, 810), "FOR FULL BUILD", font(70, True), (82, 196, 255))
     img.save(image_path, "JPEG", quality=94)
     out = RAW_DIR / f"{RUN_ID}_cta.mp4"
     run(
@@ -330,7 +332,7 @@ def atempo_filter(factor: float) -> str:
 
 
 def make_audio() -> tuple[str, list[dict]]:
-    texts = [segment["caption"] for segment in SEGMENTS] + ["This was built in minutes. Comment EXTENSION for the full build."]
+    texts = [segment["caption"] for segment in SEGMENTS] + ["Next I will build bigger tools with AI. Comment EXTENSION for the full build."]
     durations = [segment["duration"] for segment in SEGMENTS] + [CTA_DURATION]
     engine = pyttsx3.init()
     engine.setProperty("rate", 184)
