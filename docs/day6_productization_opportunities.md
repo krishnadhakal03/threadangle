@@ -15,6 +15,11 @@ Why now:
 - Day6 needed a real Google AI Mode screenshot plus a local reenactment.
 - This pattern will repeat for receipts, statements, dashboards, and browser proof clips.
 
+Story-first v3 adds three helper patterns worth keeping reusable:
+- Proof screenshot magnifier: crop a wide proof screenshot into a vertical documentary background, then place a readable excerpt card over it.
+- Before/after replacement math card: show old cost rows and replacement rows as comparable structured proof, not as decorative text.
+- Receipt documentary motion helper: apply tiny handheld drift, pan, and tap-like crop changes to static screenshots so they feel like app usage.
+
 ## Backlog candidates
 
 Real Browser Proof Template:
