@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .asset_resolver import resolve_assets
 from .motion_rules import check_motion_rules
+from .retention_qa import check_retention_rules_scene
 from .render_modes import assert_draft_mode_safe
 from .schema import Storyboard
 
@@ -38,6 +39,9 @@ def run_qa(storyboard: Storyboard, repo_root: Path, out_path: Path, manifest: di
         motion_warnings = check_motion_rules(scene)
         for warning in motion_warnings:
             issues.append({"severity": "warning", "code": "motion_novelty", "scene_id": scene.scene_id, "message": warning})
+        retention_warnings = check_retention_rules_scene(scene)
+        for warning in retention_warnings:
+            issues.append({"severity": "warning", "code": "retention", "scene_id": scene.scene_id, "message": warning})
 
     report = {
         "project_id": storyboard.project_id,

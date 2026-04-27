@@ -31,6 +31,16 @@ class MotionIntensity(str, Enum):
     high = "high"
 
 
+class BeatRole(str, Enum):
+    hook = "hook"
+    setup = "setup"
+    tension = "tension"
+    reveal = "reveal"
+    proof = "proof"
+    payoff = "payoff"
+    cta = "cta"
+
+
 class VisualSource(str, Enum):
     generated_card = "generated_card"
     stock_footage = "stock_footage"
@@ -86,6 +96,13 @@ class StoryboardScene(BaseModel):
     motion_intensity: MotionIntensity = MotionIntensity.low
     micro_beats: list[str] = Field(default_factory=list)
     supporting_cutaways: list[str] = Field(default_factory=list)
+    beat_role: BeatRole = BeatRole.setup
+    novelty_interval_seconds: float = 1.3
+    interrupt_allowed: bool = True
+    emphasis_terms: list[str] = Field(default_factory=list)
+    payoff_terms: list[str] = Field(default_factory=list)
+    visual_layers: list[str] = Field(default_factory=list)
+    pacing_style: str = "standard"
     style: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("caption_text")
