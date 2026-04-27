@@ -23,6 +23,7 @@ class MotionProfile(str, Enum):
     documentary_dynamic = "documentary_dynamic"
     kinetic_explainer = "kinetic_explainer"
     tutorial_followcam = "tutorial_followcam"
+    fireship_dynamic = "fireship_dynamic"
 
 
 class MotionIntensity(str, Enum):

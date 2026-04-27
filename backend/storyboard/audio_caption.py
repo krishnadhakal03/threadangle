@@ -53,7 +53,7 @@ def make_silence(duration: float, out: Path) -> None:
     )
 
 
-def regenerate_audio_only(storyboard: Storyboard, work_dir: Path, rate: int = 224) -> tuple[Path, list[dict], str]:
+def regenerate_audio_only(storyboard: Storyboard, work_dir: Path, rate: int = 250) -> tuple[Path, list[dict], str]:
     assert_provider_allowed(storyboard, "local_tts", "draft narration")
     if work_dir.exists():
         shutil.rmtree(work_dir)
@@ -61,11 +61,15 @@ def regenerate_audio_only(storyboard: Storyboard, work_dir: Path, rate: int = 22
     engine = pyttsx3.init()
     engine.setProperty("rate", rate)
     engine.setProperty("volume", 1.0)
-    for voice in engine.getProperty("voices") or []:
-        name = (getattr(voice, "name", "") or "").lower()
-        if "zira" in name or "david" in name or "mark" in name:
-            engine.setProperty("voice", voice.id)
-            break
+    # Add pitch variation for energy
+    voices = engine.getProperty("voices") or []
+    if voices:
+        # Pick a more energetic voice if available
+        for voice in voices:
+            name = (getattr(voice, "name", "") or "").lower()
+            if "zira" in name or "hazel" in name or "susan" in name:
+                engine.setProperty("voice", voice.id)
+                break
 
     raw_parts: list[Path] = []
     for idx, scene in enumerate(storyboard.scenes, start=1):

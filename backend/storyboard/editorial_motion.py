@@ -51,6 +51,55 @@ class CropShift(MicroBeat):
         return img
 
 
+class RapidZoom(MicroBeat):
+    def apply(self, img: Image.Image, t: float, scene_duration: float) -> Image.Image:
+        if self.start_time <= t < self.start_time + self.duration:
+            progress = (t - self.start_time) / self.duration
+            # Rapid zoom to 1.5x
+            scale = 1 + 0.5 * progress
+            new_size = (int(img.width * scale), int(img.height * scale))
+            zoomed = img.resize(new_size, Image.Resampling.LANCZOS)
+            left = (zoomed.width - img.width) // 2
+            top = (zoomed.height - img.height) // 2
+            return zoomed.crop((left, top, left + img.width, top + img.height))
+        return img
+
+
+class FlashCut(MicroBeat):
+    def apply(self, img: Image.Image, t: float, scene_duration: float) -> Image.Image:
+        if self.start_time <= t < self.start_time + self.duration:
+            # Instant white flash
+            flash_img = Image.new('RGB', (img.width, img.height), 'white')
+            return Image.blend(img, flash_img, 0.3)
+        return img
+
+
+class ShakePan(MicroBeat):
+    def apply(self, img: Image.Image, t: float, scene_duration: float) -> Image.Image:
+        if self.start_time <= t < self.start_time + self.duration:
+            progress = (t - self.start_time) / self.duration
+            # Subtle shake and pan
+            shake_x = int(10 * math.sin(progress * 10 * math.pi))
+            shake_y = int(5 * math.cos(progress * 10 * math.pi))
+            pan_x = int(20 * progress)
+            left = max(0, shake_x + pan_x)
+            top = max(0, shake_y)
+            right = min(img.width, img.width + shake_x + pan_x)
+            bottom = min(img.height, img.height + shake_y)
+            return img.crop((left, top, right, bottom)).resize((img.width, img.height), Image.Resampling.LANCZOS)
+        return img
+
+
+class PulseGlow(MicroBeat):
+    def apply(self, img: Image.Image, t: float, scene_duration: float) -> Image.Image:
+        if self.start_time <= t < self.start_time + self.duration:
+            progress = (t - self.start_time) / self.duration
+            # Add glow effect by brightening
+            enhancer = 1 + 0.3 * math.sin(progress * math.pi)
+            return Image.eval(img, lambda x: min(255, int(x * enhancer)))
+        return img
+
+
 class DocumentaryDrift(MicroBeat):
     def apply(self, img: Image.Image, t: float, scene_duration: float) -> Image.Image:
         # Subtle continuous drift
@@ -162,6 +211,10 @@ class TextSnap(MicroBeat):
 MICRO_BEAT_CLASSES = {
     "zoom_punch": ZoomPunch,
     "crop_shift": CropShift,
+    "rapid_zoom": RapidZoom,
+    "flash_cut": FlashCut,
+    "shake_pan": ShakePan,
+    "pulse_glow": PulseGlow,
     "documentary_drift": DocumentaryDrift,
     "proof_highlight": ProofHighlight,
     "split_reveal": SplitReveal,

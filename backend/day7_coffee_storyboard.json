@@ -11,7 +11,7 @@
     {
       "scene_id": "hook",
       "scene_type": "hook",
-      "duration": 3.0,
+      "duration": 2.0,
       "narration_text": "I was spending $5 every day on coffee. I told myself it was just a small treat.",
       "caption_text": "I was spending $5 every day on coffee. I told myself it was just a small treat.",
       "visual_source": "generated_card",
@@ -37,10 +37,13 @@
         "captions": "from_audio",
         "fallback_allowed": true
       },
-      "motion_profile": "documentary_dynamic",
-      "motion_intensity": "low",
+      "motion_profile": "fireship_dynamic",
+      "motion_intensity": "high",
       "micro_beats": [
-        "punch_zoom"
+        "rapid_zoom",
+        "flash_cut",
+        "shake_pan",
+        "pulse_glow"
       ],
       "supporting_cutaways": [],
       "beat_role": "hook",
@@ -59,7 +62,7 @@
     {
       "scene_id": "shock",
       "scene_type": "setup",
-      "duration": 3.0,
+      "duration": 2.5,
       "narration_text": "But that small treat was costing me about $150 a month.",
       "caption_text": "But that small treat was costing me about $150 a month.",
       "visual_source": "generated_card",
@@ -107,7 +110,7 @@
     {
       "scene_id": "turn",
       "scene_type": "proof",
-      "duration": 3.0,
+      "duration": 2.5,
       "narration_text": "So I asked AI to compare coffee shop runs with making it at home.",
       "caption_text": "So I asked AI to compare coffee shop runs with making it at home.",
       "visual_source": "generated_card",
@@ -155,7 +158,7 @@
     {
       "scene_id": "prompt",
       "scene_type": "proof",
-      "duration": 4.0,
+      "duration": 3.0,
       "narration_text": "I spend $5 a day on coffee. Compare that with brewing at home and show me what I could save each month and each year.",
       "caption_text": "I spend $5 a day on coffee. Compare that with brewing at home and show me what I could save each month and each year.",
       "visual_source": "generated_card",

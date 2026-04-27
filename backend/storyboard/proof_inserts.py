@@ -24,4 +24,16 @@ def render_generated_card(scene: StoryboardScene, width: int, height: int) -> Im
     draw.multiline_text((72, height // 3), title, font=font(style.get("headline_size", 86), True), fill=fg, spacing=12)
     if subline:
         draw.text((72, height // 3 + 240), subline, font=font(46, True), fill=accent)
+    
+    # Add Fireship-style overlays
+    if scene.scene_type == "hook":
+        # Add arrow icon
+        draw.polygon([(width - 150, height // 2 - 50), (width - 100, height // 2), (width - 150, height // 2 + 50)], fill=accent)
+    elif scene.scene_type == "proof":
+        # Add checkmark
+        draw.line([(width - 120, height // 2), (width - 110, height // 2 + 10), (width - 100, height // 2 - 10)], fill=accent, width=5)
+    # Add code-like snippet for prompt scene
+    if scene.scene_id == "prompt":
+        draw.text((72, height - 200), ">>> AI.prompt(\"coffee savings\")", font=font(36, False), fill=fg)
+    
     return img
