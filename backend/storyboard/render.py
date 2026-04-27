@@ -10,6 +10,8 @@ from PIL import Image, ImageDraw
 from .asset_resolver import resolve_assets
 from .audio_caption import estimate_wpm, regenerate_audio_only, regenerate_captions_only, restitch_with_locked_visuals
 from .editorial_motion import apply_motion, create_micro_beats
+from .multi_layer import apply_multi_layer_composition
+from .semantic_motion import enhance_scene_with_semantic_motion
 from .formatting import cover, font, format_spec
 from .preview import generate_scene_previews
 from .proof_inserts import render_generated_card, render_proof_image
@@ -33,6 +35,7 @@ def render_scene_clip(storyboard: Storyboard, resolved, raw_dir: Path) -> Path:
     spec = format_spec(storyboard.format)
     width, height, fps = spec["width"], spec["height"], spec["fps"]
     scene = resolved.scene
+    enhance_scene_with_semantic_motion(scene)
     micro_beats = create_micro_beats(scene.micro_beats, scene.duration)
     out = raw_dir / f"{scene.scene_id}.mp4"
     asset = resolved.decision.asset_path
@@ -59,6 +62,7 @@ def render_scene_clip(storyboard: Storyboard, resolved, raw_dir: Path) -> Path:
             draw = ImageDraw.Draw(img)
             draw.text((70, height - 170), f"{resolved.decision.provider}: {resolved.decision.reason or 'MVP fallback'}", font=font(34, True), fill=(16, 185, 129))
         img = apply_motion(img, t, scene.duration, micro_beats)
+        img = apply_multi_layer_composition(scene, img, t)
         img.save(frame_dir / f"frame_{frame:04d}.jpg", quality=92)
     run(["ffmpeg", "-y", "-framerate", str(fps), "-i", str(frame_dir / "frame_%04d.jpg"), "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p", "-r", str(fps), str(out)], "render scene")
     return out
