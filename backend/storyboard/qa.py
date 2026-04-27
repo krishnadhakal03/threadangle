@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from .asset_resolver import resolve_assets
+from .hook_lab import check_hook_quality
 from .motion_rules import check_motion_rules
 from .retention_qa import check_retention_rules_scene
 from .render_modes import assert_draft_mode_safe
@@ -42,6 +43,9 @@ def run_qa(storyboard: Storyboard, repo_root: Path, out_path: Path, manifest: di
         retention_warnings = check_retention_rules_scene(scene)
         for warning in retention_warnings:
             issues.append({"severity": "warning", "code": "retention", "scene_id": scene.scene_id, "message": warning})
+        hook_warning = check_hook_quality(scene)
+        if hook_warning:
+            issues.append({"severity": "warning", "code": "hook_quality", "scene_id": scene.scene_id, "message": hook_warning})
 
     report = {
         "project_id": storyboard.project_id,

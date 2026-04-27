@@ -49,6 +49,7 @@ class VisualSource(str, Enum):
     user_video = "user_video"
     proof_screenshot = "proof_screenshot"
     local_dom_reconstruction = "local_dom_reconstruction"
+    user_manual_capture = "user_manual_capture"
 
 
 class ProviderStatus(str, Enum):
@@ -103,6 +104,10 @@ class StoryboardScene(BaseModel):
     payoff_terms: list[str] = Field(default_factory=list)
     visual_layers: list[str] = Field(default_factory=list)
     pacing_style: str = "standard"
+    sound_accent_profile: str | None = None
+    capture_notes: str | None = None
+    expected_duration: float | None = None
+    source_label: str | None = None
     style: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("caption_text")
