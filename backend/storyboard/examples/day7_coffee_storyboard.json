@@ -1,0 +1,97 @@
+{
+  "project_id": "day7_coffee_savings",
+  "title": "How to Save $200/Year on Coffee",
+  "niche": "personal finance",
+  "template_id": "money_proof_short",
+  "format": "short_9x16",
+  "render_mode": "draft",
+  "style": {
+    "palette": "documentary_light"
+  },
+  "variables": {
+    "hook_text": "I was spending $5/day on coffee shop lattes",
+    "before_items": "$5/day × 365 days = $1,825/year",
+    "after_items": "Home coffee for $0.50/cup × 365 days = $182.50/year",
+    "proof_number": "$1,642.50",
+    "prompt_text": "Calculate my coffee savings",
+    "cta_word": "BREW",
+    "user_assets": []
+  },
+  "scenes": [
+    {
+      "scene_id": "hook",
+      "scene_type": "hook",
+      "duration": 3.0,
+      "narration_text": "I was spending $5 every single day on coffee shop lattes. That adds up fast.",
+      "caption_text": "I was spending $5 every single day on coffee shop lattes. That adds up fast.",
+      "visual_source": "generated_card",
+      "beat_role": "hook",
+      "novelty_interval_seconds": 1.0,
+      "interrupt_allowed": true,
+      "emphasis_terms": ["spending", "every single day"],
+      "micro_beats": ["punch_zoom"],
+      "motion_profile": "documentary_dynamic",
+      "motion_intensity": "med"
+    },
+    {
+      "scene_id": "before_cost",
+      "scene_type": "before_cost",
+      "duration": 4.0,
+      "narration_text": "At $5 per day, that's $1,825 per year just on coffee. Ouch.",
+      "caption_text": "At $5 per day, that's $1,825 per year just on coffee. Ouch.",
+      "visual_source": "generated_card",
+      "beat_role": "setup",
+      "novelty_interval_seconds": 1.2,
+      "emphasis_terms": ["per year"],
+      "micro_beats": ["value_tick"],
+      "motion_profile": "kinetic_explainer"
+    },
+    {
+      "scene_id": "ai_proof",
+      "scene_type": "ai_proof",
+      "duration": 4.0,
+      "narration_text": "I asked AI to calculate my potential savings if I made coffee at home for just 50 cents per cup.",
+      "caption_text": "I asked AI to calculate my potential savings if I made coffee at home for just 50 cents per cup.",
+      "visual_source": "generated_card",
+      "beat_role": "proof",
+      "emphasis_terms": ["AI", "savings"],
+      "micro_beats": ["split_reveal"],
+      "motion_profile": "documentary_dynamic"
+    },
+    {
+      "scene_id": "replacement_math",
+      "scene_type": "replacement_math",
+      "duration": 3.0,
+      "narration_text": "The AI showed me: $1,825 spent vs $182.50 saved. That's $1,642.50 in savings per year.",
+      "caption_text": "The AI showed me: $1,825 spent vs $182.50 saved. That's $1,642.50 in savings per year.",
+      "visual_source": "generated_card",
+      "beat_role": "reveal",
+      "emphasis_terms": ["savings", "per year"],
+      "micro_beats": ["value_tick", "proof_highlight"],
+      "motion_profile": "kinetic_explainer"
+    },
+    {
+      "scene_id": "payoff",
+      "scene_type": "payoff",
+      "duration": 2.0,
+      "narration_text": "That's over $1,600 I can now put toward something that actually matters.",
+      "caption_text": "That's over $1,600 I can now put toward something that actually matters.",
+      "visual_source": "generated_card",
+      "beat_role": "payoff",
+      "micro_beats": [],
+      "motion_profile": "static_clean"
+    },
+    {
+      "scene_id": "cta",
+      "scene_type": "cta",
+      "duration": 2.0,
+      "narration_text": "Start brewing at home and keep more money in your pocket.",
+      "caption_text": "Start brewing at home and keep more money in your pocket.",
+      "visual_source": "generated_card",
+      "beat_role": "cta",
+      "emphasis_terms": ["start", "brewing"],
+      "micro_beats": ["punch_zoom"],
+      "motion_profile": "static_clean"
+    }
+  ]
+}

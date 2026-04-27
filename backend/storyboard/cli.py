@@ -57,12 +57,30 @@ def cmd_lock(args: argparse.Namespace) -> None:
     print(json.dumps({"scene_id": args.scene_id, "lock_visual": True, "storyboard": str(args.out or args.storyboard)}, indent=2))
 
 
-def cmd_audio_regen(args: argparse.Namespace) -> None:
+def cmd_unlock(args: argparse.Namespace) -> None:
     storyboard = load_storyboard(args.storyboard)
-    out_dir = GENERATED_ROOT / storyboard.project_id
-    silent = Path(args.silent) if args.silent else render_locked_visuals(storyboard, REPO_ROOT, out_dir / "raw")
-    result = regenerate_audio_captions_and_restitch(storyboard, silent, out_dir)
-    print(json.dumps(result, indent=2))
+    for scene in storyboard.scenes:
+        if scene.scene_id == args.scene_id:
+            scene.lock_visual = False
+            break
+    else:
+        raise SystemExit(f"scene not found: {args.scene_id}")
+    save_storyboard(storyboard, args.out or args.storyboard)
+    print(json.dumps({"scene_id": args.scene_id, "lock_visual": False, "storyboard": str(args.out or args.storyboard)}, indent=2))
+
+
+def cmd_captions_regen(args: argparse.Namespace) -> None:
+    # Placeholder - would regenerate captions only
+    print("Captions regeneration not yet implemented")
+
+
+def cmd_qa_report(args: argparse.Namespace) -> None:
+    from .qa import run_qa
+    storyboard = load_storyboard(args.storyboard)
+    out = GENERATED_ROOT / storyboard.project_id / "qa"
+    out.mkdir(parents=True, exist_ok=True)
+    report = run_qa(storyboard, REPO_ROOT, out / "qa_report.json")
+    print(json.dumps({"qa_report": str(out / "qa_report.json"), "issue_count": report["issue_count"]}, indent=2))
 
 
 def main() -> None:
@@ -86,10 +104,21 @@ def main() -> None:
     p.add_argument("scene_id")
     p.add_argument("--out")
     p.set_defaults(func=cmd_lock)
+    p = sub.add_parser("unlock")
+    p.add_argument("storyboard")
+    p.add_argument("scene_id")
+    p.add_argument("--out")
+    p.set_defaults(func=cmd_unlock)
     p = sub.add_parser("audio-regen")
     p.add_argument("storyboard")
     p.add_argument("--silent")
     p.set_defaults(func=cmd_audio_regen)
+    p = sub.add_parser("captions-regen")
+    p.add_argument("storyboard")
+    p.set_defaults(func=cmd_captions_regen)
+    p = sub.add_parser("qa-report")
+    p.add_argument("storyboard")
+    p.set_defaults(func=cmd_qa_report)
     args = parser.parse_args()
     args.func(args)
 

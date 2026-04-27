@@ -41,6 +41,9 @@ class BeatRoleRule(RetentionRule):
 class PayoffTimingRule(RetentionRule):
     """Payoff appears too late in storyboard."""
 
+    def check_scene(self, scene: StoryboardScene) -> str | None:
+        return None
+
     def check_storyboard(self, storyboard) -> List[str]:
         warnings = []
         payoff_scenes = [i for i, s in enumerate(storyboard.scenes) if s.beat_role == BeatRole.payoff]
@@ -60,6 +63,9 @@ class HookMotionRule(RetentionRule):
 
 class StaticScreenshotRule(RetentionRule):
     """Too many static screenshot scenes."""
+
+    def check_scene(self, scene: StoryboardScene) -> str | None:
+        return None
 
     def check_storyboard(self, storyboard) -> List[str]:
         from .schema import VisualSource
