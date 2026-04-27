@@ -5,13 +5,18 @@ Take the exact coffee script and rebuild visuals only using new editorial densit
 """
 
 import json
+import sys
 from pathlib import Path
-from backend.storyboard.schema import load_storyboard, save_storyboard, StoryboardScene, BeatRole, MotionProfile, MotionIntensity
-from backend.storyboard.editorial_density import EditorialDensityEngine
-from backend.storyboard.pattern_interrupts import apply_interrupt_rules, InterruptCadence
-from backend.storyboard.semantic_emphasis import SemanticEmphasisEngine
-from backend.storyboard.cutaway_engine import CutawayEngine
-from backend.storyboard.multi_layer import LayeredComposition
+
+# Add backend to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from storyboard.schema import load_storyboard, save_storyboard, StoryboardScene, BeatRole, MotionProfile, MotionIntensity
+from storyboard.editorial_density import EditorialDensityEngine
+from storyboard.pattern_interrupts import apply_interrupt_rules, InterruptCadence
+from storyboard.semantic_emphasis import SemanticEmphasisEngine
+from storyboard.cutaway_engine import CutawayEngine
+from storyboard.multi_layer import LayeredComposition
 
 
 def rebuild_coffee_with_density(original_path: Path, output_path: Path, repo_root: Path) -> None:
