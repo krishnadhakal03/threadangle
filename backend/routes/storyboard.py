@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
 from storyboard.preview import generate_scene_previews
 from storyboard.qa import run_qa
+from storyboard.render import regenerate_audio_captions_and_restitch, render_draft_video
 from storyboard.schema import VisualSource, load_storyboard, save_storyboard
 
 
@@ -53,13 +54,51 @@ def replace_scene(project_id: str, scene_id: str, request: ReplaceRequest):
     raise HTTPException(status_code=404, detail="scene not found")
 
 
-@router.post("/{project_id}/scene/{scene_id}/lock")
-def lock_scene(project_id: str, scene_id: str):
+@router.post("/{project_id}/scene/{scene_id}/upload_manual_capture")
+async def upload_manual_capture(project_id: str, scene_id: str, file: UploadFile = File(...)):
     path = _path(project_id)
     storyboard = load_storyboard(path)
     for scene in storyboard.scenes:
         if scene.scene_id == scene_id:
-            scene.lock_visual = True
+            # Save uploaded file
+            upload_dir = REVIEW_ROOT / storyboard.project_id / "manual_captures"
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            file_path = upload_dir / f"{scene_id}_{file.filename}"
+            with open(file_path, "wb") as f:
+                content = await file.read()
+                f.write(content)
+            
+            # Update scene
+            scene.asset_path = str(file_path)
+            scene.visual_source = VisualSource.user_manual_capture
+            scene.privacy_reviewed = True
+            scene.capture_notes = f"Manual upload: {file.filename}"
             save_storyboard(storyboard, path)
-            return {"scene_id": scene_id, "lock_visual": True}
+            return {"scene_id": scene_id, "asset_path": str(file_path)}
     raise HTTPException(status_code=404, detail="scene not found")
+
+
+@router.post("/{project_id}/regenerate/audio")
+def regenerate_audio(project_id: str):
+    path = _path(project_id)
+    storyboard = load_storyboard(path)
+    # Need to implement audio regeneration
+    # For now, placeholder
+    return {"project_id": project_id, "action": "regenerate_audio"}
+
+
+@router.post("/{project_id}/regenerate/captions")
+def regenerate_captions(project_id: str):
+    path = _path(project_id)
+    storyboard = load_storyboard(path)
+    # Placeholder
+    return {"project_id": project_id, "action": "regenerate_captions"}
+
+
+@router.post("/{project_id}/render/final")
+def render_final(project_id: str):
+    path = _path(project_id)
+    storyboard = load_storyboard(path)
+    out_dir = REVIEW_ROOT / storyboard.project_id / "final_render"
+    result = render_draft_video(storyboard, REPO_ROOT, out_dir)
+    return result
