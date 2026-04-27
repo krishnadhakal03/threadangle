@@ -1,0 +1,75 @@
+{
+  "project_id": "retention_example",
+  "title": "Retention Editing Example",
+  "niche": "personal finance",
+  "template_id": "money_proof_short",
+  "format": "short_9x16",
+  "render_mode": "draft",
+  "style": {
+    "palette": "documentary_light"
+  },
+  "variables": {
+    "cta_word": "SAVE",
+    "proof_number": "$480/YEAR"
+  },
+  "scenes": [
+    {
+      "scene_id": "hook",
+      "scene_type": "hook",
+      "duration": 3.0,
+      "narration_text": "I was spending $53/month just to get groceries without a car.",
+      "caption_text": "I was spending $53/month just to get groceries without a car.",
+      "visual_source": "proof_screenshot",
+      "asset_path": "launch_assets/day6_walmart_receipts/01_onepay_lyft_receipt.jpeg",
+      "beat_role": "hook",
+      "novelty_interval_seconds": 1.0,
+      "interrupt_allowed": true,
+      "emphasis_terms": ["spending", "month"],
+      "payoff_terms": [],
+      "visual_layers": [],
+      "pacing_style": "fast",
+      "motion_profile": "documentary_dynamic",
+      "motion_intensity": "med",
+      "micro_beats": ["punch_zoom"],
+      "supporting_cutaways": []
+    },
+    {
+      "scene_id": "reveal",
+      "scene_type": "reveal",
+      "duration": 4.0,
+      "narration_text": "But then I found Walmart+ for just $12.95/month, saving me $480/year.",
+      "caption_text": "But then I found Walmart+ for just $12.95/month, saving me $480/year.",
+      "visual_source": "generated_card",
+      "beat_role": "reveal",
+      "novelty_interval_seconds": 1.2,
+      "interrupt_allowed": true,
+      "emphasis_terms": ["saving", "year"],
+      "payoff_terms": ["saving"],
+      "visual_layers": ["background:launch_assets/day6_walmart_receipts/03_walmart_peacock_subscription.jpeg"],
+      "pacing_style": "standard",
+      "motion_profile": "kinetic_explainer",
+      "motion_intensity": "high",
+      "micro_beats": ["split_reveal", "value_tick"],
+      "supporting_cutaways": []
+    },
+    {
+      "scene_id": "cta",
+      "scene_type": "cta",
+      "duration": 2.0,
+      "narration_text": "Click the link to start saving today.",
+      "caption_text": "Click the link to start saving today.",
+      "visual_source": "generated_card",
+      "beat_role": "cta",
+      "novelty_interval_seconds": 0.8,
+      "interrupt_allowed": false,
+      "emphasis_terms": ["click", "start"],
+      "payoff_terms": [],
+      "visual_layers": [],
+      "pacing_style": "urgent",
+      "motion_profile": "static_clean",
+      "motion_intensity": "low",
+      "micro_beats": ["punch_zoom"],
+      "supporting_cutaways": []
+    }
+  ]
+}
