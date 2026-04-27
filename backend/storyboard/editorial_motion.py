@@ -126,6 +126,38 @@ class FocusCrop(MicroBeat):
         return img
 
 
+class PunchZoom(MicroBeat):
+    def apply(self, img: Image.Image, t: float, scene_duration: float) -> Image.Image:
+        if self.start_time <= t < self.start_time + self.duration:
+            progress = (t - self.start_time) / self.duration
+            scale = 1 + 0.5 * progress  # Punch zoom in
+            new_size = (int(img.width * scale), int(img.height * scale))
+            zoomed = img.resize(new_size, Image.Resampling.LANCZOS)
+            left = (zoomed.width - img.width) // 2
+            top = (zoomed.height - img.height) // 2
+            return zoomed.crop((left, top, left + img.width, top + img.height))
+        return img
+
+
+class HardCutaway(MicroBeat):
+    def apply(self, img: Image.Image, t: float, scene_duration: float) -> Image.Image:
+        if self.start_time <= t < self.start_time + self.duration:
+            # Simulate cutaway by darkening or changing
+            return Image.new('RGB', img.size, (0, 0, 0))  # Black for cutaway
+        return img
+
+
+class TextSnap(MicroBeat):
+    def apply(self, img: Image.Image, t: float, scene_duration: float) -> Image.Image:
+        if self.start_time <= t < self.start_time + self.duration:
+            # Add snapping text overlay
+            result = img.copy()
+            draw = ImageDraw.Draw(result)
+            draw.text((img.width // 2, img.height // 2), "SNAP!", fill=(255, 255, 255))
+            return result
+        return img
+
+
 # Map of beat names to classes
 MICRO_BEAT_CLASSES = {
     "zoom_punch": ZoomPunch,
@@ -136,6 +168,9 @@ MICRO_BEAT_CLASSES = {
     "value_tick": ValueTick,
     "punch_in": PunchIn,
     "focus_crop": FocusCrop,
+    "punch_zoom": PunchZoom,
+    "hard_cutaway": HardCutaway,
+    "text_snap": TextSnap,
 }
 
 
