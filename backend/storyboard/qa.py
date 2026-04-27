@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from .asset_resolver import resolve_assets
+from .editorial_density import EditorialDensityEngine
 from .hook_lab import check_hook_quality
 from .motion_rules import check_motion_rules
 from .retention_qa import check_retention_rules_scene
@@ -46,6 +47,12 @@ def run_qa(storyboard: Storyboard, repo_root: Path, out_path: Path, manifest: di
         hook_warning = check_hook_quality(scene)
         if hook_warning:
             issues.append({"severity": "warning", "code": "hook_quality", "scene_id": scene.scene_id, "message": hook_warning})
+
+        # Editorial density checks
+        density_engine = EditorialDensityEngine()
+        density_issues = density_engine.check_scene(scene)
+        for issue in density_issues:
+            issues.append(issue)
 
     report = {
         "project_id": storyboard.project_id,
