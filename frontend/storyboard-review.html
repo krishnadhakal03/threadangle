@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storyboard Review</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .scene { border: 1px solid #ccc; padding: 10px; margin: 10px 0; }
+        .scene.locked { background-color: #f0f0f0; }
+        button { margin: 5px; padding: 5px 10px; }
+        .controls { margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Storyboard Review</h1>
+    <div class="controls">
+        <input type="text" id="storyboardPath" placeholder="Storyboard path" value="backend/storyboard/examples/day7_coffee_storyboard.json">
+        <button onclick="loadStoryboard()">Load Storyboard</button>
+        <button onclick="runQA()">Run QA</button>
+    </div>
+    <div id="scenes"></div>
+
+    <script>
+        let currentStoryboard = null;
+
+        async function loadStoryboard() {
+            const path = document.getElementById('storyboardPath').value;
+            try {
+                const response = await fetch(`/api/storyboard/review?storyboard=${encodeURIComponent(path)}`);
+                const data = await response.json();
+                currentStoryboard = data.storyboard;
+                renderScenes(data.scenes);
+            } catch (error) {
+                alert('Error loading storyboard: ' + error.message);
+            }
+        }
+
+        function renderScenes(scenes) {
+            const container = document.getElementById('scenes');
+            container.innerHTML = '';
+            scenes.forEach(scene => {
+                const div = document.createElement('div');
+                div.className = 'scene' + (scene.lock_visual ? ' locked' : '');
+                div.innerHTML = `
+                    <h3>${scene.scene_id} (${scene.scene_type})</h3>
+                    <p><strong>Narration:</strong> ${scene.narration_text}</p>
+                    <p><strong>Caption:</strong> ${scene.caption_text}</p>
+                    <p><strong>Duration:</strong> ${scene.duration}s</p>
+                    <p><strong>Locked:</strong> ${scene.lock_visual ? 'Yes' : 'No'}</p>
+                    <button onclick="lockScene('${scene.scene_id}')">Lock</button>
+                    <button onclick="unlockScene('${scene.scene_id}')">Unlock</button>
+                    <button onclick="replaceScene('${scene.scene_id}')">Replace</button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        async function lockScene(sceneId) {
+            try {
+                await fetch(`/api/storyboard/lock`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ storyboard: currentStoryboard, scene_id: sceneId })
+                });
+                loadStoryboard();
+            } catch (error) {
+                alert('Error locking scene: ' + error.message);
+            }
+        }
+
+        async function unlockScene(sceneId) {
+            try {
+                await fetch(`/api/storyboard/unlock`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ storyboard: currentStoryboard, scene_id: sceneId })
+                });
+                loadStoryboard();
+            } catch (error) {
+                alert('Error unlocking scene: ' + error.message);
+            }
+        }
+
+        async function replaceScene(sceneId) {
+            const assetPath = prompt('Enter asset path:');
+            if (assetPath) {
+                try {
+                    await fetch(`/api/storyboard/replace`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ storyboard: currentStoryboard, scene_id: sceneId, asset_path: assetPath })
+                    });
+                    loadStoryboard();
+                } catch (error) {
+                    alert('Error replacing scene: ' + error.message);
+                }
+            }
+        }
+
+        async function runQA() {
+            try {
+                const response = await fetch(`/api/storyboard/qa`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ storyboard: currentStoryboard })
+                });
+                const data = await response.json();
+                alert(`QA Report: ${data.issue_count} issues found`);
+            } catch (error) {
+                alert('Error running QA: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

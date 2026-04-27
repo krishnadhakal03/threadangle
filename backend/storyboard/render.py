@@ -54,11 +54,11 @@ def render_scene_clip(storyboard: Storyboard, resolved, raw_dir: Path) -> Path:
         if scene.visual_source in {VisualSource.user_image, VisualSource.proof_screenshot} and asset and asset.exists():
             img = render_proof_image(scene, asset, width, height, t, scene.duration)
         elif scene.visual_source == VisualSource.generated_card:
-            img = render_generated_card(scene, width, height)
+            img = render_generated_card(scene, width, height, t, scene.duration)
         elif asset and asset.exists() and asset.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}:
             img = cover(Image.open(asset).convert("RGB"), width, height)
         else:
-            img = render_generated_card(scene, width, height)
+            img = render_generated_card(scene, width, height, t, scene.duration)
             draw = ImageDraw.Draw(img)
             draw.text((70, height - 170), f"{resolved.decision.provider}: {resolved.decision.reason or 'MVP fallback'}", font=font(34, True), fill=(16, 185, 129))
         img = apply_motion(img, t, scene.duration, micro_beats)
