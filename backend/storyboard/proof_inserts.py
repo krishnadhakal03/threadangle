@@ -9,7 +9,7 @@ from .schema import StoryboardScene
 
 
 def render_proof_image(scene: StoryboardScene, asset_path: Path, width: int, height: int, t: float, duration: float) -> Image.Image:
-    return documentary_frame(asset_path, width, height, t, duration, scene.proof_label)
+    return documentary_frame(asset_path, width, height, t, duration, scene.proof_label, scene.motion_profile)
 
 
 def render_generated_card(scene: StoryboardScene, width: int, height: int) -> Image.Image:

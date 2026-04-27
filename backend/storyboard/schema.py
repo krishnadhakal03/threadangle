@@ -18,6 +18,19 @@ class RenderMode(str, Enum):
     final = "final"
 
 
+class MotionProfile(str, Enum):
+    static_clean = "static_clean"
+    documentary_dynamic = "documentary_dynamic"
+    kinetic_explainer = "kinetic_explainer"
+    tutorial_followcam = "tutorial_followcam"
+
+
+class MotionIntensity(str, Enum):
+    low = "low"
+    med = "med"
+    high = "high"
+
+
 class VisualSource(str, Enum):
     generated_card = "generated_card"
     stock_footage = "stock_footage"
@@ -69,6 +82,10 @@ class StoryboardScene(BaseModel):
     provider_used: str | None = None
     provider_status: ProviderStatus = ProviderStatus.pending
     regeneration_policy: RegenerationPolicy = Field(default_factory=RegenerationPolicy)
+    motion_profile: MotionProfile = MotionProfile.static_clean
+    motion_intensity: MotionIntensity = MotionIntensity.low
+    micro_beats: list[str] = Field(default_factory=list)
+    supporting_cutaways: list[str] = Field(default_factory=list)
     style: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("caption_text")

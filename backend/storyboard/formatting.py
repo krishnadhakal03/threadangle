@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-from .schema import VideoFormat
+from .schema import VideoFormat, MotionProfile
 
 
 FORMAT_SPECS = {
@@ -43,11 +43,18 @@ def contain_with_blur(img: Image.Image, width: int, height: int) -> Image.Image:
     return bg
 
 
-def documentary_frame(path: Path, width: int, height: int, t: float, duration: float, label: str | None = None) -> Image.Image:
+def documentary_frame(path: Path, width: int, height: int, t: float, duration: float, label: str | None = None, motion_profile: MotionProfile | None = None) -> Image.Image:
     src = Image.open(path).convert("RGB")
     bg = cover(src, width, height, 1.05)
     drift_x = int(math.sin(t * 1.3) * 9)
     drift_y = int(math.cos(t * 1.1) * 12)
+    if motion_profile == MotionProfile.documentary_dynamic:
+        # Add pan across
+        pan_progress = min(t / duration, 1.0)
+        pan_x = int(pan_progress * 50)  # Pan up to 50px
+        pan_y = int(pan_progress * 30)
+        drift_x += pan_x
+        drift_y += pan_y
     img = Image.new("RGB", (width, height), (10, 18, 30))
     img.paste(bg, (drift_x, drift_y))
     shade = Image.new("RGBA", (width, height), (0, 0, 0, 66))
