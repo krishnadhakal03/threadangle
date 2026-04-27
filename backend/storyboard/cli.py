@@ -83,6 +83,25 @@ def cmd_qa_report(args: argparse.Namespace) -> None:
     print(json.dumps({"qa_report": str(out / "qa_report.json"), "issue_count": report["issue_count"]}, indent=2))
 
 
+def cmd_generate_storyboard(args: argparse.Namespace) -> None:
+    from .compiler import save_compiled_storyboard
+    output_path = Path(args.output) if args.output else Path(f"generated_{args.topic.lower().replace(' ', '_')}.json")
+    result_path = save_compiled_storyboard(
+        topic=args.topic,
+        output_path=output_path,
+        niche=args.niche,
+        proof_numbers=args.proof_numbers.split(',') if args.proof_numbers else None
+    )
+    print(json.dumps({"storyboard": str(result_path), "topic": args.topic}, indent=2))
+
+
+def cmd_hook_preview(args: argparse.Namespace) -> None:
+    from .hook_preview import preview_hooks_for_storyboard
+    output_dir = Path(args.output) if args.output else Path("hook_previews")
+    previews = preview_hooks_for_storyboard(Path(args.storyboard), output_dir)
+    print(json.dumps({"previews": [str(p) for p in previews]}, indent=2))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Storyboard-first video MVP CLI")
     sub = parser.add_subparsers(required=True)
@@ -119,6 +138,16 @@ def main() -> None:
     p = sub.add_parser("qa-report")
     p.add_argument("storyboard")
     p.set_defaults(func=cmd_qa_report)
+    p = sub.add_parser("generate-storyboard")
+    p.add_argument("topic")
+    p.add_argument("--output")
+    p.add_argument("--niche", default="personal finance")
+    p.add_argument("--proof-numbers")
+    p.set_defaults(func=cmd_generate_storyboard)
+    p = sub.add_parser("hook-preview")
+    p.add_argument("storyboard")
+    p.add_argument("--output")
+    p.set_defaults(func=cmd_hook_preview)
     args = parser.parse_args()
     args.func(args)
 
