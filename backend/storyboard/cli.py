@@ -74,6 +74,14 @@ def cmd_captions_regen(args: argparse.Namespace) -> None:
     print("Captions regeneration not yet implemented")
 
 
+def cmd_audio_regen(args: argparse.Namespace) -> None:
+    storyboard = load_storyboard(args.storyboard)
+    out_dir = GENERATED_ROOT / storyboard.project_id
+    silent = Path(args.silent) if args.silent else render_locked_visuals(storyboard, REPO_ROOT, out_dir / "raw")
+    result = regenerate_audio_captions_and_restitch(storyboard, silent, out_dir)
+    print(json.dumps(result, indent=2))
+
+
 def cmd_qa_report(args: argparse.Namespace) -> None:
     from .qa import run_qa
     storyboard = load_storyboard(args.storyboard)
