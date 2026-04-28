@@ -12,6 +12,7 @@ planner and QA gate logic.
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 import os
+import json
 
 BEAT_ROLES = [
     "cold_open",
@@ -111,6 +112,92 @@ def generate_creative_plan(scene: Dict, scene_index: int, total_scenes: int) -> 
         reject_conditions=[],
         why_this_visual=why,
     )
+
+
+@dataclass
+class AssetPlan:
+    scene_index: int
+    asset_query: str
+    provider_order: List[str]
+    fallback: str
+    required_layers: List[str]
+    reject_conditions: List[str]
+
+
+def plan_assets_for_scene(plan: CreativePlan, scene: Dict) -> AssetPlan:
+    # Provider order per spec (simplified decision tree)
+    providers = [
+        "user_locked",
+        "user_manual",
+        "playwright_browser_capture",
+        "pexels",
+        "pixabay",
+        "local_stock",
+        "generated_diagram",
+        "generated_card_last_resort",
+    ]
+
+    query = scene.get("asset_query") or (scene.get("text") or "").strip()[:120]
+    required_layers = ["base_visual"]
+    if plan.visual_medium in ("comparison_card", "payoff_card"):
+        required_layers.append("text_overlay")
+
+    fallback = "generated_card_last_resort"
+
+    # If PEXELS/Pixabay keys missing, deprioritize
+    pexels_key = os.getenv("PEXELS_API_KEY") or os.getenv("PEXELS_KEY")
+    pixabay_key = os.getenv("PIXABAY_API_KEY") or os.getenv("PIXABAY_KEY")
+    if not pexels_key:
+        providers.remove("pexels") if "pexels" in providers else None
+    if not pixabay_key:
+        providers.remove("pixabay") if "pixabay" in providers else None
+
+    return AssetPlan(
+        scene_index=plan.scene_index,
+        asset_query=query,
+        provider_order=providers,
+        fallback=fallback,
+        required_layers=required_layers,
+        reject_conditions=[],
+    )
+
+
+@dataclass
+class QAResult:
+    passed: bool
+    failures: List[str]
+    details: Dict[str, List[str]]
+
+
+def run_qa_on_plans(plans: List[CreativePlan]) -> QAResult:
+    failures = []
+    details = {}
+    generated_cards = 0
+    modalities = set()
+    for p in plans:
+        modalities.add(p.visual_medium)
+        if p.visual_medium == "generated_card_last_resort":
+            generated_cards += 1
+        # Hook check
+        if p.scene_index == 0 and p.visual_medium.startswith("generated"):
+            failures.append("Hook is text-only/generated: hook must be real footage or strong visual")
+            details.setdefault("scene_0", []).append("hook_is_generated")
+        # Every non-payoff needs a visual object beyond text
+        if p.beat_role != "payoff" and p.visual_medium in ("comparison_card", "payoff_card"):
+            failures.append(f"Scene {p.scene_index} may be text-first; needs visual object")
+            details.setdefault(f"scene_{p.scene_index}", []).append("no_visual_object")
+
+    max_generated = max(1, int(len(plans) * 0.2))
+    if generated_cards > max_generated:
+        failures.append(f"Generated-card usage {generated_cards} exceeds max {max_generated}")
+
+    # distinct modality count
+    if len(modalities) < 4:
+        failures.append("Fewer than 4 distinct visual modalities in contact sheet")
+
+    passed = len(failures) == 0
+    return QAResult(passed=passed, failures=failures, details=details)
+
 
 
 if __name__ == "__main__":
