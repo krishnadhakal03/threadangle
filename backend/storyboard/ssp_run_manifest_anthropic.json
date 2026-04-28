@@ -1,0 +1,28 @@
+{
+  "branch": "feature/scene-selection-policy-v1",
+  "providers": {
+    "pexels_configured": true,
+    "pixabay_configured": true,
+    "anthropic_available": true,
+    "enable_anthropic_planner": true,
+    "playwright_sandbox_profile": false,
+    "local_stock_exists": false,
+    "user_proof_exists": false,
+    "local_ai_available": false
+  },
+  "anthropic_used": true,
+  "fallback_used": false,
+  "degraded": false,
+  "day6": {
+    "plan_path": "F:\\Threadforge\\backend\\generated_videos\\storyboard_review\\scene_selection_plan_day6.json",
+    "critic_path": "F:\\Threadforge\\backend\\generated_videos\\storyboard_review\\critic_report_day6.json",
+    "generated_card_pct_after": 0.8333333333333334,
+    "critic_passed": false
+  },
+  "day7": {
+    "plan_path": "F:\\Threadforge\\backend\\generated_videos\\storyboard_review\\scene_selection_plan_day7.json",
+    "critic_path": "F:\\Threadforge\\backend\\generated_videos\\storyboard_review\\critic_report_day7.json",
+    "generated_card_pct_after": 0.7142857142857143,
+    "critic_passed": false
+  }
+}
