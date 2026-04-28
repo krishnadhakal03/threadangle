@@ -1,0 +1,41 @@
+{
+  "branch": "feature/scene-selection-policy-v1",
+  "providers": {
+    "pexels_configured": false,
+    "pixabay_configured": false,
+    "anthropic_available": false,
+    "enable_anthropic_planner": false,
+    "playwright_sandbox_profile": false,
+    "local_stock_exists": false,
+    "user_proof_exists": false,
+    "local_ai_available": false
+  },
+  "anthropic_used": false,
+  "fallback_used": true,
+  "degraded": true,
+  "day6": {
+    "plan_path": "F:\\Threadforge\\backend\\generated_videos\\storyboard_review\\scene_selection_plan_day6.json",
+    "critic_path": "F:\\Threadforge\\backend\\generated_videos\\storyboard_review\\critic_report_day6.json",
+    "generated_card_pct_after": 0.8333333333333334,
+    "critic_passed": false
+  },
+  "day7": {
+    "plan_path": "F:\\Threadforge\\backend\\generated_videos\\storyboard_review\\scene_selection_plan_day7.json",
+    "critic_path": "F:\\Threadforge\\backend\\generated_videos\\storyboard_review\\critic_report_day7.json",
+    "generated_card_pct_after": 0.7142857142857143,
+    "critic_passed": false
+  },
+  "before": {
+    "day6_generated_card_pct": 0.8333333333333334,
+    "day7_generated_card_pct": 0.7142857142857143
+  },
+  "comparison": {
+    "day6_generated_card_before": 0.8333333333333334,
+    "day6_generated_card_after": 0.8333333333333334,
+    "day7_generated_card_before": 0.7142857142857143,
+    "day7_generated_card_after": 0.7142857142857143
+  },
+  "render": {
+    "note": "Render skipped: critic_passed=False, anthropic_used=False, degraded=True"
+  }
+}
