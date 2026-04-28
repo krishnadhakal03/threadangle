@@ -76,21 +76,20 @@ class VisualLayer:
 
     def _render_magnifier_crop(self, base_img: Image.Image, t: float, scene_duration: float) -> Image.Image:
         """Render magnifier crop effect."""
-        if not self.asset_path:
-            return base_img
         try:
-            # Create a magnified crop of the asset
-            asset = Image.open(self.asset_path).convert("RGB")
+            if self.asset_path:
+                asset = Image.open(self.asset_path).convert("RGB")
+            else:
+                asset = base_img
             if self.size:
                 crop_size = (int(self.size[0] * 1.5), int(self.size[1] * 1.5))  # 1.5x magnification
                 asset_crop = asset.resize(crop_size, Image.Resampling.LANCZOS)
-                # Crop to show magnified area
-                left = (asset_crop.width - self.size[0]) // 2
-                top = (asset_crop.height - self.size[1]) // 2
+                left = max(0, (asset_crop.width - self.size[0]) // 2)
+                top = max(0, (asset_crop.height - self.size[1]) // 2)
                 magnified = asset_crop.crop((left, top, left + self.size[0], top + self.size[1]))
 
                 result = base_img.convert("RGBA")
-                result.paste(magnified.convert("RGBA"), self.position)
+                result.paste(magnified.convert("RGBA"), self.position, magnified.convert("RGBA"))
                 return result.convert("RGB")
         except Exception:
             return base_img
@@ -106,7 +105,7 @@ class VisualLayer:
                 cutaway = cutaway.resize(self.size, Image.Resampling.LANCZOS)
 
             result = base_img.convert("RGBA")
-            result.paste(cutaway.convert("RGBA"), self.position)
+            result.paste(cutaway.convert("RGBA"), self.position, cutaway.convert("RGBA"))
             return result.convert("RGB")
         except Exception:
             return base_img
@@ -118,15 +117,44 @@ class VisualLayer:
 
         result = base_img.copy()
         draw = ImageDraw.Draw(result)
+        caption_font = self.style.get('font')
+        if not caption_font:
+            try:
+                caption_font = ImageFont.load_default()
+            except Exception:
+                caption_font = None
 
-        # Simple text rendering - in real implementation, use proper font loading
-        try:
-            # Use default font, position at bottom
-            font_size = self.style.get('font_size', 40)
-            # For now, just draw text at position
-            draw.text(self.position, self.text, fill='white')
-        except Exception:
-            pass
+        font_size = self.style.get('font_size', 40)
+        if caption_font and hasattr(caption_font, 'size') and caption_font.size != font_size:
+            try:
+                caption_font = ImageFont.truetype(caption_font.path, font_size)
+            except Exception:
+                caption_font = ImageFont.load_default()
+
+        color = self.style.get('color', 'white')
+        x, y = self.position
+        text = self.text
+        max_width = self.style.get('max_width', base_img.width - x - 40)
+
+        lines = []
+        current = ""
+        for word in text.split():
+            test_line = f"{current} {word}".strip()
+            try:
+                w, _ = draw.textsize(test_line, font=caption_font)
+            except Exception:
+                w = len(test_line) * 10
+            if w <= max_width:
+                current = test_line
+            else:
+                lines.append(current)
+                current = word
+        if current:
+            lines.append(current)
+
+        for idx, line in enumerate(lines):
+            line_y = y + idx * (font_size + 8)
+            draw.text((x, line_y), line, fill=color, font=caption_font)
 
         return result
 
@@ -178,44 +206,86 @@ class LayeredComposition:
         ]
 
 
+def _is_number(value: str) -> bool:
+    try:
+        float(value)
+        return True
+    except ValueError:
+        return False
+
+
+def _parse_coords(value: str) -> tuple[int, int] | tuple[int, int, int, int] | None:
+    parts = [part.strip() for part in value.split(",") if part.strip()]
+    if not parts:
+        return None
+    if all(part.lstrip("+-").replace(".", "", 1).isdigit() for part in parts):
+        coords = [int(float(part)) for part in parts]
+        if len(coords) == 2:
+            return tuple(coords)
+        if len(coords) == 4:
+            return tuple(coords)
+    return None
+
+
 def parse_visual_layers(layers_config: List[str]) -> List[VisualLayer]:
     """Parse visual_layers strings into VisualLayer objects."""
-    layers = []
+    layers: list[VisualLayer] = []
     for config in layers_config:
-        # Enhanced parsing: type:asset_path:opacity:text:style_json
         parts = config.split(":")
-        if len(parts) >= 1:
-            layer_type = parts[0]
-            asset = parts[1] if len(parts) > 1 and parts[1] else None
-            opacity = float(parts[2]) if len(parts) > 2 and parts[2] else 1.0
-            text = parts[3] if len(parts) > 3 and parts[3] else None
-            style = {}
-            if len(parts) > 4:
+        if not parts:
+            continue
+
+        layer_type = parts[0]
+        asset = parts[1] if len(parts) > 1 and parts[1] else None
+        opacity = 1.0
+        position: tuple[int, int] = (0, 0)
+        size: tuple[int, int] | None = None
+        text = None
+        style: dict[str, Any] = {}
+
+        extra = parts[2:]
+        while extra and extra[0] == "":
+            extra = extra[1:]
+
+        if extra:
+            first = extra[0]
+            if _is_number(first):
+                opacity = float(first)
+                extra = extra[1:]
+            else:
+                coords = _parse_coords(first)
+                if coords is not None:
+                    if len(coords) == 2:
+                        position = coords
+                    elif len(coords) == 4:
+                        position = (coords[0], coords[1])
+                        size = (coords[2], coords[3])
+                    extra = extra[1:]
+                elif first.startswith("{") and first.endswith("}"):
+                    try:
+                        import json
+                        style = json.loads(first)
+                    except Exception:
+                        pass
+                    extra = extra[1:]
+
+        if extra:
+            candidate = extra[0]
+            if candidate.startswith("{") and candidate.endswith("}"):
                 try:
                     import json
-                    style = json.loads(parts[4])
-                except:
+                    style = json.loads(candidate)
+                except Exception:
                     pass
+            else:
+                text = candidate
 
-            layers.append(VisualLayer(layer_type, asset, opacity=opacity, text=text, style=style))
+        layers.append(VisualLayer(layer_type, asset, position=position, size=size, opacity=opacity, text=text, style=style))
     return layers
 
 
 def composite_layers(base_img: Image.Image, layers: List[VisualLayer], t: float, scene_duration: float) -> Image.Image:
     """Composite multiple layers onto base image."""
-    result = base_img
-    for layer in layers:
-        result = layer.render(result, t, scene_duration)
-    return result
-
-
-def apply_multi_layer_composition(scene: StoryboardScene, base_img: Image.Image, t: float) -> Image.Image:
-    """Apply multi-layer composition for scene."""
-    if not scene.visual_layers:
-        return base_img
-
-    layers = parse_visual_layers(scene.visual_layers)
-    return composite_layers(base_img, layers, t, scene.duration)
     result = base_img
     for layer in layers:
         result = layer.render(result, t, scene_duration)

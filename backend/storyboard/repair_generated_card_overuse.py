@@ -39,10 +39,12 @@ def repair_plan(plan: List[Dict], providers: Dict) -> List[Dict]:
         new = dict(s)
         med = s.get("chosen_medium")
         beat = s.get("beat_role") or ""
+        sid = (s.get("scene_id") or "").lower()
+        text = (s.get("narration_text") or "").lower()
 
         if med == "generated_card_last_resort":
             # apply repair policy
-            if "hook" in beat or beat == "hook":
+            if "hook" in beat or beat == "hook" or "hook" in sid:
                 # generated forbidden
                 stock, prov = choose_stock()
                 if stock:
@@ -52,7 +54,7 @@ def repair_plan(plan: List[Dict], providers: Dict) -> List[Dict]:
                 else:
                     new["chosen_medium"] = "generated_card_last_resort"
                     new.setdefault("hard_reject_conditions", []).append("no_stock_for_hook")
-            elif beat in ("shock", "proof", "tension"):
+            elif beat in ("shock", "proof", "tension") or any(k in sid for k in ("shock","receipt","cost","price","money","math","calculator","proof","receipt")) or any(k in text for k in ("receipt","price","cost","math","calculator","proof","total")):
                 stock, prov = choose_stock()
                 if stock:
                     new["chosen_medium"] = stock
@@ -62,7 +64,7 @@ def repair_plan(plan: List[Dict], providers: Dict) -> List[Dict]:
                     new.setdefault("why_this_medium", "repaired: stock+overlay for proof/shock")
                 else:
                     new.setdefault("hard_reject_conditions",[]).append("no_stock_for_shock")
-            elif "prompt" in (s.get("narration_text") or "").lower() or "prompt" in s.get("scene_id",""):
+            elif "prompt" in text or "prompt" in sid:
                 if play:
                     new["chosen_medium"] = "playwright_browser_capture"
                     new["chosen_provider"] = "playwright"
@@ -70,11 +72,13 @@ def repair_plan(plan: List[Dict], providers: Dict) -> List[Dict]:
                 else:
                     new["chosen_medium"] = "local_ai_prompt_capture"
                     new.setdefault("why_this_medium", "repaired: local AI prompt capture for prompt scene")
-            elif beat in ("comparison","reveal"):
+            elif beat in ("comparison","reveal") or "reveal" in sid or "compare" in sid:
                 new["chosen_medium"] = "comparison_card"
                 new.setdefault("required_visual_objects",[]).append("icon_pair")
                 new.setdefault("why_this_medium", "repaired: comparison card for reveal/comparison")
             elif beat == "payoff":
+                new["chosen_medium"] = "payoff_card"
+            elif "payoff" in sid:
                 new["chosen_medium"] = "payoff_card"
             elif beat == "cta":
                 stock, prov = choose_stock()

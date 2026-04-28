@@ -24,6 +24,8 @@ def rebuild_coffee_with_density(original_path: Path, output_path: Path, repo_roo
 
     # Load original
     storyboard = load_storyboard(original_path)
+    storyboard.project_id = "day7_coffee_fireship50_proof"
+    storyboard.title = storyboard.title + " (Fireship50 proof)"
 
     # Initialize engines
     density_engine = EditorialDensityEngine()

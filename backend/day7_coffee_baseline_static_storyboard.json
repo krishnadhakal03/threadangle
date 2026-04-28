@@ -1,6 +1,6 @@
 {
-  "project_id": "day7_coffee_fireship50_proof",
-  "title": "Coffee Savings Proof (Fireship50 proof)",
+  "project_id": "day7_coffee_baseline_static",
+  "title": "Coffee Savings Proof (Baseline static)",
   "niche": "personal finance",
   "template_id": "money_proof_short",
   "format": "short_9x16",
@@ -43,29 +43,15 @@
         "rapid_zoom",
         "flash_cut",
         "shake_pan",
-        "freeze_emphasis",
-        "pulse_glow",
-        "freeze_emphasis",
-        "value_tick"
+        "pulse_glow"
       ],
       "supporting_cutaways": [],
       "beat_role": "hook",
-      "novelty_interval_seconds": 1.0,
+      "novelty_interval_seconds": 1.3,
       "interrupt_allowed": true,
-      "emphasis_terms": [
-        "$",
-        "save",
-        "bucks",
-        "cost",
-        "price",
-        "dollars",
-        "spend"
-      ],
+      "emphasis_terms": [],
       "payoff_terms": [],
-      "visual_layers": [
-        "magnifier_crop:proof_screenshot.png:200,300,400,300",
-        "caption_layer:::I was spending $5 every day on coffee. I told myself it was just a small treat."
-      ],
+      "visual_layers": [],
       "pacing_style": "standard",
       "sound_accent_profile": null,
       "capture_notes": null,
@@ -102,40 +88,18 @@
         "captions": "from_audio",
         "fallback_allowed": true
       },
-      "motion_profile": "fireship_dynamic",
-      "motion_intensity": "high",
+      "motion_profile": "kinetic_explainer",
+      "motion_intensity": "low",
       "micro_beats": [
-        "value_tick",
-        "contradiction_card",
-        "freeze_emphasis",
-        "contradiction_card",
-        "hard_cutaway"
+        "value_tick"
       ],
       "supporting_cutaways": [],
       "beat_role": "setup",
-      "novelty_interval_seconds": 1.0,
+      "novelty_interval_seconds": 1.3,
       "interrupt_allowed": true,
-      "emphasis_terms": [
-        "$",
-        "yet",
-        "instead",
-        "spend",
-        "vs",
-        "however",
-        "bucks",
-        "although",
-        "cost",
-        "versus",
-        "price",
-        "dollars",
-        "but",
-        "save"
-      ],
+      "emphasis_terms": [],
       "payoff_terms": [],
-      "visual_layers": [
-        "magnifier_crop:proof_screenshot.png:200,300,400,300",
-        "caption_layer:::But that small treat was costing me about $150 a month."
-      ],
+      "visual_layers": [],
       "pacing_style": "standard",
       "sound_accent_profile": null,
       "capture_notes": null,
@@ -172,22 +136,18 @@
         "captions": "from_audio",
         "fallback_allowed": true
       },
-      "motion_profile": "fireship_dynamic",
-      "motion_intensity": "high",
+      "motion_profile": "documentary_dynamic",
+      "motion_intensity": "low",
       "micro_beats": [
-        "snap_zoom",
         "split_reveal"
       ],
       "supporting_cutaways": [],
       "beat_role": "proof",
-      "novelty_interval_seconds": 1.0,
+      "novelty_interval_seconds": 1.3,
       "interrupt_allowed": true,
       "emphasis_terms": [],
       "payoff_terms": [],
-      "visual_layers": [
-        "proof_overlay:proof_screenshot.png:0.8",
-        "caption_layer:::So I asked AI to compare coffee shop runs with making it at home."
-      ],
+      "visual_layers": [],
       "pacing_style": "standard",
       "sound_accent_profile": null,
       "capture_notes": null,
@@ -224,34 +184,18 @@
         "captions": "from_audio",
         "fallback_allowed": true
       },
-      "motion_profile": "fireship_dynamic",
-      "motion_intensity": "high",
+      "motion_profile": "documentary_dynamic",
+      "motion_intensity": "low",
       "micro_beats": [
-        "split_reveal",
-        "freeze_emphasis",
-        "snap_zoom",
-        "freeze_emphasis",
-        "value_tick"
+        "split_reveal"
       ],
       "supporting_cutaways": [],
       "beat_role": "proof",
-      "novelty_interval_seconds": 1.0,
+      "novelty_interval_seconds": 1.3,
       "interrupt_allowed": true,
-      "emphasis_terms": [
-        "$",
-        "save",
-        "bucks",
-        "cost",
-        "price",
-        "dollars",
-        "spend"
-      ],
+      "emphasis_terms": [],
       "payoff_terms": [],
-      "visual_layers": [
-        "proof_overlay:proof_screenshot.png:0.8",
-        "magnifier_crop:proof_screenshot.png:200,300,400,300",
-        "caption_layer:::I spend $5 a day on coffee. Compare that with brewing at home and show me what I could save each month and each year."
-      ],
+      "visual_layers": [],
       "pacing_style": "standard",
       "sound_accent_profile": null,
       "capture_notes": null,
@@ -288,34 +232,18 @@
         "captions": "from_audio",
         "fallback_allowed": true
       },
-      "motion_profile": "fireship_dynamic",
-      "motion_intensity": "high",
+      "motion_profile": "documentary_dynamic",
+      "motion_intensity": "low",
       "micro_beats": [
-        "split_reveal",
-        "freeze_emphasis",
-        "snap_zoom",
-        "freeze_emphasis",
-        "value_tick"
+        "split_reveal"
       ],
       "supporting_cutaways": [],
       "beat_role": "proof",
-      "novelty_interval_seconds": 1.0,
+      "novelty_interval_seconds": 1.3,
       "interrupt_allowed": true,
-      "emphasis_terms": [
-        "$",
-        "save",
-        "bucks",
-        "cost",
-        "price",
-        "dollars",
-        "spend"
-      ],
+      "emphasis_terms": [],
       "payoff_terms": [],
-      "visual_layers": [
-        "proof_overlay:proof_screenshot.png:0.8",
-        "magnifier_crop:proof_screenshot.png:200,300,400,300",
-        "caption_layer:::AI showed me I could cut it down to about $20 a month."
-      ],
+      "visual_layers": [],
       "pacing_style": "standard",
       "sound_accent_profile": null,
       "capture_notes": null,
@@ -353,24 +281,13 @@
         "fallback_allowed": true
       },
       "motion_profile": "static_clean",
-      "motion_intensity": "med",
-      "micro_beats": [
-        "freeze_emphasis",
-        "value_tick"
-      ],
+      "motion_intensity": "low",
+      "micro_beats": [],
       "supporting_cutaways": [],
       "beat_role": "payoff",
-      "novelty_interval_seconds": 1.0,
+      "novelty_interval_seconds": 1.3,
       "interrupt_allowed": true,
-      "emphasis_terms": [
-        "$",
-        "save",
-        "bucks",
-        "cost",
-        "price",
-        "dollars",
-        "spend"
-      ],
+      "emphasis_terms": [],
       "payoff_terms": [],
       "visual_layers": [],
       "pacing_style": "standard",
@@ -409,31 +326,18 @@
         "captions": "from_audio",
         "fallback_allowed": true
       },
-      "motion_profile": "fireship_dynamic",
-      "motion_intensity": "high",
+      "motion_profile": "static_clean",
+      "motion_intensity": "low",
       "micro_beats": [
-        "punch_zoom",
-        "snap_zoom",
-        "snap_zoom"
+        "punch_zoom"
       ],
       "supporting_cutaways": [],
       "beat_role": "cta",
-      "novelty_interval_seconds": 1.0,
+      "novelty_interval_seconds": 1.3,
       "interrupt_allowed": true,
-      "emphasis_terms": [
-        "share",
-        "follow",
-        "comment",
-        "click",
-        "subscribe",
-        "download",
-        "like"
-      ],
+      "emphasis_terms": [],
       "payoff_terms": [],
-      "visual_layers": [
-        "magnifier_crop:proof_screenshot.png:200,300,400,300",
-        "caption_layer:::Comment COFFEE and I'll send you the exact prompt."
-      ],
+      "visual_layers": [],
       "pacing_style": "standard",
       "sound_accent_profile": null,
       "capture_notes": null,
