@@ -56,8 +56,8 @@ def run_qa(storyboard: Storyboard, repo_root: Path, out_path: Path, manifest: di
 
     report = {
         "project_id": storyboard.project_id,
-        "format": storyboard.format.value,
-        "render_mode": storyboard.render_mode.value,
+        "format": storyboard.format.value if hasattr(storyboard.format, 'value') else str(storyboard.format),
+        "render_mode": storyboard.render_mode.value if hasattr(storyboard.render_mode, 'value') else str(storyboard.render_mode),
         "issue_count": len(issues),
         "issues": issues,
         "review_manifest": manifest.get("manifest_path") if manifest else None,
