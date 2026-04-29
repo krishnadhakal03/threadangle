@@ -363,6 +363,7 @@ def render_hybrid_video(
         text_cropped = False
         key_boxes: list[tuple[int, int, int, int]] = []
         motion_scores = []
+        postability_signals: dict[str, Any] = {}
         for local_frame in range(frame_count):
             progress = local_frame / max(1, frame_count - 1)
             canvas = _read_bg_frame(capture, width, height, progress)
@@ -377,6 +378,9 @@ def render_hybrid_video(
             text_cropped = text_cropped or bool(template_report.get("cropped"))
             key_boxes = [tuple(b) for b in template_report.get("key_number_boxes", [])]
             motion_scores.append(float(template_report.get("motion_score") or 0.5))
+            for key, value in (template_report.get("postability_signals") or {}).items():
+                if key not in postability_signals:
+                    postability_signals[key] = value
 
             current_t = elapsed + local_frame / float(fps)
             active_caption = next((ev["text"] for ev in caption_events if ev["start"] <= current_t < ev["end"]), "")
@@ -400,6 +404,7 @@ def render_hybrid_video(
             "text_cropped": text_cropped,
             "motion_score": round(sum(motion_scores) / max(1, len(motion_scores)), 3),
             "number_reveal": template_name == "payoff_number_reveal",
+            "postability_signals": postability_signals,
         })
         elapsed += duration
 

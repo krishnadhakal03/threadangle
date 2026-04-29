@@ -200,8 +200,8 @@ def _scene_text(scene_config: dict[str, Any], *keys: str, default: str = "") -> 
 def hook_footage_overlay(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
     h, w = canvas.shape[:2]
     if not scene_config.get("has_real_background"):
-        animated_background(canvas, scene_progress, ((10, 17, 30), (31, 74, 82)))
-    punch = 1.0 + 0.055 * (1.0 - ease_out(scene_progress))
+        animated_background(canvas, scene_progress, ((12, 18, 26), (44, 82, 70)))
+    punch = 1.0 + 0.11 * (1.0 - ease_out(scene_progress))
     if punch > 1.002:
         resized = cv2.resize(canvas, None, fx=punch, fy=punch, interpolation=cv2.INTER_LINEAR)
         y = (resized.shape[0] - h) // 2
@@ -209,18 +209,73 @@ def hook_footage_overlay(frame_idx: int, scene_progress: float, canvas: np.ndarr
         canvas[:] = resized[y:y + h, x:x + w]
     image = to_pil(canvas)
     draw = ImageDraw.Draw(image, "RGBA")
-    draw.rectangle((0, 0, w, h), fill=(0, 0, 0, 82))
+    draw.rectangle((0, 0, w, h), fill=(0, 0, 0, 58))
     area = safe_area(w, h)
+
+    snap = ease_out(min(1.0, scene_progress / 0.32))
+    drift = math.sin(scene_progress * math.tau) * w * 0.018
+    receipt_w = int(w * 0.38)
+    receipt_h = int(h * 0.36)
+    receipt_x = int(w * (0.58 + 0.12 * (1.0 - snap)) + drift)
+    receipt_y = int(h * (0.12 - 0.035 * (1.0 - snap)))
+    receipt = (receipt_x, receipt_y, receipt_x + receipt_w, receipt_y + receipt_h)
+    draw_rounded_rect(draw, receipt, max(12, int(w * 0.035)), (250, 248, 240), (255, 255, 255), max(1, int(w * 0.006)))
+    for i in range(5):
+        y = receipt_y + int(receipt_h * (0.18 + i * 0.12))
+        line_w = int(receipt_w * (0.68 - 0.05 * (i % 2)))
+        draw.line((receipt_x + int(w * 0.035), y, receipt_x + int(w * 0.035) + line_w, y), fill=(112, 96, 82, 210), width=max(1, int(w * 0.008)))
+    draw.text((receipt_x + int(w * 0.04), receipt_y + int(receipt_h * 0.78)), "$5.00", font=pil_font(max(14, int(w * 0.075))), fill=(168, 43, 40))
+
+    cup_x = int(w * (0.10 - 0.08 * (1.0 - snap)))
+    cup_y = int(h * (0.44 + 0.025 * math.sin(scene_progress * math.tau * 1.4)))
+    cup_w = int(w * 0.34)
+    cup_h = int(h * 0.27)
+    draw.ellipse((cup_x + int(cup_w * 0.05), cup_y - int(cup_h * 0.11), cup_x + int(cup_w * 0.95), cup_y + int(cup_h * 0.12)), fill=(248, 250, 252), outline=(210, 218, 228), width=max(1, int(w * 0.008)))
+    draw_rounded_rect(draw, (cup_x + int(cup_w * 0.12), cup_y, cup_x + int(cup_w * 0.88), cup_y + cup_h), max(12, int(w * 0.04)), (245, 245, 240), (214, 220, 228), max(1, int(w * 0.008)))
+    draw_rounded_rect(draw, (cup_x + int(cup_w * 0.25), cup_y + int(cup_h * 0.38), cup_x + int(cup_w * 0.75), cup_y + int(cup_h * 0.62)), max(8, int(w * 0.025)), (47, 103, 91), None, 1)
+    for i in range(3):
+        sx = cup_x + int(cup_w * (0.28 + i * 0.17))
+        sy = cup_y - int(cup_h * (0.20 + 0.04 * i))
+        draw.arc((sx, sy, sx + int(w * 0.08), sy + int(h * 0.12)), 105, 245, fill=(255, 255, 255, 130), width=max(1, int(w * 0.006)))
+
+    price_text = "$5/day = $1,825/year?"
+    price_font = pil_font(max(18, int(w * 0.092)), bold=True)
+    tw, th = text_size(draw, price_text, price_font)
+    pad_x = int(w * 0.035)
+    pad_y = int(h * 0.014)
+    price_w = min(area.right - area.left, tw + pad_x * 2)
+    price_x = area.left + int((area.right - area.left - price_w) * 0.5)
+    price_y = int(h * (0.16 + 0.035 * (1.0 - snap)))
+    price_box = (price_x, price_y, price_x + price_w, price_y + th + pad_y * 2)
+    draw_rounded_rect(draw, price_box, max(14, int(w * 0.045)), (250, 250, 250), (115, 231, 185), max(2, int(w * 0.01)))
+    draw.text((price_x + pad_x, price_y + pad_y - 2), price_text, font=price_font, fill=(19, 24, 33))
+
+    for i in range(5):
+        streak_y = int(h * (0.12 + i * 0.13) + math.sin(scene_progress * math.tau + i) * h * 0.015)
+        streak_x = int(w * ((scene_progress * 1.4 + i * 0.21) % 1.15) - w * 0.15)
+        draw.line((streak_x, streak_y, streak_x + int(w * 0.22), streak_y - int(h * 0.035)), fill=(115, 231, 185, 70), width=max(1, int(w * 0.01)))
+
     report = draw_text_block(
         image,
         _scene_text(scene_config, "headline", "caption_text", "source_text", default="Small habits get expensive"),
-        (area.left, int(h * 0.22), area.right, int(h * 0.58)),
-        font_size=88,
+        (area.left, int(h * 0.52), area.right, int(h * 0.75)),
+        font_size=max(32, int(w * 0.115)),
         accent=(115, 231, 185),
-        max_lines=4,
+        max_lines=3,
     )
     canvas[:] = to_cv(image)
-    return {"template": "hook_footage_overlay", "text_boxes": report["boxes"], "cropped": report["cropped"], "motion_score": 0.85}
+    return {
+        "template": "hook_footage_overlay",
+        "text_boxes": report["boxes"],
+        "key_number_boxes": [price_box],
+        "cropped": report["cropped"],
+        "motion_score": 0.94,
+        "postability_signals": {
+            "hook_treatment": "price_snap_receipt_coffee",
+            "foreground_layers": 3,
+            "early_number_snap": True,
+        },
+    }
 
 
 def money_shock_math(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
@@ -244,8 +299,34 @@ def money_shock_math(frame_idx: int, scene_progress: float, canvas: np.ndarray, 
     font_formula = pil_font(58, bold=True)
     fw, _ = text_size(draw, formula, font_formula)
     draw.text(((w - fw) // 2, card[1] + 430), formula, font=font_formula, fill=(20, 26, 36))
+    if scene_progress < 0.28:
+        burst = ease_out(scene_progress / 0.28)
+        band_x = int(-w * 0.45 + burst * w * 1.1)
+        draw.polygon(
+            [
+                (band_x, int(h * 0.02)),
+                (band_x + int(w * 0.36), int(h * 0.02)),
+                (band_x + int(w * 0.52), int(h * 0.36)),
+                (band_x + int(w * 0.16), int(h * 0.36)),
+            ],
+            fill=(255, 255, 255, 52),
+        )
+        tag = "PRICE CHECK"
+        tag_font = pil_font(max(18, int(w * 0.055)), bold=True)
+        tag_w, tag_h = text_size(draw, tag, tag_font)
+        tag_box = (area.left, int(h * 0.075), area.left + tag_w + int(w * 0.08), int(h * 0.075) + tag_h + int(h * 0.035))
+        draw_rounded_rect(draw, tag_box, max(10, int(w * 0.03)), (15, 23, 42), (115, 231, 185), max(1, int(w * 0.006)))
+        draw.text((tag_box[0] + int(w * 0.035), tag_box[1] + int(h * 0.015)), tag, font=tag_font, fill=(255, 255, 255))
     canvas[:] = to_cv(image)
-    return {"template": "money_shock_math", "key_number_boxes": [num_box], "cropped": False, "motion_score": 0.9}
+    return {
+        "template": "money_shock_math",
+        "key_number_boxes": [num_box],
+        "cropped": False,
+        "motion_score": 0.93,
+        "postability_signals": {
+            "motion_interruption": "price_check_sweep",
+        },
+    }
 
 
 def ai_prompt_mock(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:

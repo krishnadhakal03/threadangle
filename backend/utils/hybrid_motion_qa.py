@@ -41,12 +41,17 @@ def _score_postability(
 
     first = reports[0] if reports else {}
     first_class = first.get("media_classification")
+    first_signals = first.get("postability_signals") or {}
+    has_hook_upgrade = first_signals.get("early_number_snap") and first_signals.get("hook_treatment")
+    has_motion_interruption = any((row.get("postability_signals") or {}).get("motion_interruption") for row in reports)
     hook_visual_strength = {
         "REAL_STOCK": 8,
         "LOCAL_CAPTURE": 7,
         "ANIMATED_FALLBACK": 5,
         "MOTION_CARD": 3,
     }.get(str(first_class), 4)
+    if has_hook_upgrade:
+        hook_visual_strength += 2
     if first.get("duration", 0) > 3.0:
         hook_visual_strength -= 1
     if first.get("text_cropped"):
@@ -61,6 +66,10 @@ def _score_postability(
         template_polish -= 1
     if card_count >= 3:
         template_polish -= 1
+    if has_hook_upgrade:
+        template_polish += 1
+    if has_motion_interruption:
+        template_polish += 1
     if "text_cropped" in fail_codes or "caption_covers_key_number" in fail_codes:
         template_polish -= 3
     if "same_background_used_3_plus_scenes" in warn_codes:
@@ -79,6 +88,10 @@ def _score_postability(
         pacing_retention -= 3
     if card_count >= 3:
         pacing_retention -= 1
+    if has_hook_upgrade:
+        pacing_retention += 1
+    if has_motion_interruption:
+        pacing_retention += 1
     if reports:
         avg_duration = sum(float(row.get("duration") or 0) for row in reports) / len(reports)
         if avg_duration > 3.25:
@@ -110,6 +123,8 @@ def _score_postability(
         social_platform_readiness += 1
     if technical_status == "FAIL":
         social_platform_readiness -= 3
+    if has_hook_upgrade:
+        social_platform_readiness += 1
     if hook_visual_strength < 7 or template_polish < 7:
         social_platform_readiness -= 1
 
