@@ -121,17 +121,23 @@ def main() -> int:
     result["warnings"] = audio_warnings + result.get("warnings", [])
     qa = run_hybrid_motion_qa(result)
     result["qa"] = qa
+    result["technical_status"] = qa["technical_status"]
+    result["postability_status"] = qa["postability_status"]
+    result["postability_score"] = qa["postability_score"]
 
     save_render_report(result, out_dir / "day8_hybrid_motion_poc_v1_report.json")
     (out_dir / "day8_hybrid_motion_poc_v1_qa.json").write_text(json.dumps(qa, indent=2), encoding="utf-8")
 
     print(json.dumps({
         "video_path": result["video_path"],
-        "qa_status": qa["status"],
+        "qa_status": qa["technical_status"],
+        "technical_status": qa["technical_status"],
+        "postability_status": qa["postability_status"],
+        "postability_score": qa["postability_score"],
         "media_mix": result["media_mix"],
         "warnings": result["warnings"],
     }, indent=2))
-    return 0 if qa["status"] == "PASS" else 2
+    return 0 if qa["technical_status"] == "PASS" else 2
 
 
 if __name__ == "__main__":

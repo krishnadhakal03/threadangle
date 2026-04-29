@@ -93,7 +93,36 @@ def test_qa_catches_card_only_sequence():
         "stock_status": {"provider_available": False},
     })
     assert qa["status"] == "FAIL"
+    assert qa["technical_status"] == "FAIL"
+    assert qa["postability_status"] == "FAIL"
+    assert qa["postability_score"]["categories"]["hook_visual_strength"] < 7
     assert any(issue["code"] == "more_than_2_consecutive_static_card_scenes" for issue in qa["issues"])
+
+
+def test_qa_marks_technically_valid_benchmark_for_postability_review():
+    qa = run_hybrid_motion_qa({
+        "media_mix": {
+            "ANIMATED_FALLBACK": 2,
+            "MOTION_CARD": 3,
+            "LOCAL_CAPTURE": 1,
+        },
+        "scene_reports": [
+            {"scene_id": "hook", "duration": 2.6, "template": "hook_footage_overlay", "media_classification": "ANIMATED_FALLBACK", "motion_score": 0.85},
+            {"scene_id": "shock", "duration": 2.7, "template": "money_shock_math", "media_classification": "MOTION_CARD", "motion_score": 0.9},
+            {"scene_id": "prompt", "duration": 3.2, "template": "ai_prompt_mock", "media_classification": "LOCAL_CAPTURE", "motion_score": 0.88},
+            {"scene_id": "comparison", "duration": 2.8, "template": "comparison_split", "media_classification": "MOTION_CARD", "motion_score": 0.8},
+            {"scene_id": "payoff", "duration": 2.8, "template": "payoff_number_reveal", "media_classification": "MOTION_CARD", "motion_score": 0.92},
+            {"scene_id": "cta", "duration": 2.4, "template": "cta_callback", "media_classification": "ANIMATED_FALLBACK", "motion_score": 0.78},
+        ],
+        "warnings": ["tts_provider:gtts"],
+        "caption_report": {"violations": []},
+        "stock_status": {"provider_available": False},
+        "benchmark": {"width": 1080, "height": 1920, "fps": 30},
+    })
+    assert qa["technical_status"] == "PASS"
+    assert qa["postability_status"] == "REVIEW"
+    assert qa["postability_score"]["categories"]["hook_visual_strength"] < 7
+    assert qa["postability_score"]["recommendations"]
 
 
 def test_payoff_scene_renders_number_reveal_config():

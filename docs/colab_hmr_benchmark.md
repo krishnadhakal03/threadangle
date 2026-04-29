@@ -21,8 +21,14 @@ It does not use ElevenLabs, RunwayML, or paid image/audio/video APIs. It tries f
 ```bash
 !apt-get update -qq
 !apt-get install -y -qq ffmpeg espeak
-!pip install -q -r backend/requirements.txt pyttsx3 gTTS
+!pip install -q -r backend/requirements-colab-hmr.txt
 ```
+
+Use the small Colab requirements file for this benchmark. Installing the full
+backend requirements into Colab's global Python can trigger resolver conflicts
+with preinstalled packages such as `google-adk`, `gradio`, `fastapi`,
+`starlette`, and `uvicorn`. Those warnings are usually not fatal, but they slow
+the notebook down and are not needed for the renderer benchmark.
 
 5. Optional: set existing stock provider keys. Skip this if you want local animated fallbacks only.
 
@@ -86,6 +92,16 @@ Force local animation only:
 ```bash
 !python backend/utils/run_hybrid_motion_colab_benchmark.py \
   --preset full \
+  --no-stock \
+  --output-dir backend/generated_videos/storyboard_review/hybrid_motion_colab_benchmark
+```
+
+Fast smoke test if Colab seems stuck:
+
+```bash
+!python backend/utils/run_hybrid_motion_colab_benchmark.py \
+  --preset quick \
+  --tts-provider silent \
   --no-stock \
   --output-dir backend/generated_videos/storyboard_review/hybrid_motion_colab_benchmark
 ```

@@ -6,6 +6,151 @@ from collections import Counter
 from typing import Any
 
 
+POSTABILITY_RECOMMENDATIONS = {
+    "hook_visual_strength": "Strengthen the first two seconds with real footage, a more specific visual object, or a clearer thumb-stopping hook.",
+    "template_polish": "Improve template polish before posting: reduce generic card feel, refine typography/spacing, and make scenes look less like a benchmark render.",
+    "motion_variety": "Add more visual variety between scenes, especially footage, captures, object movement, or non-card transitions.",
+    "pacing_retention": "Tighten pacing for retention with faster visual changes, fewer consecutive card-like beats, and stronger payoff build-up.",
+    "caption_readability": "Fix caption readability by avoiding cropped text, key-number overlap, and overly dense caption moments.",
+    "audio_video_sync": "Review audio/video sync by checking that narration cadence, captions, and scene changes feel intentionally timed.",
+    "social_platform_readiness": "Do a human platform-readiness pass for vertical framing, opening hook, polish, audio, and shareability before posting.",
+}
+
+
+def _clamp_score(score: float) -> int:
+    return max(1, min(10, int(round(score))))
+
+
+def _score_postability(
+    render_result: dict[str, Any],
+    technical_issues: list[dict[str, Any]],
+    technical_status: str,
+) -> dict[str, Any]:
+    reports = render_result.get("scene_reports") or []
+    media_mix = render_result.get("media_mix") or {}
+    warnings = render_result.get("warnings") or []
+    benchmark = render_result.get("benchmark") or {}
+    caption_report = render_result.get("caption_report") or {}
+
+    fail_codes = {issue.get("code") for issue in technical_issues if issue.get("severity") == "fail"}
+    warn_codes = {issue.get("code") for issue in technical_issues if issue.get("severity") == "warn"}
+    media_classes = {str(row.get("media_classification") or "") for row in reports}
+    templates = {str(row.get("template") or "") for row in reports}
+    motion_scores = [float(row.get("motion_score") or 0) for row in reports]
+    avg_motion = sum(motion_scores) / max(1, len(motion_scores))
+
+    first = reports[0] if reports else {}
+    first_class = first.get("media_classification")
+    hook_visual_strength = {
+        "REAL_STOCK": 8,
+        "LOCAL_CAPTURE": 7,
+        "ANIMATED_FALLBACK": 5,
+        "MOTION_CARD": 3,
+    }.get(str(first_class), 4)
+    if first.get("duration", 0) > 3.0:
+        hook_visual_strength -= 1
+    if first.get("text_cropped"):
+        hook_visual_strength -= 2
+
+    card_count = int(media_mix.get("MOTION_CARD") or 0)
+    animated_count = int(media_mix.get("ANIMATED_FALLBACK") or 0)
+    real_or_capture_count = int(media_mix.get("REAL_STOCK") or 0) + int(media_mix.get("LOCAL_CAPTURE") or 0)
+
+    template_polish = 7
+    if animated_count:
+        template_polish -= 1
+    if card_count >= 3:
+        template_polish -= 1
+    if "text_cropped" in fail_codes or "caption_covers_key_number" in fail_codes:
+        template_polish -= 3
+    if "same_background_used_3_plus_scenes" in warn_codes:
+        template_polish -= 1
+
+    motion_variety = 4 + min(3, len(media_classes)) + min(2, len(templates) // 2)
+    if card_count >= 3:
+        motion_variety -= 2
+    if real_or_capture_count == 0:
+        motion_variety -= 1
+    if avg_motion >= 0.75:
+        motion_variety += 1
+
+    pacing_retention = 7
+    if "more_than_2_consecutive_static_card_scenes" in fail_codes:
+        pacing_retention -= 3
+    if card_count >= 3:
+        pacing_retention -= 1
+    if reports:
+        avg_duration = sum(float(row.get("duration") or 0) for row in reports) / len(reports)
+        if avg_duration > 3.25:
+            pacing_retention -= 1
+        if len(reports) < 5:
+            pacing_retention -= 1
+
+    caption_readability = 8
+    if caption_report.get("violations"):
+        caption_readability -= 2
+    if "text_cropped" in fail_codes:
+        caption_readability -= 3
+    if "caption_covers_key_number" in fail_codes:
+        caption_readability -= 3
+
+    audio_video_sync = 6
+    if any("rendered_with_silent_audio" in str(w) or "silent" in str(w) for w in warnings):
+        audio_video_sync = 4
+    elif any("tts_provider:gtts" == str(w) for w in warnings):
+        audio_video_sync = 6
+    elif any("tts_provider:pyttsx3" == str(w) for w in warnings):
+        audio_video_sync = 6
+
+    width = int(benchmark.get("width") or 0)
+    height = int(benchmark.get("height") or 0)
+    fps = int(benchmark.get("fps") or 0)
+    social_platform_readiness = 6
+    if height > width and height >= 1280 and fps >= 24:
+        social_platform_readiness += 1
+    if technical_status == "FAIL":
+        social_platform_readiness -= 3
+    if hook_visual_strength < 7 or template_polish < 7:
+        social_platform_readiness -= 1
+
+    categories = {
+        "hook_visual_strength": _clamp_score(hook_visual_strength),
+        "template_polish": _clamp_score(template_polish),
+        "motion_variety": _clamp_score(motion_variety),
+        "pacing_retention": _clamp_score(pacing_retention),
+        "caption_readability": _clamp_score(caption_readability),
+        "audio_video_sync": _clamp_score(audio_video_sync),
+        "social_platform_readiness": _clamp_score(social_platform_readiness),
+    }
+    average_score = round(sum(categories.values()) / len(categories), 2)
+    low_score_recommendations = [
+        POSTABILITY_RECOMMENDATIONS[name]
+        for name, score in categories.items()
+        if score < 7
+    ]
+
+    if technical_status == "FAIL":
+        status = "FAIL"
+    elif all(score >= 7 for score in categories.values()) and average_score >= 8:
+        status = "PASS"
+    elif any(score <= 3 for score in categories.values()) or average_score < 5:
+        status = "FAIL"
+    else:
+        status = "REVIEW"
+
+    return {
+        "scale": "1-10",
+        "categories": categories,
+        "average_score": average_score,
+        "status": status,
+        "recommendations": low_score_recommendations,
+        "notes": [
+            "Postability is a human-facing quality gate, separate from technical render validation.",
+            "Default posture is REVIEW unless every category is explicitly strong.",
+        ],
+    }
+
+
 def run_hybrid_motion_qa(render_result: dict[str, Any]) -> dict[str, Any]:
     reports = render_result.get("scene_reports") or []
     media_mix = render_result.get("media_mix") or {}
@@ -83,9 +228,14 @@ def run_hybrid_motion_qa(render_result: dict[str, Any]) -> dict[str, Any]:
     if any(i["code"] == "no_visual_change_within_2_seconds" for i in issues):
         recommendations.append("Add camera move, count-up, typewriter, particles, or slide-in animation.")
 
-    status = "FAIL" if any(i.get("severity") == "fail" for i in issues) else "PASS"
+    technical_status = "FAIL" if any(i.get("severity") == "fail" for i in issues) else "PASS"
+    postability_score = _score_postability(render_result, issues, technical_status)
+    postability_status = postability_score["status"]
     return {
-        "status": status,
+        "status": technical_status,
+        "technical_status": technical_status,
+        "postability_status": postability_status,
+        "postability_score": postability_score,
         "issues": issues,
         "scene_ids": sorted({sid for issue in issues for sid in issue.get("scene_ids", []) if sid is not None}),
         "recommendations": recommendations,

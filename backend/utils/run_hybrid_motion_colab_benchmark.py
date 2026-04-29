@@ -157,6 +157,9 @@ def main() -> int:
 
     qa = run_hybrid_motion_qa(result)
     result["qa"] = qa
+    result["technical_status"] = qa["technical_status"]
+    result["postability_status"] = qa["postability_status"]
+    result["postability_score"] = qa["postability_score"]
 
     save_render_report(result, report_path)
     qa_path.write_text(json.dumps(qa, indent=2), encoding="utf-8")
@@ -167,12 +170,15 @@ def main() -> int:
         "render_report": str(report_path),
         "qa_report": str(qa_path),
         "media_mix_report": str(media_mix_path),
-        "qa_status": qa["status"],
+        "qa_status": qa["technical_status"],
+        "technical_status": qa["technical_status"],
+        "postability_status": qa["postability_status"],
+        "postability_score": qa["postability_score"],
         "media_mix": result.get("media_mix"),
         "warnings": result.get("warnings"),
         "benchmark": result["benchmark"],
     }, indent=2))
-    return 0 if qa["status"] == "PASS" else 2
+    return 0 if qa["technical_status"] == "PASS" else 2
 
 
 if __name__ == "__main__":
