@@ -156,14 +156,17 @@ def _score_postability(
         if score < 7
     ]
 
-    if technical_status == "FAIL":
+    has_blocking_issues = any(issue.get("severity") == "fail" for issue in technical_issues)
+    has_critical_score = any(score <= 4 for score in categories.values())
+    has_review_score = any(score < 7 for score in categories.values())
+    if technical_status == "FAIL" or has_critical_score or has_blocking_issues:
         status = "FAIL"
-    elif all(score >= 7 for score in categories.values()) and average_score >= 8:
-        status = "PASS"
-    elif any(score <= 3 for score in categories.values()) or average_score < 5:
-        status = "FAIL"
-    else:
+    elif has_review_score or low_score_recommendations:
         status = "REVIEW"
+    elif average_score >= 8:
+        status = "STRONG_PASS"
+    else:
+        status = "PASS"
 
     return {
         "scale": "1-10",
@@ -173,7 +176,8 @@ def _score_postability(
         "recommendations": low_score_recommendations,
         "notes": [
             "Postability is a human-facing quality gate, separate from technical render validation.",
-            "Default posture is REVIEW unless every category is explicitly strong.",
+            "PASS means every category is at least 7 and no recommendations remain.",
+            "STRONG_PASS means every category is at least 7 with an average score of at least 8.",
         ],
     }
 

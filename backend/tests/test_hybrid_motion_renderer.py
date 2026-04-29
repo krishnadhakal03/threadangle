@@ -133,9 +133,9 @@ def test_qa_scores_measured_audio_alignment_as_acceptable():
             "LOCAL_CAPTURE": 1,
         },
         "scene_reports": [
-            {
-                "scene_id": "hook",
-                "duration": 4.0,
+                {
+                    "scene_id": "hook",
+                    "duration": 2.6,
                 "template": "hook_footage_overlay",
                 "media_classification": "ANIMATED_FALLBACK",
                 "motion_score": 0.94,
@@ -157,7 +157,39 @@ def test_qa_scores_measured_audio_alignment_as_acceptable():
         },
     })
     assert qa["technical_status"] == "PASS"
+    assert qa["postability_status"] == "PASS"
     assert qa["postability_score"]["categories"]["audio_video_sync"] == 7
+
+
+def test_qa_marks_all_good_high_average_as_strong_pass():
+    qa = run_hybrid_motion_qa({
+        "media_mix": {"REAL_STOCK": 3, "LOCAL_CAPTURE": 2},
+        "scene_reports": [
+            {
+                "scene_id": "hook",
+                "duration": 2.4,
+                "template": "hook_footage_overlay",
+                "media_classification": "REAL_STOCK",
+                "motion_score": 0.95,
+                "postability_signals": {"early_number_snap": True, "hook_treatment": "price_snap_receipt_coffee"},
+            },
+            {"scene_id": "prompt", "duration": 2.6, "template": "ai_prompt_mock", "media_classification": "LOCAL_CAPTURE", "motion_score": 0.9, "postability_signals": {"motion_interruption": "prompt_sweep"}},
+            {"scene_id": "proof", "duration": 2.4, "template": "hook_footage_overlay", "media_classification": "REAL_STOCK", "motion_score": 0.9},
+            {"scene_id": "comparison", "duration": 2.4, "template": "comparison_split", "media_classification": "REAL_STOCK", "motion_score": 0.88},
+            {"scene_id": "cta", "duration": 2.2, "template": "ai_prompt_mock", "media_classification": "LOCAL_CAPTURE", "motion_score": 0.85},
+        ],
+        "warnings": ["tts_provider:gtts"],
+        "caption_report": {"violations": []},
+        "benchmark": {"width": 1080, "height": 1920, "fps": 30},
+        "audio_sync_report": {
+            "duration_delta_sec": 0.05,
+            "duration_strategy": "scaled_to_audio_duration",
+        },
+    })
+    assert qa["technical_status"] == "PASS"
+    assert qa["postability_status"] == "STRONG_PASS"
+    assert qa["postability_score"]["average_score"] >= 8
+    assert not qa["postability_score"]["recommendations"]
 
 
 def test_payoff_scene_renders_number_reveal_config():
