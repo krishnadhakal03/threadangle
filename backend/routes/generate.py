@@ -68,6 +68,10 @@ def is_audio_required_enabled() -> bool:
     return os.getenv("VIDEO_REQUIRE_AUDIO", "1") == "1"
 
 
+def is_hybrid_motion_renderer_enabled() -> bool:
+    return os.getenv("ENABLE_HYBRID_MOTION_RENDERER", "0") == "1"
+
+
 def _is_valid_audio_file(path_value: Optional[str]) -> bool:
     if not path_value:
         return False
@@ -901,6 +905,10 @@ async def generate_free_video(
     run_id = new_run_id()
     # Per-request dry_run overrides env; falls back to env flag
     dry_run = request.dry_run if request.dry_run is not None else is_video_dry_run_enabled()
+    hybrid_motion_requested = (
+        str(request.scene_mode or "").lower() == "hybrid_motion"
+        and is_hybrid_motion_renderer_enabled()
+    )
 
     platform_meta = None
     if request.confirmed_plan and isinstance(request.confirmed_plan, dict):
@@ -915,7 +923,7 @@ async def generate_free_video(
     import time
     script_text = f"{parts.hook} {parts.body} {parts.cta}"
     audio_path = None
-    use_free_tts = (getattr(request, 'tts_provider', 'elevenlabs') == 'free')
+    use_free_tts = hybrid_motion_requested or (getattr(request, 'tts_provider', 'elevenlabs') == 'free')
 
     if not dry_run:
         quality_issue = _script_quality_issue(script_text)
@@ -943,7 +951,7 @@ async def generate_free_video(
         print(f"[TTS] Audio file missing/invalid: {audio_path}")
         audio_path = None
 
-    if not dry_run and is_audio_required_enabled() and not audio_path:
+    if not dry_run and is_audio_required_enabled() and not audio_path and not hybrid_motion_requested:
         raise HTTPException(
             status_code=400,
             detail=(
@@ -962,30 +970,55 @@ async def generate_free_video(
                 on_screen_text=getattr(scene, "on_screen_text", "") or getattr(scene, "subtitle", ""),
                 visual_description=getattr(scene, "visual_description", ""),
             )
-        # Accept scene_mode from request, fallback to env default
-        scene_mode = "stock" if dry_run else (request.scene_mode or os.getenv('VIDEO_SCENE_MODE', 'auto'))
-        available_credits = float(os.getenv("RUNWAYML_AVAILABLE_CREDITS", "750"))
-        # Derive max_scenes from scene_mode if not explicitly set:
-        # ai=all scenes, auto/hybrid=3, stock=0
-        if request.max_scenes is not None:
-            effective_max_scenes = request.max_scenes
-        elif scene_mode == "ai":
-            effective_max_scenes = len(scenes)  # unlimited — all scenes use Runway
-        elif scene_mode in ("auto", "hybrid"):
-            effective_max_scenes = 3
+        if hybrid_motion_requested:
+            from utils.hybrid_motion_renderer import render_hybrid_video
+
+            generated_root = Path(__file__).resolve().parents[1] / "generated_videos"
+            hybrid_output_path = generated_root / f"{run_id}.mp4"
+            hybrid_result = render_hybrid_video(
+                scenes=make_scene_response(scenes),
+                script_text=script_text,
+                output_path=hybrid_output_path,
+                audio_path=audio_path,
+                fps=30,
+                width=1080,
+                height=1920,
+                use_stock_backgrounds=True,
+                use_free_tts=True,
+                style_preset="documentary_money_short",
+            )
+            render_result = {
+                "video_path": hybrid_result["video_path"],
+                "subtitle_path": None,
+                "thumbnail_path": None,
+                "ffmpeg_error": None,
+                "hybrid_motion": hybrid_result,
+            }
         else:
-            effective_max_scenes = 0
-        scenes = await fetch_scene_clips(
-            scenes,
-            run_id=run_id,
-            mode=scene_mode,
-            available_credits=available_credits,
-            runway_model=request.runway_model,
-            max_scenes=effective_max_scenes,
-        )
-        if not audio_path:
-            print("[TTS] No valid audio file, video will be silent.")
-        render_result = assemble_video(scenes, run_id=run_id, audio_path=audio_path)
+            # Accept scene_mode from request, fallback to env default
+            scene_mode = "stock" if dry_run else (request.scene_mode or os.getenv('VIDEO_SCENE_MODE', 'auto'))
+            available_credits = float(os.getenv("RUNWAYML_AVAILABLE_CREDITS", "750"))
+            # Derive max_scenes from scene_mode if not explicitly set:
+            # ai=all scenes, auto/hybrid=3, stock=0
+            if request.max_scenes is not None:
+                effective_max_scenes = request.max_scenes
+            elif scene_mode == "ai":
+                effective_max_scenes = len(scenes)  # unlimited - all scenes use Runway
+            elif scene_mode in ("auto", "hybrid"):
+                effective_max_scenes = 3
+            else:
+                effective_max_scenes = 0
+            scenes = await fetch_scene_clips(
+                scenes,
+                run_id=run_id,
+                mode=scene_mode,
+                available_credits=available_credits,
+                runway_model=request.runway_model,
+                max_scenes=effective_max_scenes,
+            )
+            if not audio_path:
+                print("[TTS] No valid audio file, video will be silent.")
+            render_result = assemble_video(scenes, run_id=run_id, audio_path=audio_path)
     except RuntimeError as exc:
         print(f"[VIDEO] Runtime error: {exc}")
         raise HTTPException(status_code=400, detail=str(exc))
@@ -1001,7 +1034,7 @@ async def generate_free_video(
     runway_credits_used = round(sum(float(getattr(s, "credits_cost", 0.0) or 0.0) for s in scenes), 2)
     if dry_run:
         runway_credits_used = 0.0
-    elevenlabs_chars = 0 if dry_run else len(script_text or "")
+    elevenlabs_chars = 0 if (dry_run or use_free_tts) else len(script_text or "")
     runway_cost = runway_credits_used * 0.01
     elevenlabs_cost = (elevenlabs_chars / 1000.0) * 0.30
     total_cost = round(runway_cost + elevenlabs_cost, 4)
@@ -1137,6 +1170,7 @@ async def generate_free_video(
             }
             for s in scenes
         ],
+        "hybrid_motion": render_result.get("hybrid_motion") if hybrid_motion_requested else None,
         "warning": "Rendered without burned subtitles because ffmpeg subtitle step failed."
         if ffmpeg_warning else None,
     }
