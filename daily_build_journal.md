@@ -220,3 +220,69 @@ Scene Selection Policy hypothesis: **CONFIRMED** ✓
 **Completed**: Apr 28, 2026, 10:52 AM (render completion)
 **Session**: Flagship Proof Day, Apr 28, 2026
 **Goal Status**: ✅ ACHIEVED — One visually acceptable flagship draft produced successfully
+
+---
+
+# Day8 Hybrid Motion Renderer v1 POC - Apr 29, 2026
+
+## Goal
+
+Add a first-class Hybrid Motion Renderer branch that fills the missing compositor layer between scene planning and final MP4 output:
+
+script -> scene plan -> smart scene medium -> local/stock/animated scene -> OpenCV/PIL motion composition -> captions/audio -> final MP4.
+
+## What Was Attempted
+
+- Added `backend/utils/hybrid_motion_renderer.py` as a reusable OpenCV/PIL frame renderer.
+- Added `backend/utils/hybrid_scene_templates.py` with six motion templates: hook footage overlay, money shock math, AI prompt mock, comparison split, payoff number reveal, and CTA callback.
+- Added `backend/utils/hybrid_motion_qa.py` for renderer-specific QA gates.
+- Added `backend/utils/run_hybrid_motion_poc.py` to render `day8_hybrid_motion_poc_v1.mp4`.
+- Added focused tests in `backend/tests/test_hybrid_motion_renderer.py`.
+- Added opt-in `/video/free` integration behind `ENABLE_HYBRID_MOTION_RENDERER=1` and `scene_mode="hybrid_motion"`.
+
+## What Passed
+
+- POC render completed locally with offline/free `pyttsx3` TTS.
+- No ElevenLabs or RunwayML calls were used.
+- QA result: PASS.
+- Tests passed: `python -m pytest backend/tests/test_hybrid_motion_renderer.py -q` -> 6 passed.
+- Generated media stayed under `backend/generated_videos/`, which is gitignored.
+
+## What Failed
+
+- First full-size CLI attempt at 1080x1920 timed out after 5 minutes. The renderer supports 1080x1920 by default, but the POC CLI now defaults to a faster 270x480 proof render for local iteration.
+- Initial QA failed on card streak, caption/key-number overlap, and CTA text crop at tiny proof size. Fixed with adjusted media classification, caption overlap recompute, and CTA responsive font sizing.
+
+## Colab Proof Insight
+
+The Colab proof showed that the missing layer was not another AI video provider. It was deterministic motion composition: count-ups, prompt mockups, comparison layouts, payoff reveals, animated captions, and fast scene-specific visual logic.
+
+## Architecture Lesson
+
+Threadforge should keep `fetch_scene_clips -> assemble_video` as the legacy stock stitcher, but add Hybrid Motion Renderer as an opt-in compositor layer. This lets stock footage become a background ingredient, not the entire visual system.
+
+## Next Hypothesis
+
+Hybrid motion should become the Threadforge v2 renderer path for money/proof/tutorial shorts, while legacy MoviePy stock remains the compatibility fallback.
+
+## Artifact Inventory
+
+### Source
+- `backend/utils/hybrid_motion_renderer.py`
+- `backend/utils/hybrid_scene_templates.py`
+- `backend/utils/hybrid_motion_qa.py`
+- `backend/utils/run_hybrid_motion_poc.py`
+- `backend/tests/test_hybrid_motion_renderer.py`
+- `backend/routes/generate.py` opt-in integration
+
+### Generated (gitignored)
+- `backend/generated_videos/storyboard_review/hybrid_motion_poc/day8_hybrid_motion_poc_v1.mp4`
+- `backend/generated_videos/storyboard_review/hybrid_motion_poc/day8_hybrid_motion_poc_v1_report.json`
+- `backend/generated_videos/storyboard_review/hybrid_motion_poc/day8_hybrid_motion_poc_v1_qa.json`
+- `assets/voice_cache/voice_free_628adf25a9a926b7.wav`
+
+## GitHub Push Status
+
+- [x] Safety checkpoint pushed: `HMR_SAFE checkpoint before hybrid motion renderer`
+- [x] HMR1 pushed: `HMR1 add hybrid motion renderer core`
+- [ ] HMR2/HMR3/HMR4 final source + tests + journal push pending

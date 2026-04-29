@@ -1,0 +1,115 @@
+from pathlib import Path
+
+import cv2
+
+from utils.hybrid_motion_qa import run_hybrid_motion_qa
+from utils.hybrid_motion_renderer import render_hybrid_video, split_caption_events
+from utils.hybrid_scene_templates import ai_prompt_mock, payoff_number_reveal
+
+
+def _tiny_scenes():
+    return [
+        {
+            "id": "hook",
+            "template": "hook_footage_overlay",
+            "duration": 0.45,
+            "headline": "Coffee looked cheap",
+            "caption_text": "Coffee looked cheap",
+        },
+        {
+            "id": "prompt",
+            "template": "ai_prompt_mock",
+            "duration": 0.45,
+            "prompt": "Compare coffee costs.",
+            "caption_text": "AI compared the habit",
+        },
+        {
+            "id": "payoff",
+            "template": "payoff_number_reveal",
+            "duration": 0.45,
+            "number": "${count}",
+            "caption_text": "Over fifteen hundred yearly",
+        },
+    ]
+
+
+def test_renderer_creates_mp4(tmp_path, monkeypatch):
+    monkeypatch.delenv("PEXELS_API_KEY", raising=False)
+    monkeypatch.delenv("PIXABAY_API_KEY", raising=False)
+    out = tmp_path / "hybrid.mp4"
+    result = render_hybrid_video(
+        _tiny_scenes(),
+        "Coffee looked cheap until AI compared the habit.",
+        out,
+        fps=8,
+        width=270,
+        height=480,
+        use_stock_backgrounds=False,
+        use_free_tts=False,
+    )
+    assert out.exists()
+    assert out.stat().st_size > 1000
+    cap = cv2.VideoCapture(str(out))
+    assert cap.isOpened()
+    assert int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) > 0
+    cap.release()
+    assert result["video_path"] == str(out)
+
+
+def test_scene_reports_include_media_classification(tmp_path, monkeypatch):
+    monkeypatch.delenv("PEXELS_API_KEY", raising=False)
+    monkeypatch.delenv("PIXABAY_API_KEY", raising=False)
+    result = render_hybrid_video(
+        _tiny_scenes(),
+        "One two three four five six.",
+        tmp_path / "report.mp4",
+        fps=8,
+        width=270,
+        height=480,
+        use_stock_backgrounds=False,
+        use_free_tts=False,
+    )
+    classes = {row["media_classification"] for row in result["scene_reports"]}
+    assert "ANIMATED_FALLBACK" in classes
+    assert "LOCAL_CAPTURE" in classes
+    assert "MOTION_CARD" in classes
+    assert result["media_mix"]
+
+
+def test_captions_stay_under_max_words():
+    events = split_caption_events("one two three four five six seven eight nine", duration=3.0, max_words=4)
+    assert events
+    assert all(len(event["text"].split()) <= 4 for event in events)
+
+
+def test_qa_catches_card_only_sequence():
+    qa = run_hybrid_motion_qa({
+        "media_mix": {"MOTION_CARD": 3},
+        "scene_reports": [
+            {"scene_id": "a", "duration": 2.1, "media_classification": "MOTION_CARD", "motion_score": 0.5},
+            {"scene_id": "b", "duration": 2.1, "media_classification": "MOTION_CARD", "motion_score": 0.5},
+            {"scene_id": "c", "duration": 2.1, "media_classification": "MOTION_CARD", "motion_score": 0.5},
+        ],
+        "stock_status": {"provider_available": False},
+    })
+    assert qa["status"] == "FAIL"
+    assert any(issue["code"] == "more_than_2_consecutive_static_card_scenes" for issue in qa["issues"])
+
+
+def test_payoff_scene_renders_number_reveal_config():
+    import numpy as np
+
+    canvas = np.zeros((480, 270, 3), dtype=np.uint8)
+    report = payoff_number_reveal(0, 0.5, canvas, {"number": "${count}", "subline": "saved yearly"})
+    assert report["number_reveal"] is True
+    assert report["key_number_boxes"]
+    assert canvas.sum() > 0
+
+
+def test_ai_prompt_mock_renders_without_browser_dependency():
+    import numpy as np
+
+    canvas = np.zeros((480, 270, 3), dtype=np.uint8)
+    report = ai_prompt_mock(8, 0.75, canvas, {"prompt": "Compare costs.", "response": "A: $150\nB: $20"})
+    assert report["template"] == "ai_prompt_mock"
+    assert canvas.sum() > 0
