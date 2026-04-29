@@ -177,6 +177,11 @@ def draw_caption_band(canvas: np.ndarray, caption: str, reserved_boxes: list[tup
             overlaps = True
             y2 = max(area.top + th + pad_y * 2, by1 - 24)
             y1 = y2 - th - pad_y * 2
+    if overlaps:
+        overlaps = any(
+            not (x2 < bx1 or x1 > bx2 or y2 < by1 or y1 > by2)
+            for bx1, by1, bx2, by2 in (reserved_boxes or [])
+        )
 
     draw_rounded_rect(draw, (x1, y1, x2, y2), 26, (10, 13, 18), (255, 255, 255), 2)
     draw.text((x1 + pad_x, y1 + pad_y - 3), text, font=font, fill=(255, 255, 255))
@@ -341,7 +346,7 @@ def cta_callback(frame_idx: int, scene_progress: float, canvas: np.ndarray, scen
         image,
         _scene_text(scene_config, "headline", "caption_text", default="Comment coffee for the prompt"),
         (area.left + 52, int(h * 0.36), area.right - 52, int(h * 0.62)),
-        font_size=78,
+        font_size=max(38, int(w * 0.072)),
         accent=(115, 231, 185),
         max_lines=3,
         align="center",

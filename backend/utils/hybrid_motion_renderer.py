@@ -353,7 +353,9 @@ def render_hybrid_video(
         media_class = "REAL_STOCK" if bg_path else "ANIMATED_FALLBACK"
         if template_name == "ai_prompt_mock":
             media_class = "LOCAL_CAPTURE"
-        elif template_name in {"money_shock_math", "comparison_split", "payoff_number_reveal", "cta_callback"}:
+        elif template_name == "cta_callback":
+            media_class = "ANIMATED_FALLBACK"
+        elif template_name in {"money_shock_math", "comparison_split", "payoff_number_reveal"}:
             media_class = "MOTION_CARD"
         media_mix[media_class] = media_mix.get(media_class, 0) + 1
 
