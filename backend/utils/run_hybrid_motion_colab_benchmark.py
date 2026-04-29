@@ -8,8 +8,10 @@ MP4 with an explicit warning in the report.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -37,16 +39,53 @@ def _default_output_dir() -> Path:
     return _repo_root() / "backend" / "generated_videos" / "storyboard_review" / "hybrid_motion_colab_benchmark"
 
 
-def _try_free_tts(script: str) -> tuple[str | None, list[str]]:
+def _try_gtts(script: str, warnings: list[str]) -> tuple[str | None, list[str]]:
+    try:
+        from gtts import gTTS
+
+        out_dir = _repo_root() / "assets" / "voice_cache"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        text_hash = hashlib.sha256(script.encode("utf-8")).hexdigest()[:16]
+        mp3_path = out_dir / f"voice_gtts_{text_hash}.mp3"
+        wav_path = out_dir / f"voice_gtts_{text_hash}.wav"
+
+        if not wav_path.exists() or wav_path.stat().st_size < 1000:
+            gTTS(text=script, lang="en", slow=False).save(str(mp3_path))
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", str(mp3_path), str(wav_path)],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=90,
+            )
+        warnings.append("tts_provider:gtts")
+        return str(wav_path), warnings
+    except Exception as exc:
+        warnings.append(f"gtts_unavailable:{str(exc)[:160]}")
+        return None, warnings
+
+
+def _try_free_tts(script: str, provider: str = "auto") -> tuple[str | None, list[str]]:
     warnings: list[str] = []
+    if provider == "silent":
+        warnings.append("free_tts_skipped_by_tts_provider_silent")
+        return None, warnings
+
+    if provider == "gtts":
+        return _try_gtts(script, warnings)
+
     try:
         from routes.voice_gen import VoiceGenRequest, generate_voice
 
         result = generate_voice(VoiceGenRequest(text=script, force_free=True))
+        warnings.append("tts_provider:pyttsx3")
         return result.audio_file, warnings
     except Exception as exc:
-        warnings.append(f"free_tts_unavailable:{str(exc)[:160]}")
+        warnings.append(f"pyttsx3_unavailable:{str(exc)[:160]}")
+
+    if provider == "pyttsx3":
         return None, warnings
+    return _try_gtts(script, warnings)
 
 
 def parse_args() -> argparse.Namespace:
@@ -58,6 +97,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default=str(_default_output_dir()), help="Directory for MP4 and reports.")
     parser.add_argument("--no-stock", action="store_true", help="Disable Pexels/Pixabay stock lookup and force local animated fallbacks.")
     parser.add_argument("--silent", action="store_true", help="Skip free/local TTS and render with generated silent audio.")
+    parser.add_argument("--tts-provider", choices=["auto", "pyttsx3", "gtts", "silent"], default="auto", help="Free TTS provider preference.")
     return parser.parse_args()
 
 
@@ -85,7 +125,7 @@ def main() -> int:
     if args.silent:
         audio_warnings.append("free_tts_skipped_by_cli_silent_flag")
     else:
-        audio_path, audio_warnings = _try_free_tts(SCRIPT)
+        audio_path, audio_warnings = _try_free_tts(SCRIPT, provider=args.tts_provider)
 
     started = time.time()
     result = render_hybrid_video(
@@ -111,6 +151,7 @@ def main() -> int:
         "paid_providers_disabled": True,
         "elevenlabs_used": False,
         "runwayml_used": False,
+        "tts_provider": "gtts" if any(w == "tts_provider:gtts" for w in audio_warnings) else ("pyttsx3" if any(w == "tts_provider:pyttsx3" for w in audio_warnings) else "silent"),
         "stock_lookup_enabled": not args.no_stock,
     }
 

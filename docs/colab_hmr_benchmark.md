@@ -2,7 +2,7 @@
 
 This benchmark checks whether Hybrid Motion Renderer v1 can render production-resolution vertical Shorts in Colab before buying new hardware.
 
-It does not use ElevenLabs, RunwayML, or paid image/audio/video APIs. It uses free/offline TTS when available, and Pexels/Pixabay only if you provide existing keys.
+It does not use ElevenLabs, RunwayML, or paid image/audio/video APIs. It tries free TTS in this order: `pyttsx3`, `gTTS`, then silent audio with a warning. It uses Pexels/Pixabay only if you provide existing keys.
 
 ## Colab Setup
 
@@ -21,7 +21,7 @@ It does not use ElevenLabs, RunwayML, or paid image/audio/video APIs. It uses fr
 ```bash
 !apt-get update -qq
 !apt-get install -y -qq ffmpeg espeak
-!pip install -q -r backend/requirements.txt pyttsx3
+!pip install -q -r backend/requirements.txt pyttsx3 gTTS
 ```
 
 5. Optional: set existing stock provider keys. Skip this if you want local animated fallbacks only.
@@ -65,6 +65,7 @@ Full production-resolution mode:
 ```bash
 !python backend/utils/run_hybrid_motion_colab_benchmark.py \
   --preset full \
+  --tts-provider gtts \
   --output-dir backend/generated_videos/storyboard_review/hybrid_motion_colab_benchmark
 ```
 
@@ -76,6 +77,7 @@ Manual override example:
   --height 1920 \
   --fps 24 \
   --preset full \
+  --tts-provider gtts \
   --output-dir backend/generated_videos/storyboard_review/hybrid_motion_colab_benchmark
 ```
 
@@ -120,5 +122,5 @@ python -m pytest backend/tests/test_hybrid_motion_renderer.py -q
 ## Notes
 
 - Generated outputs live under `backend/generated_videos/`, which is gitignored.
-- Offline TTS may fail on some Colab images. If it does, the runner still renders with silent audio and records the warning.
+- Offline `pyttsx3` may fail on some Colab images. If it does, the runner falls back to free `gTTS`; if that also fails, it still renders with silent audio and records the warning.
 - GPU runtime helps the Colab environment overall, but the current HMR implementation is primarily CPU/OpenCV/PIL composition. The benchmark is still useful because Colab CPU/RAM may outperform local hardware for full-resolution runs.
