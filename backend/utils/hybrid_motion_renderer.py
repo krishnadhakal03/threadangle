@@ -272,6 +272,26 @@ def _make_silent_audio(path: Path, duration: float) -> str | None:
         return None
 
 
+def _probe_media_duration(path: str | Path | None) -> float | None:
+    if not path:
+        return None
+    media_path = Path(path)
+    if not media_path.exists():
+        return None
+    try:
+        proc = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(media_path)],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        duration = float((proc.stdout or "").strip())
+        return duration if duration > 0 else None
+    except Exception:
+        return None
+
+
 def _mux_audio(video_path: Path, audio_path: str | None, duration: float, warnings: list[str]) -> None:
     audio = audio_path if audio_path and Path(audio_path).exists() else None
     if audio is None:
@@ -336,6 +356,31 @@ def render_hybrid_video(
             stock_status["reason"] = "pexels_pixabay_keys_not_configured"
         prepared.append((scene, template_name, duration, bg_path, stock_meta))
 
+    source_total_duration = sum(item[2] for item in prepared)
+    audio_duration = _probe_media_duration(audio_path)
+    duration_strategy = "scene_durations"
+    if audio_duration and source_total_duration > 0 and abs(audio_duration - source_total_duration) > 0.35:
+        if audio_duration > source_total_duration and len(prepared) > 1:
+            first = prepared[0]
+            first_duration = first[2]
+            remaining_source_duration = max(0.1, source_total_duration - first_duration)
+            remaining_target_duration = max(0.1, audio_duration - first_duration)
+            scale = remaining_target_duration / remaining_source_duration
+            prepared = [
+                first,
+                *[
+                    (scene, template_name, duration * scale, bg_path, stock_meta)
+                    for scene, template_name, duration, bg_path, stock_meta in prepared[1:]
+                ],
+            ]
+            duration_strategy = "scaled_to_audio_duration_preserve_hook"
+        else:
+            scale = audio_duration / source_total_duration
+            prepared = [
+                (scene, template_name, duration * scale, bg_path, stock_meta)
+                for scene, template_name, duration, bg_path, stock_meta in prepared
+            ]
+            duration_strategy = "scaled_to_audio_duration"
     total_duration = sum(item[2] for item in prepared)
     caption_events = split_caption_events(script_text, total_duration, max_words=4)
 
@@ -411,10 +456,22 @@ def render_hybrid_video(
     writer.release()
     if audio_path or use_free_tts:
         _mux_audio(output, audio_path, total_duration, warnings)
+    final_video_duration = _probe_media_duration(output)
+    sync_target_duration = audio_duration or total_duration
+    sync_delta = abs((final_video_duration or total_duration) - sync_target_duration) if sync_target_duration else None
 
     return {
         "video_path": str(output),
         "duration": round(total_duration, 3),
+        "audio_sync_report": {
+            "audio_path": str(audio_path) if audio_path else None,
+            "source_audio_duration_sec": round(audio_duration, 3) if audio_duration else None,
+            "source_scene_duration_sec": round(source_total_duration, 3),
+            "planned_video_duration_sec": round(total_duration, 3),
+            "final_video_duration_sec": round(final_video_duration, 3) if final_video_duration else None,
+            "duration_delta_sec": round(sync_delta, 3) if sync_delta is not None else None,
+            "duration_strategy": duration_strategy,
+        },
         "scene_reports": scene_reports,
         "media_mix": media_mix,
         "warnings": warnings,

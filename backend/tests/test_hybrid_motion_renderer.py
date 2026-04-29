@@ -125,6 +125,41 @@ def test_qa_marks_technically_valid_benchmark_for_postability_review():
     assert qa["postability_score"]["recommendations"]
 
 
+def test_qa_scores_measured_audio_alignment_as_acceptable():
+    qa = run_hybrid_motion_qa({
+        "media_mix": {
+            "ANIMATED_FALLBACK": 2,
+            "MOTION_CARD": 3,
+            "LOCAL_CAPTURE": 1,
+        },
+        "scene_reports": [
+            {
+                "scene_id": "hook",
+                "duration": 4.0,
+                "template": "hook_footage_overlay",
+                "media_classification": "ANIMATED_FALLBACK",
+                "motion_score": 0.94,
+                "postability_signals": {"early_number_snap": True, "hook_treatment": "price_snap_receipt_coffee"},
+            },
+            {"scene_id": "shock", "duration": 4.2, "template": "money_shock_math", "media_classification": "MOTION_CARD", "motion_score": 0.93, "postability_signals": {"motion_interruption": "price_check_sweep"}},
+            {"scene_id": "prompt", "duration": 5.0, "template": "ai_prompt_mock", "media_classification": "LOCAL_CAPTURE", "motion_score": 0.88},
+            {"scene_id": "comparison", "duration": 4.4, "template": "comparison_split", "media_classification": "MOTION_CARD", "motion_score": 0.8},
+            {"scene_id": "payoff", "duration": 4.4, "template": "payoff_number_reveal", "media_classification": "MOTION_CARD", "motion_score": 0.92},
+            {"scene_id": "cta", "duration": 3.8, "template": "cta_callback", "media_classification": "ANIMATED_FALLBACK", "motion_score": 0.78},
+        ],
+        "warnings": ["tts_provider:gtts"],
+        "caption_report": {"violations": []},
+        "stock_status": {"provider_available": False},
+        "benchmark": {"width": 1080, "height": 1920, "fps": 30},
+        "audio_sync_report": {
+            "duration_delta_sec": 0.05,
+            "duration_strategy": "scaled_to_audio_duration_preserve_hook",
+        },
+    })
+    assert qa["technical_status"] == "PASS"
+    assert qa["postability_score"]["categories"]["audio_video_sync"] == 7
+
+
 def test_payoff_scene_renders_number_reveal_config():
     import numpy as np
 

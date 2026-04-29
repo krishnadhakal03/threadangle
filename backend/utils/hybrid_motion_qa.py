@@ -31,6 +31,7 @@ def _score_postability(
     warnings = render_result.get("warnings") or []
     benchmark = render_result.get("benchmark") or {}
     caption_report = render_result.get("caption_report") or {}
+    audio_sync_report = render_result.get("audio_sync_report") or {}
 
     fail_codes = {issue.get("code") for issue in technical_issues if issue.get("severity") == "fail"}
     warn_codes = {issue.get("code") for issue in technical_issues if issue.get("severity") == "warn"}
@@ -110,10 +111,21 @@ def _score_postability(
     audio_video_sync = 6
     if any("rendered_with_silent_audio" in str(w) or "silent" in str(w) for w in warnings):
         audio_video_sync = 4
-    elif any("tts_provider:gtts" == str(w) for w in warnings):
-        audio_video_sync = 6
-    elif any("tts_provider:pyttsx3" == str(w) for w in warnings):
-        audio_video_sync = 6
+    else:
+        duration_delta = audio_sync_report.get("duration_delta_sec")
+        duration_strategy = audio_sync_report.get("duration_strategy")
+        if duration_delta is not None:
+            delta = float(duration_delta)
+            if delta <= 0.35 and str(duration_strategy).startswith("scaled_to_audio_duration"):
+                audio_video_sync = 7
+            elif delta <= 0.75:
+                audio_video_sync = 6
+            else:
+                audio_video_sync = 5
+        elif any("tts_provider:gtts" == str(w) for w in warnings):
+            audio_video_sync = 6
+        elif any("tts_provider:pyttsx3" == str(w) for w in warnings):
+            audio_video_sync = 6
 
     width = int(benchmark.get("width") or 0)
     height = int(benchmark.get("height") or 0)
