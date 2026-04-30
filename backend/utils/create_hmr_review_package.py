@@ -72,6 +72,19 @@ def _write_summary(
     recommendations = postability.get("recommendations") or []
     recommendation_lines = "\n".join(f"- {item}" for item in recommendations) if recommendations else "- None"
     final_recommendation = "Post" if qa_report.get("postability_status") in {"PASS", "STRONG_PASS"} else "Manual review before posting"
+    human_review = render_report.get("human_review") or qa_report.get("human_review") or {}
+    human_review_lines = "\n".join(
+        f"- {label}: {human_review.get(key, '')}"
+        for key, label in (
+            ("first_frame_clarity", "First-frame clarity"),
+            ("first_second_shock_value", "First-second shock value"),
+            ("first_four_second_retention_likelihood", "First-four-second retention likelihood"),
+            ("number_consistency", "Number consistency"),
+            ("caption_naturalness", "Caption naturalness"),
+            ("post_no_post_recommendation", "Post/no-post recommendation"),
+        )
+        if human_review.get(key)
+    ) or "- Pending human review"
 
     summary = f"""# HMR Human Review Package
 
@@ -79,7 +92,7 @@ Generated: {datetime.now().isoformat(timespec="seconds")}
 
 ## Files
 
-- Video: `{video_path}`
+- Video: `{video_path.name}`
 - Contact sheet: `{contact_sheet.name}`
 - Render report: `render_report.json`
 - QA report: `qa_report.json`
@@ -124,6 +137,10 @@ Top templates:
 - [ ] Audio cadence feels aligned with scene changes and captions.
 - [ ] Post/no-post recommendation: `{final_recommendation}`
 
+## Human Review Notes
+
+{human_review_lines}
+
 ## Reviewer Notes
 
 - First 2 seconds hook:
@@ -157,12 +174,14 @@ def create_review_package(output_dir: str, video: str | None = None, review_root
     copied_qa = review_dir / "qa_report.json"
     shutil.copy2(render_report_path, copied_render)
     shutil.copy2(qa_report_path, copied_qa)
+    copied_video = review_dir / video_path.name
+    shutil.copy2(video_path, copied_video)
 
     contact_sheet = review_dir / "contact_sheet.jpg"
-    _run_ffmpeg_contact_sheet(video_path, contact_sheet)
+    _run_ffmpeg_contact_sheet(copied_video, contact_sheet)
     summary = _write_summary(
         review_dir,
-        video_path,
+        copied_video,
         contact_sheet,
         _load_json(copied_render),
         _load_json(copied_qa),
@@ -170,6 +189,7 @@ def create_review_package(output_dir: str, video: str | None = None, review_root
 
     return {
         "review_dir": str(review_dir),
+        "video": str(copied_video),
         "contact_sheet": str(contact_sheet),
         "render_report": str(copied_render),
         "qa_report": str(copied_qa),

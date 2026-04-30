@@ -299,7 +299,9 @@ def hook_footage_overlay(frame_idx: int, scene_progress: float, canvas: np.ndarr
         y = receipt_y + int(receipt_h * (0.18 + i * 0.12))
         line_w = int(receipt_w * (0.68 - 0.05 * (i % 2)))
         draw.line((receipt_x + int(w * 0.035), y, receipt_x + int(w * 0.035) + line_w, y), fill=(112, 96, 82, 210), width=max(1, int(w * 0.008)))
-    draw.text((receipt_x + int(w * 0.04), receipt_y + int(receipt_h * 0.78)), "$5.00", font=pil_font(max(14, int(w * 0.075))), fill=(168, 43, 40))
+    receipt_price_text = _scene_text(scene_config, "receipt_price_text", default="$5.00")
+    if receipt_price_text:
+        draw.text((receipt_x + int(w * 0.04), receipt_y + int(receipt_h * 0.78)), receipt_price_text, font=pil_font(max(14, int(w * 0.075))), fill=(168, 43, 40))
 
     cup_x = int(w * (0.61 + 0.04 * (1.0 - snap)))
     cup_y = int(h * (0.52 + 0.025 * math.sin(scene_progress * math.tau * 1.4)))
@@ -313,7 +315,7 @@ def hook_footage_overlay(frame_idx: int, scene_progress: float, canvas: np.ndarr
         sy = cup_y - int(cup_h * (0.20 + 0.04 * i))
         draw.arc((sx, sy, sx + int(w * 0.08), sy + int(h * 0.12)), 105, 245, fill=(255, 255, 255, 130), width=max(1, int(w * 0.006)))
 
-    price_text = "$5/day = $1,825/year?"
+    price_text = _scene_text(scene_config, "price_text", "hook_number", default="$5/day = $1,825/year?")
     pad_x = int(w * 0.035)
     pad_y = int(h * 0.014)
     price_font = fit_font(draw, price_text, max(18, int(w * 0.092)), area.right - area.left - pad_x * 2, min_size=max(14, int(w * 0.060)), bold=True)
