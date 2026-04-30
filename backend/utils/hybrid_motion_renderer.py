@@ -23,11 +23,11 @@ import numpy as np
 try:
     from .hybrid_scene_templates import draw_caption_band, get_template
     from .hmr_scene_asset_strategy import plan_hmr_scene_assets
-    from .hmr_resolved_scene_spec import resolve_playwright_scene_asset
+    from .hmr_resolved_scene_spec import resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
 except ImportError:  # pragma: no cover - direct script execution fallback
     from hybrid_scene_templates import draw_caption_band, get_template
     from hmr_scene_asset_strategy import plan_hmr_scene_assets
-    from hmr_resolved_scene_spec import resolve_playwright_scene_asset
+    from hmr_resolved_scene_spec import resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -459,58 +459,6 @@ def _resolve_local_asset(scene_id: Any, asset_strategy: dict[str, Any]) -> tuple
     }
 
 
-def _resolve_hook_reveal_asset(
-    scene_id: Any,
-    asset_strategy: dict[str, Any],
-    used_ids: set[str],
-    warnings: list[str],
-    use_stock_backgrounds: bool,
-) -> tuple[Path | None, dict[str, Any]]:
-    queries = [str(query) for query in asset_strategy.get("query_candidates") or [] if str(query).strip()]
-    media_order = ["stock_footage", "stock_image"]
-    stock_meta: dict[str, Any] = {}
-    if use_stock_backgrounds:
-        stock_path, stock_meta = _select_stock_asset(queries, media_order, used_ids, warnings)
-        if stock_path:
-            chosen = stock_meta.get("chosen") or {}
-            return stock_path, {
-                "resolved_asset_type": str(chosen.get("media_type") or "stock_footage"),
-                "resolved_asset_path": str(stock_path),
-                "resolved_asset_provider": str(chosen.get("provider") or "stock_provider"),
-                "asset_resolution_status": "resolved",
-                "fallback_used": False,
-                "query_used": stock_meta.get("query_used"),
-                "queries_attempted": stock_meta.get("queries_attempted") or queries,
-                "provider_available": stock_meta.get("provider_available"),
-                "missing_config": stock_meta.get("missing_config") or [],
-            }
-
-    local_path, local_meta = _resolve_local_asset(scene_id, asset_strategy)
-    if local_path:
-        local_meta["queries_attempted"] = queries
-        local_meta["provider_available"] = stock_meta.get("provider_available", _provider_available())
-        local_meta["missing_config"] = stock_meta.get("missing_config") or []
-        return local_path, local_meta
-
-    provider_status = _provider_config_status()
-    missing_config = list(provider_status.get("missing_config") or [])
-    missing_config.extend(local_meta.get("missing_config") or [])
-    status = "stock_provider_keys_not_configured_and_local_asset_missing"
-    if provider_status["provider_available"]:
-        status = "stock_unresolved_and_local_asset_missing"
-    return None, {
-        "resolved_asset_type": None,
-        "resolved_asset_path": None,
-        "resolved_asset_provider": None,
-        "asset_resolution_status": status,
-        "fallback_used": True,
-        "query_used": stock_meta.get("query_used"),
-        "queries_attempted": stock_meta.get("queries_attempted") or queries,
-        "provider_available": provider_status["provider_available"],
-        "missing_config": missing_config,
-    }
-
-
 def _visual_realism_human_gate(asset_strategy: list[dict[str, Any]], scene_reports: list[dict[str, Any]]) -> dict[str, Any]:
     if not asset_strategy:
         return {
@@ -696,12 +644,15 @@ def render_hybrid_video(
             if asset_resolution.get("fallback_used"):
                 warnings.append(f"asset_resolution_fallback:{scene_id}:{asset_resolution.get('asset_resolution_status')}")
         elif str(scene_id) in {"hook", "reveal"} and asset_strategy.get("visual_medium") in {"stock_footage", "stock_image"}:
-            bg_path, asset_resolution = _resolve_hook_reveal_asset(
+            bg_path, asset_resolution = resolve_stock_or_local_scene_asset(
                 scene_id,
                 asset_strategy,
                 used_stock_ids,
                 warnings,
                 use_stock_backgrounds,
+                stock_selector=_select_stock_asset,
+                local_resolver=_resolve_local_asset,
+                provider_status_getter=_provider_config_status,
             )
             stock_meta = {
                 "provider_available": asset_resolution.get("provider_available"),

@@ -87,6 +87,9 @@ class ResolvedSceneSpec:
 
 
 PlaywrightResolver = Callable[[dict[str, Any], str, str | Path, int, int], dict[str, Any]]
+StockSelector = Callable[[list[str], list[str], set[str], list[str]], tuple[Path | None, dict[str, Any]]]
+LocalResolver = Callable[[Any, dict[str, Any]], tuple[Path | None, dict[str, Any]]]
+ProviderStatusGetter = Callable[[], dict[str, Any]]
 
 
 def resolve_playwright_scene_asset(
@@ -106,3 +109,62 @@ def resolve_playwright_scene_asset(
         asset.resolved_asset_type = None
         asset.fallback_used = True
     return asset.to_report_fields()
+
+
+def resolve_stock_or_local_scene_asset(
+    scene_id: Any,
+    asset_strategy: dict[str, Any],
+    used_ids: set[str],
+    warnings: list[str],
+    use_stock_backgrounds: bool,
+    *,
+    stock_selector: StockSelector,
+    local_resolver: LocalResolver,
+    provider_status_getter: ProviderStatusGetter,
+) -> tuple[Path | None, dict[str, Any]]:
+    """Resolve stock/local assets and preserve the existing report shape."""
+    queries = [str(query) for query in asset_strategy.get("query_candidates") or [] if str(query).strip()]
+    media_order = ["stock_footage", "stock_image"]
+    stock_meta: dict[str, Any] = {}
+    if use_stock_backgrounds:
+        stock_path, stock_meta = stock_selector(queries, media_order, used_ids, warnings)
+        if stock_path:
+            chosen = stock_meta.get("chosen") or {}
+            asset = ResolvedSceneAsset(
+                resolved_asset_type=str(chosen.get("media_type") or "stock_footage"),
+                resolved_asset_path=str(stock_path),
+                resolved_asset_provider=str(chosen.get("provider") or "stock_provider"),
+                asset_resolution_status="resolved",
+                fallback_used=False,
+                query_used=stock_meta.get("query_used"),
+                queries_attempted=list(stock_meta.get("queries_attempted") or queries),
+                provider_available=stock_meta.get("provider_available"),
+                missing_config=list(stock_meta.get("missing_config") or []),
+            )
+            return stock_path, asset.to_report_fields()
+
+    local_path, local_meta = local_resolver(scene_id, asset_strategy)
+    if local_path:
+        local_meta["queries_attempted"] = queries
+        local_meta["provider_available"] = stock_meta.get("provider_available", provider_status_getter().get("provider_available"))
+        local_meta["missing_config"] = stock_meta.get("missing_config") or []
+        return local_path, ResolvedSceneAsset.from_report_fields(local_meta).to_report_fields()
+
+    provider_status = provider_status_getter()
+    missing_config = list(provider_status.get("missing_config") or [])
+    missing_config.extend(local_meta.get("missing_config") or [])
+    status = "stock_provider_keys_not_configured_and_local_asset_missing"
+    if provider_status.get("provider_available"):
+        status = "stock_unresolved_and_local_asset_missing"
+    asset = ResolvedSceneAsset(
+        resolved_asset_type=None,
+        resolved_asset_path=None,
+        resolved_asset_provider=None,
+        asset_resolution_status=status,
+        fallback_used=True,
+        query_used=stock_meta.get("query_used"),
+        queries_attempted=list(stock_meta.get("queries_attempted") or queries),
+        provider_available=provider_status.get("provider_available"),
+        missing_config=missing_config,
+    )
+    return None, asset.to_report_fields()

@@ -7,7 +7,7 @@ from utils.check_hmr_asset_readiness import check_hmr_asset_readiness
 from utils.hybrid_motion_qa import run_hybrid_motion_qa
 from utils.hybrid_motion_renderer import render_hybrid_video, split_caption_events
 from utils.hmr_scene_asset_strategy import plan_hmr_scene_assets
-from utils.hmr_resolved_scene_spec import ResolvedSceneAsset, resolve_playwright_scene_asset
+from utils.hmr_resolved_scene_spec import ResolvedSceneAsset, resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
 from utils.hybrid_scene_templates import ai_prompt_mock, money_shock_math, payoff_number_reveal
 from utils.run_day9_bill_leak import build_bill_leak_scenes
 from utils.run_hybrid_motion_poc import build_day8_scenes
@@ -171,6 +171,84 @@ def test_playwright_scene_asset_adapter_does_not_fake_missing_success(tmp_path):
     assert fields["asset_resolution_status"] == "playwright_unavailable:missing"
     assert fields["fallback_used"] is True
     assert fields["visible_interaction"] is False
+
+
+def test_stock_or_local_scene_asset_adapter_serializes_resolved_stock(tmp_path):
+    stock_file = tmp_path / "stock.mp4"
+    stock_file.write_bytes(b"fake stock bytes")
+
+    def fake_stock_selector(query_candidates, media_order, used_ids, warnings):
+        used_ids.add("stock-1")
+        return stock_file, {
+            "provider_available": True,
+            "queries_attempted": query_candidates,
+            "query_used": query_candidates[0],
+            "chosen": {"media_type": "stock_footage", "provider": "pexels", "id": "stock-1"},
+            "missing_config": [],
+        }
+
+    def fake_local_resolver(scene_id, asset_strategy):
+        return None, {"asset_resolution_status": "local_asset_missing", "missing_config": ["local missing"]}
+
+    path, fields = resolve_stock_or_local_scene_asset(
+        "hook",
+        {"query_candidates": ["person checking bill"], "visual_medium": "stock_footage"},
+        set(),
+        [],
+        True,
+        stock_selector=fake_stock_selector,
+        local_resolver=fake_local_resolver,
+        provider_status_getter=lambda: {"provider_available": True, "missing_config": []},
+    )
+    json.dumps(fields)
+    assert path == stock_file
+    assert fields["resolved_asset_type"] == "stock_footage"
+    assert fields["resolved_asset_path"] == str(stock_file)
+    assert fields["resolved_asset_provider"] == "pexels"
+    assert fields["asset_resolution_status"] == "resolved"
+    assert fields["fallback_used"] is False
+    assert fields["query_used"] == "person checking bill"
+    assert fields["queries_attempted"] == ["person checking bill"]
+    assert fields["provider_available"] is True
+    assert fields["missing_config"] == []
+
+
+def test_stock_or_local_scene_asset_adapter_does_not_fake_missing_success():
+    def fake_stock_selector(query_candidates, media_order, used_ids, warnings):
+        return None, {
+            "provider_available": False,
+            "queries_attempted": query_candidates,
+            "query_used": None,
+            "missing_config": ["PEXELS_API_KEY", "PIXABAY_API_KEY"],
+        }
+
+    def fake_local_resolver(scene_id, asset_strategy):
+        return None, {
+            "asset_resolution_status": "local_asset_missing",
+            "missing_config": ["Add files such as assets/hmr_local/grocery/hook.mp4 or reveal.jpg"],
+        }
+
+    path, fields = resolve_stock_or_local_scene_asset(
+        "hook",
+        {"query_candidates": ["person checking bill"], "visual_medium": "stock_footage"},
+        set(),
+        [],
+        True,
+        stock_selector=fake_stock_selector,
+        local_resolver=fake_local_resolver,
+        provider_status_getter=lambda: {"provider_available": False, "missing_config": ["PEXELS_API_KEY", "PIXABAY_API_KEY"]},
+    )
+    assert path is None
+    assert fields["resolved_asset_type"] is None
+    assert fields["resolved_asset_path"] is None
+    assert fields["resolved_asset_provider"] is None
+    assert fields["asset_resolution_status"] == "stock_provider_keys_not_configured_and_local_asset_missing"
+    assert fields["fallback_used"] is True
+    assert fields["query_used"] is None
+    assert fields["queries_attempted"] == ["person checking bill"]
+    assert fields["provider_available"] is False
+    assert "PEXELS_API_KEY" in fields["missing_config"]
+    assert any("hmr_local" in item for item in fields["missing_config"])
 
 
 def test_grocery_hook_reveal_report_missing_asset_setup(tmp_path, monkeypatch):
