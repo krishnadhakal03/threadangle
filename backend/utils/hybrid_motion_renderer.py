@@ -426,6 +426,7 @@ def render_hybrid_video(
         key_boxes: list[tuple[int, int, int, int]] = []
         motion_scores = []
         postability_signals: dict[str, Any] = {}
+        template_cache: dict[str, Any] = {}
         scene_bg_read_sec = 0.0
         scene_template_sec = 0.0
         scene_caption_sec = 0.0
@@ -443,6 +444,7 @@ def render_hybrid_video(
                 **(scene if isinstance(scene, dict) else {}),
                 "has_real_background": bg_path is not None,
                 "style_preset": style_preset,
+                "_template_cache": template_cache,
             }
             template_start = time.perf_counter()
             template_report = template(local_frame, progress, canvas, scene_config)

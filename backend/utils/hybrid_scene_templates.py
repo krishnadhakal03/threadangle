@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any, Callable
 
 import cv2
@@ -17,6 +18,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 Color = tuple[int, int, int]
+_ANIMATED_BG_CACHE: dict[tuple[int, int, tuple[Color, Color]], np.ndarray] = {}
 
 
 @dataclass(frozen=True)
@@ -36,6 +38,7 @@ def safe_area(width: int, height: int) -> SafeArea:
     )
 
 
+@lru_cache(maxsize=96)
 def pil_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     candidates = [
         "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
@@ -56,6 +59,28 @@ def to_pil(canvas: np.ndarray) -> Image.Image:
 
 def to_cv(image: Image.Image) -> np.ndarray:
     return cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+
+
+def to_cv_rgb(image: Image.Image) -> np.ndarray:
+    return to_cv(image.convert("RGB"))
+
+
+def scene_cache(scene_config: dict[str, Any]) -> dict[str, Any]:
+    cache = scene_config.get("_template_cache")
+    return cache if isinstance(cache, dict) else {}
+
+
+def paste_overlay_clipped(image: Image.Image, overlay: Image.Image, xy: tuple[int, int]) -> None:
+    x, y = xy
+    src_x1 = max(0, -x)
+    src_y1 = max(0, -y)
+    dst_x = max(0, x)
+    dst_y = max(0, y)
+    src_x2 = min(overlay.width, image.width - dst_x + src_x1)
+    src_y2 = min(overlay.height, image.height - dst_y + src_y1)
+    if src_x2 <= src_x1 or src_y2 <= src_y1:
+        return
+    image.alpha_composite(overlay.crop((src_x1, src_y1, src_x2, src_y2)), (dst_x, dst_y))
 
 
 def ease_out(t: float) -> float:
@@ -137,18 +162,29 @@ def draw_text_block(
 
 def animated_background(canvas: np.ndarray, progress: float, palette: tuple[Color, Color] = ((8, 16, 28), (15, 62, 70))) -> None:
     h, w = canvas.shape[:2]
-    base = np.zeros((h, w, 3), dtype=np.uint8)
-    c1 = np.array(palette[0][::-1], dtype=np.float32)
-    c2 = np.array(palette[1][::-1], dtype=np.float32)
-    yy = np.linspace(0, 1, h, dtype=np.float32)[:, None]
-    grad = c1 * (1 - yy) + c2 * yy
-    base[:] = grad[:, None, :]
+    render_scale = 0.35
+    bw = max(32, int(w * render_scale))
+    bh = max(48, int(h * render_scale))
+    cache_key = (bw, bh, palette)
+    cached = _ANIMATED_BG_CACHE.get(cache_key)
+    if cached is None:
+        base = np.zeros((bh, bw, 3), dtype=np.uint8)
+        c1 = np.array(palette[0][::-1], dtype=np.float32)
+        c2 = np.array(palette[1][::-1], dtype=np.float32)
+        yy = np.linspace(0, 1, bh, dtype=np.float32)[:, None]
+        grad = c1 * (1 - yy) + c2 * yy
+        base[:] = grad[:, None, :]
+        _ANIMATED_BG_CACHE[cache_key] = base
+    else:
+        base = cached.copy()
     for i in range(5):
-        cx = int((w * (0.15 + 0.2 * i) + math.sin(progress * math.pi * 2 + i) * 70) % w)
-        cy = int(h * (0.18 + 0.14 * i))
+        cx = int((bw * (0.15 + 0.2 * i) + math.sin(progress * math.pi * 2 + i) * 70 * render_scale) % bw)
+        cy = int(bh * (0.18 + 0.14 * i))
         color = tuple(int(v) for v in ((55 + i * 20), (120 + i * 14), (150 + i * 8)))
-        cv2.circle(base, (cx, cy), 80 + i * 18, color[::-1], -1, lineType=cv2.LINE_AA)
-    blurred = cv2.GaussianBlur(base, (0, 0), 55)
+        cv2.circle(base, (cx, cy), max(4, int((80 + i * 18) * render_scale)), color[::-1], -1, lineType=cv2.LINE_AA)
+    blurred = cv2.GaussianBlur(base, (0, 0), max(1, 55 * render_scale))
+    if blurred.shape[0] != h or blurred.shape[1] != w:
+        blurred = cv2.resize(blurred, (w, h), interpolation=cv2.INTER_LINEAR)
     canvas[:] = cv2.addWeighted(canvas, 0.15, blurred, 0.85, 0)
 
 
@@ -332,20 +368,28 @@ def money_shock_math(frame_idx: int, scene_progress: float, canvas: np.ndarray, 
 def ai_prompt_mock(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
     h, w = canvas.shape[:2]
     animated_background(canvas, scene_progress, ((8, 15, 28), (25, 50, 70)))
-    image = to_pil(canvas)
-    draw = ImageDraw.Draw(image, "RGBA")
     area = safe_area(w, h)
     browser = (area.left, int(h * 0.16), area.right, int(h * 0.78))
-    draw_rounded_rect(draw, browser, 30, (246, 248, 252), (208, 216, 226), 3)
-    draw_rounded_rect(draw, (browser[0] + 28, browser[1] + 28, browser[2] - 28, browser[1] + 90), 18, (226, 232, 240))
-    for i, c in enumerate([(239, 68, 68), (245, 158, 11), (34, 197, 94)]):
-        draw.ellipse((browser[0] + 48 + i * 42, browser[1] + 49, browser[0] + 72 + i * 42, browser[1] + 73), fill=c)
+    prompt_box = (browser[0] + 58, browser[1] + 140, browser[2] - 58, browser[1] + 350)
+    cache = scene_cache(scene_config)
+    overlay = cache.get("ai_prompt_static_overlay")
+    if overlay is None:
+        overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        static_draw = ImageDraw.Draw(overlay, "RGBA")
+        draw_rounded_rect(static_draw, browser, 30, (246, 248, 252), (208, 216, 226), 3)
+        draw_rounded_rect(static_draw, (browser[0] + 28, browser[1] + 28, browser[2] - 28, browser[1] + 90), 18, (226, 232, 240))
+        for i, c in enumerate([(239, 68, 68), (245, 158, 11), (34, 197, 94)]):
+            static_draw.ellipse((browser[0] + 48 + i * 42, browser[1] + 49, browser[0] + 72 + i * 42, browser[1] + 73), fill=c)
+        draw_rounded_rect(static_draw, prompt_box, 24, (16, 24, 39), None, 1)
+        cache["ai_prompt_static_overlay"] = overlay
+
+    image = to_pil(canvas).convert("RGBA")
+    image.alpha_composite(overlay)
+    draw = ImageDraw.Draw(image, "RGBA")
     prompt = _scene_text(scene_config, "prompt", "caption_text", default="Compare coffee shop runs with brewing at home.")
     typed_len = int(len(prompt) * min(1.0, scene_progress / 0.48))
     typed = prompt[:typed_len]
     font = pil_font(42, bold=False)
-    prompt_box = (browser[0] + 58, browser[1] + 140, browser[2] - 58, browser[1] + 350)
-    draw_rounded_rect(draw, prompt_box, 24, (16, 24, 39), None, 1)
     draw_text_block(image, typed, (prompt_box[0] + 34, prompt_box[1] + 22, prompt_box[2] - 34, prompt_box[3] - 22), font_size=39, fill=(241, 245, 249), max_lines=3)
     if scene_progress > 0.50:
         response_alpha = int(255 * ease_out((scene_progress - 0.50) / 0.50))
@@ -359,16 +403,17 @@ def ai_prompt_mock(frame_idx: int, scene_progress: float, canvas: np.ndarray, sc
             y += 82
     if int(frame_idx / 8) % 2 == 0:
         draw.rectangle((prompt_box[0] + 42 + text_size(draw, typed[-18:], font)[0], prompt_box[1] + 50, prompt_box[0] + 50 + text_size(draw, typed[-18:], font)[0], prompt_box[1] + 96), fill=(255, 255, 255))
-    canvas[:] = to_cv(image)
+    canvas[:] = to_cv_rgb(image)
     return {"template": "ai_prompt_mock", "text_boxes": [browser], "cropped": False, "motion_score": 0.88}
 
 
 def comparison_split(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
     h, w = canvas.shape[:2]
     animated_background(canvas, scene_progress, ((13, 20, 28), (28, 70, 58)))
-    image = to_pil(canvas)
+    image = to_pil(canvas).convert("RGBA")
     draw = ImageDraw.Draw(image, "RGBA")
     area = safe_area(w, h)
+    cache = scene_cache(scene_config)
 
     for i in range(7):
         y = int(h * (0.10 + i * 0.115) + math.sin(scene_progress * math.tau + i) * h * 0.012)
@@ -384,18 +429,24 @@ def comparison_split(frame_idx: int, scene_progress: float, canvas: np.ndarray, 
     receipt_x = area.left + int(w * 0.015) + int(math.sin(scene_progress * math.tau) * w * 0.012)
     receipt_y = int(h * 0.16)
     receipt = (receipt_x, receipt_y, receipt_x + receipt_w, receipt_y + receipt_h)
-    draw_rounded_rect(draw, receipt, max(14, int(w * 0.045)), (253, 250, 242), (235, 229, 214), max(1, int(w * 0.006)))
-    draw.text((receipt_x + int(w * 0.045), receipt_y + int(h * 0.04)), "MONTHLY RUN", font=pil_font(max(15, int(w * 0.052))), fill=(90, 76, 62))
-    row_font = pil_font(max(13, int(w * 0.045)), bold=False)
-    rows = [("Coffee shop", "$150"), ("Home brew", "$20"), ("Difference", "$130")]
-    for idx, (label, value) in enumerate(rows):
-        y = receipt_y + int(h * (0.15 + idx * 0.105))
-        draw.text((receipt_x + int(w * 0.045), y), label, font=row_font, fill=(64, 54, 44))
-        value_font = pil_font(max(14, int(w * 0.052)), bold=True)
-        vw, _ = text_size(draw, value, value_font)
-        color = (190, 56, 48) if idx == 0 else ((9, 130, 96) if idx == 1 else (20, 25, 35))
-        draw.text((receipt[2] - vw - int(w * 0.045), y), value, font=value_font, fill=color)
-        draw.line((receipt_x + int(w * 0.04), y + int(h * 0.058), receipt[2] - int(w * 0.04), y + int(h * 0.058)), fill=(224, 216, 200), width=max(1, int(w * 0.003)))
+    receipt_patch = cache.get("comparison_receipt_patch")
+    if receipt_patch is None:
+        receipt_patch = Image.new("RGBA", (receipt_w, receipt_h), (0, 0, 0, 0))
+        patch_draw = ImageDraw.Draw(receipt_patch, "RGBA")
+        draw_rounded_rect(patch_draw, (0, 0, receipt_w, receipt_h), max(14, int(w * 0.045)), (253, 250, 242), (235, 229, 214), max(1, int(w * 0.006)))
+        patch_draw.text((int(w * 0.045), int(h * 0.04)), "MONTHLY RUN", font=pil_font(max(15, int(w * 0.052))), fill=(90, 76, 62))
+        row_font = pil_font(max(13, int(w * 0.045)), bold=False)
+        rows = [("Coffee shop", "$150"), ("Home brew", "$20"), ("Difference", "$130")]
+        for idx, (label, value) in enumerate(rows):
+            y = int(h * (0.15 + idx * 0.105))
+            patch_draw.text((int(w * 0.045), y), label, font=row_font, fill=(64, 54, 44))
+            value_font = pil_font(max(14, int(w * 0.052)), bold=True)
+            vw, _ = text_size(patch_draw, value, value_font)
+            color = (190, 56, 48) if idx == 0 else ((9, 130, 96) if idx == 1 else (20, 25, 35))
+            patch_draw.text((receipt_w - vw - int(w * 0.045), y), value, font=value_font, fill=color)
+            patch_draw.line((int(w * 0.04), y + int(h * 0.058), receipt_w - int(w * 0.04), y + int(h * 0.058)), fill=(224, 216, 200), width=max(1, int(w * 0.003)))
+        cache["comparison_receipt_patch"] = receipt_patch
+    paste_overlay_clipped(image, receipt_patch, (receipt_x, receipt_y))
     scan_y = receipt_y + int(receipt_h * (0.16 + 0.62 * scan))
     draw.rectangle((receipt_x, scan_y - int(h * 0.007), receipt[2], scan_y + int(h * 0.007)), fill=(115, 231, 185, 120))
 
@@ -405,20 +456,31 @@ def comparison_split(frame_idx: int, scene_progress: float, canvas: np.ndarray, 
     phone_x = area.right - phone_w + int(w * 0.11 * (1.0 - phone_enter))
     phone_y = int(h * 0.19)
     phone = (phone_x, phone_y, phone_x + phone_w, phone_y + phone_h)
-    draw_rounded_rect(draw, phone, max(18, int(w * 0.06)), (12, 18, 30), (77, 92, 110), max(1, int(w * 0.006)))
-    draw_rounded_rect(draw, (phone_x + int(w * 0.025), phone_y + int(h * 0.035), phone[2] - int(w * 0.025), phone[3] - int(h * 0.035)), max(14, int(w * 0.045)), (235, 253, 246), None, 1)
-    draw.text((phone_x + int(w * 0.055), phone_y + int(h * 0.07)), "AI SWAP", font=pil_font(max(15, int(w * 0.055))), fill=(7, 90, 68))
-
     save_text = "$130/mo"
-    save_font = pil_font(max(24, int(w * 0.13)), bold=True)
-    sw, sh = text_size(draw, save_text, save_font)
+    phone_patch = cache.get("comparison_phone_patch")
+    if phone_patch is None:
+        phone_patch = Image.new("RGBA", (phone_w, phone_h), (0, 0, 0, 0))
+        phone_draw = ImageDraw.Draw(phone_patch, "RGBA")
+        draw_rounded_rect(phone_draw, (0, 0, phone_w, phone_h), max(18, int(w * 0.06)), (12, 18, 30), (77, 92, 110), max(1, int(w * 0.006)))
+        screen_box = (int(w * 0.025), int(h * 0.035), phone_w - int(w * 0.025), phone_h - int(h * 0.035))
+        draw_rounded_rect(phone_draw, screen_box, max(14, int(w * 0.045)), (235, 253, 246), None, 1)
+        phone_draw.text((int(w * 0.055), int(h * 0.07)), "AI SWAP", font=pil_font(max(15, int(w * 0.055))), fill=(7, 90, 68))
+        save_font = pil_font(max(24, int(w * 0.13)), bold=True)
+        sw, sh = text_size(phone_draw, save_text, save_font)
+        local_save_x = max(0, (phone_w - sw) // 2)
+        local_save_y = int(h * 0.18)
+        phone_draw.text((local_save_x + 2, local_save_y + 3), save_text, font=save_font, fill=(0, 0, 0, 90))
+        phone_draw.text((local_save_x, local_save_y), save_text, font=save_font, fill=(5, 150, 105))
+        phone_draw.text((int(w * 0.06), local_save_y + sh + int(h * 0.035)), "same habit", font=pil_font(max(13, int(w * 0.045))), fill=(7, 90, 68))
+        phone_draw.text((int(w * 0.06), local_save_y + sh + int(h * 0.085)), "cheaper path", font=pil_font(max(13, int(w * 0.045))), fill=(7, 90, 68))
+        cache["comparison_phone_patch"] = phone_patch
+        cache["comparison_phone_number_metrics"] = (sw, sh)
+    else:
+        sw, sh = cache.get("comparison_phone_number_metrics", (0, 0))
+    paste_overlay_clipped(image, phone_patch, (phone_x, phone_y))
     save_x = phone_x + max(0, (phone_w - sw) // 2)
     save_y = phone_y + int(h * 0.18)
     num_box = (save_x, save_y, save_x + sw, save_y + sh)
-    draw.text((save_x + 2, save_y + 3), save_text, font=save_font, fill=(0, 0, 0, 90))
-    draw.text((save_x, save_y), save_text, font=save_font, fill=(5, 150, 105))
-    draw.text((phone_x + int(w * 0.06), save_y + sh + int(h * 0.035)), "same habit", font=pil_font(max(13, int(w * 0.045))), fill=(7, 90, 68))
-    draw.text((phone_x + int(w * 0.06), save_y + sh + int(h * 0.085)), "cheaper path", font=pil_font(max(13, int(w * 0.045))), fill=(7, 90, 68))
 
     pulse = 0.5 + 0.5 * math.sin(scene_progress * math.tau * 2.0)
     chip_text = "SAVE"
@@ -430,7 +492,7 @@ def comparison_split(frame_idx: int, scene_progress: float, canvas: np.ndarray, 
     draw_rounded_rect(draw, chip, max(12, int(w * 0.04)), (14, 22, 38), (115, 231, 185), max(1, int(w * 0.006)))
     draw.text((chip_x + int(w * 0.04), chip_y + int(h * 0.014)), chip_text, font=chip_font, fill=(255, 255, 255))
 
-    canvas[:] = to_cv(image)
+    canvas[:] = to_cv_rgb(image)
     return {
         "template": "comparison_split",
         "key_number_boxes": [num_box],
@@ -460,7 +522,7 @@ def payoff_number_reveal(frame_idx: int, scene_progress: float, canvas: np.ndarr
         x = int(w * ((scene_progress * 0.22 + i * 0.15) % 1.1) - w * 0.10)
         cv2.line(canvas, (x, y), (x + int(w * 0.28), y - int(h * 0.025)), (64, 210, 170), max(1, int(w * 0.006)), lineType=cv2.LINE_AA)
 
-    image = to_pil(canvas)
+    image = to_pil(canvas).convert("RGBA")
     draw = ImageDraw.Draw(image, "RGBA")
     count = int(1500 * ease_out(scene_progress))
     number = _scene_text(scene_config, "number", default=f"${count:,}")
@@ -474,16 +536,23 @@ def payoff_number_reveal(frame_idx: int, scene_progress: float, canvas: np.ndarr
     phone_y = int(h * (0.18 + 0.03 * (1.0 - reveal)))
     phone = (phone_x, phone_y, phone_x + phone_w, phone_y + phone_h)
     draw.ellipse((phone_x - int(w * 0.04), phone[3] - int(h * 0.035), phone[2] + int(w * 0.04), phone[3] + int(h * 0.06)), fill=(0, 0, 0, 86))
-    draw_rounded_rect(draw, phone, max(20, int(w * 0.065)), (12, 18, 28), (81, 100, 115), max(1, int(w * 0.008)))
+    cache = scene_cache(scene_config)
+    phone_patch = cache.get("payoff_phone_patch")
+    if phone_patch is None:
+        phone_patch = Image.new("RGBA", (phone_w, phone_h), (0, 0, 0, 0))
+        phone_draw = ImageDraw.Draw(phone_patch, "RGBA")
+        draw_rounded_rect(phone_draw, (0, 0, phone_w, phone_h), max(20, int(w * 0.065)), (12, 18, 28), (81, 100, 115), max(1, int(w * 0.008)))
+        screen_patch = (int(w * 0.035), int(h * 0.040), phone_w - int(w * 0.035), phone_h - int(h * 0.040))
+        draw_rounded_rect(phone_draw, screen_patch, max(16, int(w * 0.05)), (236, 253, 246), None, 1)
+        badge_text = "SAVED"
+        badge_font = pil_font(max(16, int(w * 0.062)), bold=True)
+        bw, bh = text_size(phone_draw, badge_text, badge_font)
+        badge = (screen_patch[0] + int(w * 0.045), screen_patch[1] + int(h * 0.040), screen_patch[0] + int(w * 0.045) + bw + int(w * 0.09), screen_patch[1] + int(h * 0.040) + bh + int(h * 0.034))
+        draw_rounded_rect(phone_draw, badge, max(12, int(w * 0.04)), (8, 112, 84), None, 1)
+        phone_draw.text((badge[0] + int(w * 0.045), badge[1] + int(h * 0.014)), badge_text, font=badge_font, fill=(255, 255, 255))
+        cache["payoff_phone_patch"] = phone_patch
+    paste_overlay_clipped(image, phone_patch, (phone_x, phone_y))
     screen = (phone_x + int(w * 0.035), phone_y + int(h * 0.040), phone[2] - int(w * 0.035), phone[3] - int(h * 0.040))
-    draw_rounded_rect(draw, screen, max(16, int(w * 0.05)), (236, 253, 246), None, 1)
-
-    badge_text = "SAVED"
-    badge_font = pil_font(max(16, int(w * 0.062)), bold=True)
-    bw, bh = text_size(draw, badge_text, badge_font)
-    badge = (screen[0] + int(w * 0.045), screen[1] + int(h * 0.040), screen[0] + int(w * 0.045) + bw + int(w * 0.09), screen[1] + int(h * 0.040) + bh + int(h * 0.034))
-    draw_rounded_rect(draw, badge, max(12, int(w * 0.04)), (8, 112, 84), None, 1)
-    draw.text((badge[0] + int(w * 0.045), badge[1] + int(h * 0.014)), badge_text, font=badge_font, fill=(255, 255, 255))
 
     font_size = max(48, int(w * (0.36 + 0.035 * math.sin(scene_progress * math.tau * 1.2))))
     font = pil_font(font_size, bold=True)
@@ -523,7 +592,7 @@ def payoff_number_reveal(frame_idx: int, scene_progress: float, canvas: np.ndarr
         alpha = int(150 * (1.0 - p))
         draw.line((sx - 3, sy, sx + 3, sy), fill=(255, 255, 255, alpha), width=max(1, int(w * 0.006)))
 
-    canvas[:] = to_cv(image)
+    canvas[:] = to_cv_rgb(image)
     return {
         "template": "payoff_number_reveal",
         "key_number_boxes": [num_box],
