@@ -299,6 +299,7 @@ def main() -> int:
     scenes = build_grocery_scenes()
     script = _script_from_scenes(scenes)
     audio_path, audio_warnings = _free_audio(script, args.tts_provider)
+    stock_lookup_enabled = bool(readiness.get("status") == "PASS" and _requires_asset_readiness(args))
 
     video_path = output_dir / "visual_realism_sprint1_grocery_full.mp4"
     started = time.time()
@@ -310,7 +311,7 @@ def main() -> int:
         fps=preset["fps"],
         width=preset["width"],
         height=preset["height"],
-        use_stock_backgrounds=False,
+        use_stock_backgrounds=stock_lookup_enabled,
         use_free_tts=True,
         style_preset="documentary_money_short",
     )
@@ -326,7 +327,8 @@ def main() -> int:
         "elevenlabs_used": False,
         "runwayml_used": False,
         "tts_provider": "gtts" if "tts_provider:gtts" in audio_warnings else ("pyttsx3" if "tts_provider:pyttsx3" in audio_warnings else "silent"),
-        "stock_lookup_enabled": False,
+        "stock_lookup_enabled": stock_lookup_enabled,
+        "asset_readiness": readiness,
     }
     qa = run_hybrid_motion_qa(result)
     human_review = _human_review_notes(qa, result)

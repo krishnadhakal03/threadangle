@@ -131,7 +131,7 @@ def test_grocery_hook_reveal_report_missing_asset_setup(tmp_path, monkeypatch):
 def test_hmr_asset_readiness_blocks_without_keys_or_local_assets(tmp_path, monkeypatch):
     monkeypatch.delenv("PEXELS_API_KEY", raising=False)
     monkeypatch.delenv("PIXABAY_API_KEY", raising=False)
-    report = check_hmr_asset_readiness(tmp_path)
+    report = check_hmr_asset_readiness(tmp_path, load_env=False)
     assert report["status"] == "BLOCKED"
     assert report["provider_ready"] is False
     assert report["local_hook_reveal_ready"] is False
@@ -144,7 +144,7 @@ def test_hmr_asset_readiness_passes_with_local_hook_reveal(tmp_path, monkeypatch
     monkeypatch.delenv("PIXABAY_API_KEY", raising=False)
     (tmp_path / "hook.jpg").write_bytes(b"fake image placeholder")
     (tmp_path / "reveal.mp4").write_bytes(b"fake video placeholder")
-    report = check_hmr_asset_readiness(tmp_path)
+    report = check_hmr_asset_readiness(tmp_path, load_env=False)
     assert report["status"] == "PASS"
     assert report["provider_ready"] is False
     assert report["local_hook_reveal_ready"] is True

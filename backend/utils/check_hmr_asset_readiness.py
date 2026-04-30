@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,33 @@ def local_asset_root() -> Path:
     return repo_root() / "assets" / "hmr_local" / "grocery"
 
 
+def load_local_env(keys: tuple[str, ...] = ("PEXELS_API_KEY", "PIXABAY_API_KEY")) -> dict[str, Any]:
+    """Load selected keys from local .env files without exposing values."""
+    loaded_from: list[str] = []
+    env_files = [repo_root() / ".env", repo_root() / "backend" / ".env"]
+    for path in env_files:
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        file_loaded = False
+        for key in keys:
+            if os.getenv(key):
+                continue
+            match = re.search(rf"(?m)^\s*{re.escape(key)}\s*=\s*(.+?)\s*$", text)
+            if not match:
+                continue
+            value = match.group(1).strip().strip('"').strip("'")
+            if value:
+                os.environ[key] = value
+                file_loaded = True
+        if file_loaded:
+            loaded_from.append(str(path))
+    return {
+        "env_files_checked": [str(path) for path in env_files],
+        "loaded_from": loaded_from,
+    }
+
+
 def _configured_env(name: str) -> bool:
     return bool(os.getenv(name, "").strip())
 
@@ -39,7 +67,8 @@ def _existing_role_files(root: Path, role: str) -> list[str]:
     ]
 
 
-def check_hmr_asset_readiness(asset_dir: str | Path | None = None) -> dict[str, Any]:
+def check_hmr_asset_readiness(asset_dir: str | Path | None = None, load_env: bool = True) -> dict[str, Any]:
+    env_load = load_local_env() if load_env else {"env_files_checked": [], "loaded_from": []}
     root = Path(asset_dir).expanduser().resolve() if asset_dir else local_asset_root()
     provider_keys = {
         "PEXELS_API_KEY": _configured_env("PEXELS_API_KEY"),
@@ -66,6 +95,9 @@ def check_hmr_asset_readiness(asset_dir: str | Path | None = None) -> dict[str, 
         "ready_for_slice_c_real_render": ready,
         "provider_ready": provider_ready,
         "provider_keys": provider_keys,
+        "env_loaded": bool(env_load["loaded_from"]),
+        "env_files_checked": env_load["env_files_checked"],
+        "env_loaded_from": env_load["loaded_from"],
         "asset_dir": str(root),
         "local_hook_reveal_ready": hook_reveal_ready,
         "local_assets": local_assets,
@@ -83,6 +115,7 @@ def _format_report(report: dict[str, Any]) -> str:
         f"Provider ready: {report['provider_ready']}",
         f"PEXELS_API_KEY configured: {report['provider_keys']['PEXELS_API_KEY']}",
         f"PIXABAY_API_KEY configured: {report['provider_keys']['PIXABAY_API_KEY']}",
+        f".env loaded: {report['env_loaded']}",
         f"Local asset dir: {report['asset_dir']}",
         f"Local hook/reveal ready: {report['local_hook_reveal_ready']}",
     ]
