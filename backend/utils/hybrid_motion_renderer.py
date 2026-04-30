@@ -23,11 +23,11 @@ import numpy as np
 try:
     from .hybrid_scene_templates import draw_caption_band, get_template
     from .hmr_scene_asset_strategy import plan_hmr_scene_assets
-    from .hmr_playwright_capture import resolve_hmr_playwright_capture
+    from .hmr_resolved_scene_spec import resolve_playwright_scene_asset
 except ImportError:  # pragma: no cover - direct script execution fallback
     from hybrid_scene_templates import draw_caption_band, get_template
     from hmr_scene_asset_strategy import plan_hmr_scene_assets
-    from hmr_playwright_capture import resolve_hmr_playwright_capture
+    from hmr_resolved_scene_spec import resolve_playwright_scene_asset
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -686,9 +686,9 @@ def render_hybrid_video(
         asset_strategy = strategy_by_scene_id.get(str(scene_id), {})
         lookup_start = time.perf_counter()
         if asset_strategy.get("visual_medium") == "playwright_capture":
-            asset_resolution = resolve_hmr_playwright_capture(
+            asset_resolution = resolve_playwright_scene_asset(
                 scene if isinstance(scene, dict) else {},
-                str(asset_strategy.get("capture_hint") or ""),
+                asset_strategy,
                 CACHE_DIR / "captures",
                 width,
                 height,

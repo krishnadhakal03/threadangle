@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import cv2
 
@@ -6,6 +7,7 @@ from utils.check_hmr_asset_readiness import check_hmr_asset_readiness
 from utils.hybrid_motion_qa import run_hybrid_motion_qa
 from utils.hybrid_motion_renderer import render_hybrid_video, split_caption_events
 from utils.hmr_scene_asset_strategy import plan_hmr_scene_assets
+from utils.hmr_resolved_scene_spec import ResolvedSceneAsset, resolve_playwright_scene_asset
 from utils.hybrid_scene_templates import ai_prompt_mock, money_shock_math, payoff_number_reveal
 from utils.run_day9_bill_leak import build_bill_leak_scenes
 from utils.run_hybrid_motion_poc import build_day8_scenes
@@ -114,6 +116,61 @@ def test_hmr_scene_asset_strategy_plans_bill_leak_visual_sources():
     assert by_id["payoff"]["visual_medium"] == "playwright_capture"
     assert by_id["payoff"]["capture_hint"] == "savings_dashboard"
     assert build_bill_leak_scenes()[-1]["headline"] == "Comment bill for the prompt"
+
+
+def test_resolved_scene_asset_serializes_playwright_report_fields():
+    asset = ResolvedSceneAsset(
+        resolved_asset_type="playwright_capture",
+        resolved_asset_path="captures/result.png",
+        resolved_asset_paths=["captures/01.png", "captures/result.png"],
+        resolved_asset_provider="local_playwright_html",
+        asset_resolution_status="resolved",
+        fallback_used=False,
+        playwright_motion_mode="screenshot_sequence",
+        capture_steps=["empty_input", "typing_prompt", "savings_result"],
+        visible_interaction=True,
+        saved_chrome_profile_used=False,
+    )
+    fields = asset.to_report_fields()
+    json.dumps(fields)
+    assert fields["resolved_asset_type"] == "playwright_capture"
+    assert fields["resolved_asset_path"] == "captures/result.png"
+    assert fields["resolved_asset_provider"] == "local_playwright_html"
+    assert fields["asset_resolution_status"] == "resolved"
+    assert fields["fallback_used"] is False
+    assert fields["playwright_motion_mode"] == "screenshot_sequence"
+    assert fields["capture_steps"][-1] == "savings_result"
+    assert fields["visible_interaction"] is True
+
+
+def test_playwright_scene_asset_adapter_does_not_fake_missing_success(tmp_path):
+    def fake_missing_resolver(scene, capture_hint, output_dir, width, height):
+        return {
+            "resolved_asset_type": None,
+            "resolved_asset_path": None,
+            "resolved_asset_provider": None,
+            "asset_resolution_status": "playwright_unavailable:missing",
+            "fallback_used": True,
+            "playwright_motion_mode": "screenshot_sequence",
+            "capture_steps": ["empty_input", "typing_prompt"],
+            "visible_interaction": False,
+            "saved_chrome_profile_used": False,
+        }
+
+    fields = resolve_playwright_scene_asset(
+        {"id": "ai_compare"},
+        {"capture_hint": "receipt_audit_comparison"},
+        tmp_path,
+        270,
+        480,
+        capture_resolver=fake_missing_resolver,
+    )
+    assert fields["resolved_asset_type"] is None
+    assert fields["resolved_asset_path"] is None
+    assert fields["resolved_asset_provider"] is None
+    assert fields["asset_resolution_status"] == "playwright_unavailable:missing"
+    assert fields["fallback_used"] is True
+    assert fields["visible_interaction"] is False
 
 
 def test_grocery_hook_reveal_report_missing_asset_setup(tmp_path, monkeypatch):
