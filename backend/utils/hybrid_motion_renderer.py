@@ -643,7 +643,7 @@ def render_hybrid_video(
             )
             if asset_resolution.get("fallback_used"):
                 warnings.append(f"asset_resolution_fallback:{scene_id}:{asset_resolution.get('asset_resolution_status')}")
-        elif str(scene_id) in {"hook", "reveal"} and asset_strategy.get("visual_medium") in {"stock_footage", "stock_image"}:
+        elif asset_strategy.get("visual_medium") in {"stock_footage", "stock_image"}:
             bg_path, asset_resolution = resolve_stock_or_local_scene_asset(
                 scene_id,
                 asset_strategy,
@@ -792,6 +792,8 @@ def render_hybrid_video(
         media_class = "REAL_STOCK" if bg_path else "ANIMATED_FALLBACK"
         if asset_fields.get("resolved_asset_type") == "playwright_capture":
             media_class = "LOCAL_CAPTURE"
+        elif bg_path:
+            media_class = "REAL_STOCK"
         elif template_name == "ai_prompt_mock":
             media_class = "LOCAL_CAPTURE"
         elif template_name == "cta_callback":

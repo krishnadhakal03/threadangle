@@ -428,27 +428,31 @@ def test_strategy_driven_stock_hook_uses_adapter_not_legacy_branch(tmp_path, mon
     assert row["query_used"] == "adapter query"
 
 
-def test_legacy_hook_footage_overlay_branch_remains_reachable(tmp_path, monkeypatch):
-    image_path = tmp_path / "legacy_hook.jpg"
+def test_generalized_stock_adapter_covers_habit_reveal_hook_overlay(tmp_path, monkeypatch):
+    image_path = tmp_path / "habit_reveal.jpg"
     cv2.imwrite(str(image_path), np.full((24, 24, 3), 90, dtype=np.uint8))
 
     adapter_calls = []
 
-    def fake_adapter(*args, **kwargs):
-        adapter_calls.append(args)
-        raise AssertionError("strategy adapter should not run for non hook/reveal scene id")
-
-    def fake_legacy_selector(scene, template, used_ids, warnings):
+    def fake_adapter(scene_id, asset_strategy, used_ids, warnings, use_stock_backgrounds, **kwargs):
+        adapter_calls.append((scene_id, asset_strategy.get("visual_medium")))
         return image_path, {
+            "resolved_asset_type": "stock_image",
+            "resolved_asset_path": str(image_path),
+            "resolved_asset_provider": "generalized_adapter",
+            "asset_resolution_status": "resolved",
+            "fallback_used": False,
+            "query_used": "habit reveal query",
+            "queries_attempted": ["habit reveal query"],
             "provider_available": True,
-            "queries_attempted": ["legacy query"],
-            "query_used": "legacy query",
-            "chosen": {"provider": "legacy_provider", "media_type": "stock_image", "id": "legacy-1"},
-            "reason": "resolved",
+            "missing_config": [],
         }
 
+    def fail_legacy(*args, **kwargs):
+        raise AssertionError("legacy direct stock branch should not run for habit_reveal")
+
     monkeypatch.setattr(hmr, "resolve_stock_or_local_scene_asset", fake_adapter)
-    monkeypatch.setattr(hmr, "_select_stock_background", fake_legacy_selector)
+    monkeypatch.setattr(hmr, "_select_stock_background", fail_legacy)
     monkeypatch.setattr(hmr, "_provider_available", lambda: True)
     result = render_hybrid_video(
         [
@@ -470,12 +474,126 @@ def test_legacy_hook_footage_overlay_branch_remains_reachable(tmp_path, monkeypa
         use_free_tts=False,
     )
     row = result["scene_reports"][0]
-    assert adapter_calls == []
-    assert row["resolved_asset_provider"] == "legacy_provider"
+    assert adapter_calls == [("habit_reveal", "stock_footage")]
+    assert row["resolved_asset_provider"] == "generalized_adapter"
     assert row["asset_resolution_status"] == "resolved"
     assert row["fallback_used"] is False
-    assert row["query_used"] == "legacy query"
-    assert row["queries_attempted"] == ["legacy query"]
+    assert row["query_used"] == "habit reveal query"
+    assert row["queries_attempted"] == ["habit reveal query"]
+    assert row["media_classification"] == "REAL_STOCK"
+
+
+def test_generalized_stock_adapter_covers_method_mapped_stock_overlay(tmp_path, monkeypatch):
+    image_path = tmp_path / "method_stock.jpg"
+    cv2.imwrite(str(image_path), np.full((24, 24, 3), 120, dtype=np.uint8))
+
+    def fake_adapter(scene_id, asset_strategy, used_ids, warnings, use_stock_backgrounds, **kwargs):
+        return image_path, {
+            "resolved_asset_type": "stock_image",
+            "resolved_asset_path": str(image_path),
+            "resolved_asset_provider": "method_adapter",
+            "asset_resolution_status": "resolved",
+            "fallback_used": False,
+            "query_used": "method query",
+            "queries_attempted": ["method query"],
+            "provider_available": True,
+            "missing_config": [],
+        }
+
+    def fail_legacy(*args, **kwargs):
+        raise AssertionError("legacy direct stock branch should not run for method-mapped stock scene")
+
+    monkeypatch.setattr(hmr, "resolve_stock_or_local_scene_asset", fake_adapter)
+    monkeypatch.setattr(hmr, "_select_stock_background", fail_legacy)
+    monkeypatch.setattr(hmr, "_provider_available", lambda: True)
+    result = render_hybrid_video(
+        [
+            {
+                "id": "method_scene",
+                "method": "stock_plus_motion_overlay",
+                "duration": 1.0,
+                "headline": "Method stock",
+                "caption_text": "Method stock",
+                "visual_description": "coffee cup payment",
+            }
+        ],
+        "Method stock.",
+        tmp_path / "method_stock.mp4",
+        fps=6,
+        width=270,
+        height=480,
+        use_stock_backgrounds=True,
+        use_free_tts=False,
+    )
+    row = result["scene_reports"][0]
+    assert row["template"] == "hook_footage_overlay"
+    assert row["resolved_asset_provider"] == "method_adapter"
+    assert row["asset_resolution_status"] == "resolved"
+    assert row["query_used"] == "method query"
+    assert row["media_classification"] == "REAL_STOCK"
+
+
+def test_generalized_stock_adapter_covers_generic_non_hook_stock_scene(tmp_path, monkeypatch):
+    image_path = tmp_path / "generic_stock.jpg"
+    cv2.imwrite(str(image_path), np.full((24, 24, 3), 150, dtype=np.uint8))
+
+    def fake_plan(scenes):
+        return [
+            {
+                "scene_id": "proof",
+                "visual_medium": "stock_image",
+                "asset_role": "story_context_visual",
+                "query_candidates": ["generic proof stock"],
+                "template_hint": "money_shock_math",
+                "capture_hint": None,
+                "fallback_order": ["stock_image", "local_asset", "motion_template"],
+                "reason": "test generic stock",
+            }
+        ]
+
+    def fake_adapter(scene_id, asset_strategy, used_ids, warnings, use_stock_backgrounds, **kwargs):
+        return image_path, {
+            "resolved_asset_type": "stock_image",
+            "resolved_asset_path": str(image_path),
+            "resolved_asset_provider": "generic_adapter",
+            "asset_resolution_status": "resolved",
+            "fallback_used": False,
+            "query_used": "generic proof stock",
+            "queries_attempted": ["generic proof stock"],
+            "provider_available": True,
+            "missing_config": [],
+        }
+
+    def fail_legacy(*args, **kwargs):
+        raise AssertionError("legacy direct stock branch should not run for generic stock scene")
+
+    monkeypatch.setattr(hmr, "plan_hmr_scene_assets", fake_plan)
+    monkeypatch.setattr(hmr, "resolve_stock_or_local_scene_asset", fake_adapter)
+    monkeypatch.setattr(hmr, "_select_stock_background", fail_legacy)
+    monkeypatch.setattr(hmr, "_provider_available", lambda: True)
+    result = render_hybrid_video(
+        [
+            {
+                "id": "proof",
+                "template": "money_shock_math",
+                "duration": 1.0,
+                "monthly_number": "$27/mo",
+                "caption_text": "Generic proof stock",
+            }
+        ],
+        "Generic proof stock.",
+        tmp_path / "generic_stock.mp4",
+        fps=6,
+        width=270,
+        height=480,
+        use_stock_backgrounds=True,
+        use_free_tts=False,
+    )
+    row = result["scene_reports"][0]
+    assert row["template"] == "money_shock_math"
+    assert row["resolved_asset_provider"] == "generic_adapter"
+    assert row["asset_resolution_status"] == "resolved"
+    assert row["query_used"] == "generic proof stock"
     assert row["media_classification"] == "REAL_STOCK"
 
 
