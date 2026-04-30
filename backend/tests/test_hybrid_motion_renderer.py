@@ -4,8 +4,10 @@ import cv2
 
 from utils.hybrid_motion_qa import run_hybrid_motion_qa
 from utils.hybrid_motion_renderer import render_hybrid_video, split_caption_events
+from utils.hmr_scene_asset_strategy import plan_hmr_scene_assets
 from utils.hybrid_scene_templates import ai_prompt_mock, money_shock_math, payoff_number_reveal
 from utils.run_hybrid_motion_poc import build_day8_scenes
+from utils.run_visual_realism_sprint1 import build_grocery_scenes
 
 
 def _tiny_scenes():
@@ -78,6 +80,21 @@ def test_scene_reports_include_media_classification(tmp_path, monkeypatch):
     assert "LOCAL_CAPTURE" in classes
     assert "MOTION_CARD" in classes
     assert result["media_mix"]
+    assert result["scene_asset_strategy"]
+    assert all("scene_asset_strategy" in row for row in result["scene_reports"])
+    assert result["visual_realism_human_gate"]["scene_asset_strategy_used"] is True
+
+
+def test_hmr_scene_asset_strategy_plans_grocery_visual_sources():
+    strategy = plan_hmr_scene_assets(build_grocery_scenes())
+    by_id = {row["scene_id"]: row for row in strategy}
+    assert by_id["hook"]["visual_medium"] == "stock_footage"
+    assert by_id["hook"]["asset_role"] == "thumb_stop_real_world_context"
+    assert any("grocery receipt" in query.lower() for query in by_id["hook"]["query_candidates"])
+    assert by_id["ai_compare"]["visual_medium"] == "playwright_capture"
+    assert by_id["ai_compare"]["capture_hint"] == "receipt_audit_comparison"
+    assert "motion_template" in by_id["ai_compare"]["fallback_order"]
+    assert by_id["payoff"]["visual_medium"] == "stock_image"
 
 
 def test_captions_stay_under_max_words():

@@ -72,13 +72,15 @@ def _write_summary(
     recommendations = postability.get("recommendations") or []
     recommendation_lines = "\n".join(f"- {item}" for item in recommendations) if recommendations else "- None"
     final_recommendation = "Post" if qa_report.get("postability_status") in {"PASS", "STRONG_PASS"} else "Manual review before posting"
-    human_review = render_report.get("human_review") or qa_report.get("human_review") or {}
+    human_review = render_report.get("human_review") or qa_report.get("human_review") or render_report.get("visual_realism_human_gate") or {}
     human_review_lines = "\n".join(
         f"- {label}: {human_review.get(key, '')}"
         for key, label in (
             ("visual_realism_score", "Visual realism score"),
             ("object_credibility", "Object credibility"),
             ("story_object_connection", "Story-object connection"),
+            ("scene_asset_strategy_used", "Scene asset strategy used"),
+            ("drawn_placeholder_risk", "Drawn placeholder risk"),
             ("first_frame_clarity", "First-frame clarity"),
             ("first_second_clarity", "First-second clarity"),
             ("first_second_shock_value", "First-second shock value"),
@@ -90,6 +92,21 @@ def _write_summary(
         )
         if human_review.get(key)
     ) or "- Pending human review"
+    strategy_rows = render_report.get("scene_asset_strategy") or [
+        row.get("scene_asset_strategy")
+        for row in (render_report.get("scene_reports") or [])
+        if row.get("scene_asset_strategy")
+    ]
+    strategy_lines = "\n".join(
+        "- `{scene_id}`: `{medium}` / `{role}`; queries: {queries}; fallback: {fallback}".format(
+            scene_id=row.get("scene_id"),
+            medium=row.get("visual_medium"),
+            role=row.get("asset_role"),
+            queries=", ".join(f"`{query}`" for query in (row.get("query_candidates") or [])[:2]) or "`none`",
+            fallback=" -> ".join(str(item) for item in (row.get("fallback_order") or [])),
+        )
+        for row in strategy_rows
+    ) or "- No scene asset strategy attached"
 
     summary = f"""# HMR Human Review Package
 
@@ -118,6 +135,10 @@ Generated: {datetime.now().isoformat(timespec="seconds")}
 ## Recommendations
 
 {recommendation_lines}
+
+## Visual Strategy
+
+{strategy_lines}
 
 ## Profiling
 

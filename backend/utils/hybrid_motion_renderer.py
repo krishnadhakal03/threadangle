@@ -22,8 +22,10 @@ import numpy as np
 
 try:
     from .hybrid_scene_templates import draw_caption_band, get_template
+    from .hmr_scene_asset_strategy import plan_hmr_scene_assets
 except ImportError:  # pragma: no cover - direct script execution fallback
     from hybrid_scene_templates import draw_caption_band, get_template
+    from hmr_scene_asset_strategy import plan_hmr_scene_assets
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -270,6 +272,43 @@ def _select_stock_background(scene: Any, template: str, used_ids: set[str], warn
     return None, {"query": query, "candidates": len(candidates), "provider_available": True, "reason": "download_or_validation_failed"}
 
 
+def _visual_realism_human_gate(asset_strategy: list[dict[str, Any]], scene_reports: list[dict[str, Any]]) -> dict[str, Any]:
+    if not asset_strategy:
+        return {
+            "visual_realism_score": "pending_human_review",
+            "object_credibility": "pending_human_review",
+            "scene_asset_strategy_used": False,
+            "drawn_placeholder_risk": "unknown",
+            "post_no_post_recommendation": "pending_human_review",
+        }
+    planned_real_sources = sum(
+        1
+        for row in asset_strategy
+        if row.get("visual_medium") in {"stock_footage", "stock_image", "playwright_capture", "local_asset"}
+    )
+    motion_only = sum(1 for row in asset_strategy if row.get("visual_medium") == "motion_template")
+    resolved_real_sources = sum(
+        1
+        for row in scene_reports
+        if row.get("media_classification") in {"REAL_STOCK", "LOCAL_CAPTURE"}
+    )
+    if resolved_real_sources == 0 and planned_real_sources > 0:
+        risk = "high_until_asset_resolution"
+    elif motion_only >= max(2, len(asset_strategy) // 2):
+        risk = "high"
+    elif motion_only:
+        risk = "medium"
+    else:
+        risk = "low"
+    return {
+        "visual_realism_score": "pending_human_review",
+        "object_credibility": "pending_human_review",
+        "scene_asset_strategy_used": planned_real_sources > 0,
+        "drawn_placeholder_risk": risk,
+        "post_no_post_recommendation": "pending_human_review",
+    }
+
+
 def _fit_background_frame(frame: np.ndarray, width: int, height: int, progress: float) -> np.ndarray:
     fh, fw = frame.shape[:2]
     scale = max(width / max(1, fw), height / max(1, fh)) * (1.0 + 0.025 * math.sin(progress * math.pi))
@@ -378,6 +417,8 @@ def render_hybrid_video(
         "used": False,
         "reason": "",
     }
+    scene_asset_strategy = plan_hmr_scene_assets(scenes)
+    strategy_by_scene_id = {str(row.get("scene_id")): row for row in scene_asset_strategy}
 
     prepared = []
     asset_lookup_sec = 0.0
@@ -545,11 +586,13 @@ def render_hybrid_video(
         template_profile["caption_composition_sec"] += scene_caption_sec
         template_profile["writer_write_sec"] += scene_writer_write_sec
         scene_id = _scene_value(scene, "id", None) or _scene_value(scene, "scene", None) or _scene_value(scene, "scene_index", scene_idx + 1)
+        asset_strategy = strategy_by_scene_id.get(str(scene_id), {})
         scene_reports.append({
             "scene_id": scene_id,
             "template": template_name,
             "duration": round(duration, 3),
             "media_classification": media_class,
+            "scene_asset_strategy": asset_strategy,
             "provider_usage": stock_meta if bg_path else {"provider": None, "reason": stock_status.get("reason") or "animated_or_motion_template"},
             "background_id": str(bg_path) if bg_path else f"{media_class}:{template_name}",
             "caption_report": scene_caption_reports[0] if scene_caption_reports else {"caption": "", "word_count": 0},
@@ -603,6 +646,8 @@ def render_hybrid_video(
             "duration_strategy": duration_strategy,
         },
         "scene_reports": scene_reports,
+        "scene_asset_strategy": scene_asset_strategy,
+        "visual_realism_human_gate": _visual_realism_human_gate(scene_asset_strategy, scene_reports),
         "render_profile": {
             "total_wall_sec": round(total_profile_sec, 4),
             "frame_count": global_frame,

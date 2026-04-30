@@ -187,6 +187,8 @@ def _human_review_notes(qa: dict[str, Any]) -> dict[str, str]:
         "visual_realism_score": "8/10",
         "object_credibility": "Textured grocery receipt, brown grocery bag, cart frame, and phone/app panels read as credible story props rather than playful icons.",
         "story_object_connection": "Every major object is tied to the script: receipt leak, repeat cart items, AI swap panel, yearly savings phone estimate, and grocery CTA.",
+        "scene_asset_strategy_used": "Yes. Slice A attaches HMR scene asset strategy rows so review can see which scenes should move to stock, capture, local assets, or templates.",
+        "drawn_placeholder_risk": "medium until Slice B replaces planned stock/capture scenes with resolved assets",
         "first_frame_clarity": "The first frame shows one grocery receipt loss number and a grocery-bag/cart context.",
         "first_second_clarity": "Strong: $2,080/year appears immediately as the yearly version of the $40/week leak.",
         "first_four_second_retention_likelihood": f"Likely stronger than coffee visuals: one loss number lands first, then repeat grocery items reveal before the AI panel. Hook score: {scores.get('hook_visual_strength')}; pacing score: {scores.get('pacing_retention')}.",
