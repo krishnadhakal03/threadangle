@@ -2,8 +2,10 @@ from pathlib import Path
 import json
 
 import cv2
+import numpy as np
 
 from utils.check_hmr_asset_readiness import check_hmr_asset_readiness
+from utils import hybrid_motion_renderer as hmr
 from utils.hybrid_motion_qa import run_hybrid_motion_qa
 from utils.hybrid_motion_renderer import render_hybrid_video, split_caption_events
 from utils.hmr_scene_asset_strategy import plan_hmr_scene_assets
@@ -375,6 +377,106 @@ def test_grocery_hook_reveal_report_missing_asset_setup(tmp_path, monkeypatch):
         assert row["asset_resolution_status"] == "stock_provider_keys_not_configured_and_local_asset_missing"
         assert "PEXELS_API_KEY" in row["missing_config"]
         assert row["queries_attempted"]
+
+
+def test_strategy_driven_stock_hook_uses_adapter_not_legacy_branch(tmp_path, monkeypatch):
+    image_path = tmp_path / "strategy_hook.jpg"
+    cv2.imwrite(str(image_path), np.full((24, 24, 3), 180, dtype=np.uint8))
+
+    def fake_adapter(scene_id, asset_strategy, used_ids, warnings, use_stock_backgrounds, **kwargs):
+        return image_path, {
+            "resolved_asset_type": "stock_image",
+            "resolved_asset_path": str(image_path),
+            "resolved_asset_provider": "test_adapter",
+            "asset_resolution_status": "resolved",
+            "fallback_used": False,
+            "query_used": "adapter query",
+            "queries_attempted": ["adapter query"],
+            "provider_available": True,
+            "missing_config": [],
+        }
+
+    def fail_legacy(*args, **kwargs):
+        raise AssertionError("legacy direct stock branch should not run for scene_id=hook")
+
+    monkeypatch.setattr(hmr, "resolve_stock_or_local_scene_asset", fake_adapter)
+    monkeypatch.setattr(hmr, "_select_stock_background", fail_legacy)
+    monkeypatch.setattr(hmr, "_provider_available", lambda: True)
+    result = render_hybrid_video(
+        [
+            {
+                "id": "hook",
+                "template": "hook_footage_overlay",
+                "duration": 1.0,
+                "headline": "Adapter hook",
+                "caption_text": "Adapter hook",
+                "visual_description": "person checking receipt",
+            }
+        ],
+        "Adapter hook.",
+        tmp_path / "strategy_hook.mp4",
+        fps=6,
+        width=270,
+        height=480,
+        use_stock_backgrounds=True,
+        use_free_tts=False,
+    )
+    row = result["scene_reports"][0]
+    assert row["resolved_asset_provider"] == "test_adapter"
+    assert row["asset_resolution_status"] == "resolved"
+    assert row["media_classification"] == "REAL_STOCK"
+    assert row["query_used"] == "adapter query"
+
+
+def test_legacy_hook_footage_overlay_branch_remains_reachable(tmp_path, monkeypatch):
+    image_path = tmp_path / "legacy_hook.jpg"
+    cv2.imwrite(str(image_path), np.full((24, 24, 3), 90, dtype=np.uint8))
+
+    adapter_calls = []
+
+    def fake_adapter(*args, **kwargs):
+        adapter_calls.append(args)
+        raise AssertionError("strategy adapter should not run for non hook/reveal scene id")
+
+    def fake_legacy_selector(scene, template, used_ids, warnings):
+        return image_path, {
+            "provider_available": True,
+            "queries_attempted": ["legacy query"],
+            "query_used": "legacy query",
+            "chosen": {"provider": "legacy_provider", "media_type": "stock_image", "id": "legacy-1"},
+            "reason": "resolved",
+        }
+
+    monkeypatch.setattr(hmr, "resolve_stock_or_local_scene_asset", fake_adapter)
+    monkeypatch.setattr(hmr, "_select_stock_background", fake_legacy_selector)
+    monkeypatch.setattr(hmr, "_provider_available", lambda: True)
+    result = render_hybrid_video(
+        [
+            {
+                "id": "habit_reveal",
+                "template": "hook_footage_overlay",
+                "duration": 1.0,
+                "headline": "Legacy reveal",
+                "caption_text": "Legacy reveal",
+                "visual_description": "daily coffee run",
+            }
+        ],
+        "Legacy reveal.",
+        tmp_path / "legacy_hook.mp4",
+        fps=6,
+        width=270,
+        height=480,
+        use_stock_backgrounds=True,
+        use_free_tts=False,
+    )
+    row = result["scene_reports"][0]
+    assert adapter_calls == []
+    assert row["resolved_asset_provider"] == "legacy_provider"
+    assert row["asset_resolution_status"] == "resolved"
+    assert row["fallback_used"] is False
+    assert row["query_used"] == "legacy query"
+    assert row["queries_attempted"] == ["legacy query"]
+    assert row["media_classification"] == "REAL_STOCK"
 
 
 def test_hmr_asset_readiness_blocks_without_keys_or_local_assets(tmp_path, monkeypatch):
