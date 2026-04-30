@@ -103,7 +103,8 @@ def test_qa_marks_technically_valid_benchmark_for_postability_review():
     qa = run_hybrid_motion_qa({
         "media_mix": {
             "ANIMATED_FALLBACK": 2,
-            "MOTION_CARD": 3,
+            "MOTION_CARD": 2,
+            "MOTION_SCENE": 1,
             "LOCAL_CAPTURE": 1,
         },
         "scene_reports": [
@@ -129,7 +130,8 @@ def test_qa_scores_measured_audio_alignment_as_acceptable():
     qa = run_hybrid_motion_qa({
         "media_mix": {
             "ANIMATED_FALLBACK": 2,
-            "MOTION_CARD": 3,
+            "MOTION_CARD": 2,
+            "MOTION_SCENE": 1,
             "LOCAL_CAPTURE": 1,
         },
         "scene_reports": [
@@ -143,8 +145,20 @@ def test_qa_scores_measured_audio_alignment_as_acceptable():
             },
             {"scene_id": "shock", "duration": 4.2, "template": "money_shock_math", "media_classification": "MOTION_CARD", "motion_score": 0.93, "postability_signals": {"motion_interruption": "price_check_sweep"}},
             {"scene_id": "prompt", "duration": 5.0, "template": "ai_prompt_mock", "media_classification": "LOCAL_CAPTURE", "motion_score": 0.88},
-            {"scene_id": "comparison", "duration": 4.4, "template": "comparison_split", "media_classification": "MOTION_CARD", "motion_score": 0.8},
-            {"scene_id": "payoff", "duration": 4.4, "template": "payoff_number_reveal", "media_classification": "MOTION_CARD", "motion_score": 0.92},
+            {"scene_id": "comparison", "duration": 4.4, "template": "comparison_split", "media_classification": "MOTION_SCENE", "motion_score": 0.9},
+            {
+                "scene_id": "payoff",
+                "duration": 4.4,
+                "template": "payoff_number_reveal",
+                "media_classification": "MOTION_CARD",
+                "motion_score": 0.92,
+                "number_reveal": True,
+                "postability_signals": {
+                    "scene_treatment": "platform_payoff_phone_overlay",
+                    "foreground_layers": 3,
+                    "share_energy": True,
+                },
+            },
             {"scene_id": "cta", "duration": 3.8, "template": "cta_callback", "media_classification": "ANIMATED_FALLBACK", "motion_score": 0.78},
         ],
         "warnings": ["tts_provider:gtts"],
@@ -157,8 +171,9 @@ def test_qa_scores_measured_audio_alignment_as_acceptable():
         },
     })
     assert qa["technical_status"] == "PASS"
-    assert qa["postability_status"] == "PASS"
     assert qa["postability_score"]["categories"]["audio_video_sync"] == 7
+    assert qa["postability_score"]["categories"]["social_platform_readiness"] >= 8
+    assert qa["postability_status"] == "STRONG_PASS"
 
 
 def test_qa_marks_all_good_high_average_as_strong_pass():

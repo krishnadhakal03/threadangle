@@ -45,6 +45,14 @@ def _score_postability(
     first_signals = first.get("postability_signals") or {}
     has_hook_upgrade = first_signals.get("early_number_snap") and first_signals.get("hook_treatment")
     has_motion_interruption = any((row.get("postability_signals") or {}).get("motion_interruption") for row in reports)
+    has_platform_payoff = any(
+        row.get("template") == "payoff_number_reveal"
+        and row.get("number_reveal")
+        and (row.get("postability_signals") or {}).get("scene_treatment") == "platform_payoff_phone_overlay"
+        and int((row.get("postability_signals") or {}).get("foreground_layers") or 0) >= 3
+        and (row.get("postability_signals") or {}).get("share_energy") is True
+        for row in reports
+    )
     hook_visual_strength = {
         "REAL_STOCK": 8,
         "LOCAL_CAPTURE": 7,
@@ -136,6 +144,8 @@ def _score_postability(
     if technical_status == "FAIL":
         social_platform_readiness -= 3
     if has_hook_upgrade:
+        social_platform_readiness += 1
+    if has_platform_payoff:
         social_platform_readiness += 1
     if hook_visual_strength < 7 or template_polish < 7:
         social_platform_readiness -= 1
