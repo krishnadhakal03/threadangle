@@ -171,6 +171,21 @@ def test_captions_keep_semantic_sentence_boundaries():
     assert "Home brew was about" in captions
 
 
+def test_money_caption_tokens_preserve_symbols_and_units():
+    script = "I found a $40/week leak. That is about $2,080/year back."
+    captions = [event["text"] for event in split_caption_events(script, duration=6.0, max_words=4)]
+    assert "I found a $40/week" in captions
+    assert "That is about $2,080/year" in captions
+    assert "$2 080" not in " ".join(captions)
+
+
+def test_grocery_cta_uses_grocery_eyebrow():
+    cta = build_grocery_scenes()[-1]
+    assert cta["id"] == "cta"
+    assert cta["headline"] == "Comment grocery for the prompt"
+    assert cta["eyebrow"] == "GROCERY RECEIPT CHECK"
+
+
 def test_qa_catches_card_only_sequence():
     qa = run_hybrid_motion_qa({
         "media_mix": {"MOTION_CARD": 3},

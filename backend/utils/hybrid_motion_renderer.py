@@ -59,7 +59,7 @@ def _semantic_caption_chunks(script_text: str, max_words: int = 4) -> list[str]:
     number_words = {"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "fifteen", "twenty", "thirty", "forty", "fifty", "hundred", "thousand", "million"}
     weak_end_words = {"a", "an", "the", "and", "or", "to", "of", "at", "on", "with", "for", "from", "in"}
     for sentence in sentences:
-        words = re.findall(r"[A-Za-z0-9$']+", sentence)
+        words = re.findall(r"\$?\d[\d,]*(?:/\w+)?|[A-Za-z']+", sentence)
         if not words:
             continue
         start = 0

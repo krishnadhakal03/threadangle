@@ -1076,7 +1076,8 @@ def cta_callback(frame_idx: int, scene_progress: float, canvas: np.ndarray, scen
     draw = ImageDraw.Draw(image, "RGBA")
     area = safe_area(w, h)
     draw_rounded_rect(draw, (area.left, int(h * 0.22), area.right, int(h * 0.68)), 42, (10, 14, 22), (115, 231, 185), 4)
-    draw.text((area.left + 52, int(h * 0.27)), "REMEMBER THE COFFEE?", font=pil_font(48, bold=True), fill=(148, 163, 184))
+    eyebrow = _scene_text(scene_config, "eyebrow", default="WANT THE PROMPT?")
+    draw.text((area.left + 52, int(h * 0.27)), eyebrow.upper(), font=pil_font(48, bold=True), fill=(148, 163, 184))
     report = draw_text_block(
         image,
         _scene_text(scene_config, "headline", "caption_text", default="Comment coffee for the prompt"),
