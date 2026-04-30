@@ -365,27 +365,82 @@ def ai_prompt_mock(frame_idx: int, scene_progress: float, canvas: np.ndarray, sc
 
 def comparison_split(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
     h, w = canvas.shape[:2]
-    animated_background(canvas, scene_progress, ((15, 22, 34), (21, 68, 54)))
+    animated_background(canvas, scene_progress, ((13, 20, 28), (28, 70, 58)))
     image = to_pil(canvas)
     draw = ImageDraw.Draw(image, "RGBA")
     area = safe_area(w, h)
-    gap = 28
-    col_w = (area.right - area.left - gap) // 2
-    slide = int((1.0 - ease_out(scene_progress)) * 220)
-    left = (area.left - slide, int(h * 0.22), area.left + col_w - slide, int(h * 0.70))
-    right = (area.left + col_w + gap + slide, int(h * 0.22), area.right + slide, int(h * 0.70))
-    draw_rounded_rect(draw, left, 34, (255, 247, 237), (251, 146, 60), 4)
-    draw_rounded_rect(draw, right, 34, (236, 253, 245), (52, 211, 153), 4)
-    title_font = pil_font(48, bold=True)
-    num_font = pil_font(92, bold=True)
-    draw.text((left[0] + 42, left[1] + 52), "COFFEE SHOP", font=title_font, fill=(154, 52, 18))
-    draw.text((right[0] + 42, right[1] + 52), "HOME BREW", font=title_font, fill=(6, 95, 70))
-    draw.text((left[0] + 52, left[1] + 220), "$150", font=num_font, fill=(194, 65, 12))
-    draw.text((right[0] + 52, right[1] + 220), "$20", font=num_font, fill=(5, 150, 105))
-    draw.text((left[0] + 58, left[1] + 330), "per month", font=pil_font(42), fill=(120, 53, 15))
-    draw.text((right[0] + 58, right[1] + 330), "per month", font=pil_font(42), fill=(6, 78, 59))
+
+    for i in range(7):
+        y = int(h * (0.10 + i * 0.115) + math.sin(scene_progress * math.tau + i) * h * 0.012)
+        x = int(w * ((0.08 + i * 0.17 + scene_progress * 0.16) % 1.05) - w * 0.08)
+        draw.line((x, y, x + int(w * 0.32), y - int(h * 0.035)), fill=(255, 255, 255, 30), width=max(1, int(w * 0.008)))
+
+    desk_shadow = (area.left - int(w * 0.08), int(h * 0.70), area.right + int(w * 0.10), int(h * 0.88))
+    draw.ellipse(desk_shadow, fill=(0, 0, 0, 70))
+
+    scan = ease_in_out(scene_progress)
+    receipt_w = int(w * 0.46)
+    receipt_h = int(h * 0.55)
+    receipt_x = area.left + int(w * 0.015) + int(math.sin(scene_progress * math.tau) * w * 0.012)
+    receipt_y = int(h * 0.16)
+    receipt = (receipt_x, receipt_y, receipt_x + receipt_w, receipt_y + receipt_h)
+    draw_rounded_rect(draw, receipt, max(14, int(w * 0.045)), (253, 250, 242), (235, 229, 214), max(1, int(w * 0.006)))
+    draw.text((receipt_x + int(w * 0.045), receipt_y + int(h * 0.04)), "MONTHLY RUN", font=pil_font(max(15, int(w * 0.052))), fill=(90, 76, 62))
+    row_font = pil_font(max(13, int(w * 0.045)), bold=False)
+    rows = [("Coffee shop", "$150"), ("Home brew", "$20"), ("Difference", "$130")]
+    for idx, (label, value) in enumerate(rows):
+        y = receipt_y + int(h * (0.15 + idx * 0.105))
+        draw.text((receipt_x + int(w * 0.045), y), label, font=row_font, fill=(64, 54, 44))
+        value_font = pil_font(max(14, int(w * 0.052)), bold=True)
+        vw, _ = text_size(draw, value, value_font)
+        color = (190, 56, 48) if idx == 0 else ((9, 130, 96) if idx == 1 else (20, 25, 35))
+        draw.text((receipt[2] - vw - int(w * 0.045), y), value, font=value_font, fill=color)
+        draw.line((receipt_x + int(w * 0.04), y + int(h * 0.058), receipt[2] - int(w * 0.04), y + int(h * 0.058)), fill=(224, 216, 200), width=max(1, int(w * 0.003)))
+    scan_y = receipt_y + int(receipt_h * (0.16 + 0.62 * scan))
+    draw.rectangle((receipt_x, scan_y - int(h * 0.007), receipt[2], scan_y + int(h * 0.007)), fill=(115, 231, 185, 120))
+
+    phone_w = int(w * 0.43)
+    phone_h = int(h * 0.54)
+    phone_enter = ease_out(min(1.0, scene_progress / 0.55))
+    phone_x = area.right - phone_w + int(w * 0.11 * (1.0 - phone_enter))
+    phone_y = int(h * 0.19)
+    phone = (phone_x, phone_y, phone_x + phone_w, phone_y + phone_h)
+    draw_rounded_rect(draw, phone, max(18, int(w * 0.06)), (12, 18, 30), (77, 92, 110), max(1, int(w * 0.006)))
+    draw_rounded_rect(draw, (phone_x + int(w * 0.025), phone_y + int(h * 0.035), phone[2] - int(w * 0.025), phone[3] - int(h * 0.035)), max(14, int(w * 0.045)), (235, 253, 246), None, 1)
+    draw.text((phone_x + int(w * 0.055), phone_y + int(h * 0.07)), "AI SWAP", font=pil_font(max(15, int(w * 0.055))), fill=(7, 90, 68))
+
+    save_text = "$130/mo"
+    save_font = pil_font(max(24, int(w * 0.13)), bold=True)
+    sw, sh = text_size(draw, save_text, save_font)
+    save_x = phone_x + max(0, (phone_w - sw) // 2)
+    save_y = phone_y + int(h * 0.18)
+    num_box = (save_x, save_y, save_x + sw, save_y + sh)
+    draw.text((save_x + 2, save_y + 3), save_text, font=save_font, fill=(0, 0, 0, 90))
+    draw.text((save_x, save_y), save_text, font=save_font, fill=(5, 150, 105))
+    draw.text((phone_x + int(w * 0.06), save_y + sh + int(h * 0.035)), "same habit", font=pil_font(max(13, int(w * 0.045))), fill=(7, 90, 68))
+    draw.text((phone_x + int(w * 0.06), save_y + sh + int(h * 0.085)), "cheaper path", font=pil_font(max(13, int(w * 0.045))), fill=(7, 90, 68))
+
+    pulse = 0.5 + 0.5 * math.sin(scene_progress * math.tau * 2.0)
+    chip_text = "SAVE"
+    chip_font = pil_font(max(14, int(w * 0.05)), bold=True)
+    cw, ch = text_size(draw, chip_text, chip_font)
+    chip_x = int(w * (0.47 + 0.025 * math.sin(scene_progress * math.tau)))
+    chip_y = int(h * (0.64 + 0.02 * pulse))
+    chip = (chip_x, chip_y, chip_x + cw + int(w * 0.08), chip_y + ch + int(h * 0.035))
+    draw_rounded_rect(draw, chip, max(12, int(w * 0.04)), (14, 22, 38), (115, 231, 185), max(1, int(w * 0.006)))
+    draw.text((chip_x + int(w * 0.04), chip_y + int(h * 0.014)), chip_text, font=chip_font, fill=(255, 255, 255))
+
     canvas[:] = to_cv(image)
-    return {"template": "comparison_split", "key_number_boxes": [left, right], "cropped": False, "motion_score": 0.8}
+    return {
+        "template": "comparison_split",
+        "key_number_boxes": [num_box],
+        "cropped": False,
+        "motion_score": 0.9,
+        "postability_signals": {
+            "scene_treatment": "receipt_scan_ai_overlay",
+            "foreground_layers": 3,
+        },
+    }
 
 
 def payoff_number_reveal(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
