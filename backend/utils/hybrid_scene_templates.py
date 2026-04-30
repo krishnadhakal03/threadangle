@@ -104,6 +104,14 @@ def text_size(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) -
     return box[2] - box[0], box[3] - box[1]
 
 
+def fit_font(draw: ImageDraw.ImageDraw, text: str, size: int, max_width: int, *, min_size: int = 24, bold: bool = True) -> ImageFont.ImageFont:
+    font = pil_font(size, bold=bold)
+    while text_size(draw, text, font)[0] > max_width and size > min_size:
+        size -= 3
+        font = pil_font(size, bold=bold)
+    return font
+
+
 def wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, max_width: int, max_lines: int = 4) -> list[str]:
     words = re.findall(r"\S+", text or "")
     lines: list[str] = []
@@ -284,7 +292,7 @@ def hook_footage_overlay(frame_idx: int, scene_progress: float, canvas: np.ndarr
     receipt_w = int(w * 0.38)
     receipt_h = int(h * 0.36)
     receipt_x = int(w * (0.58 + 0.12 * (1.0 - snap)) + drift)
-    receipt_y = int(h * (0.12 - 0.035 * (1.0 - snap)))
+    receipt_y = int(h * (0.27 - 0.035 * (1.0 - snap)))
     receipt = (receipt_x, receipt_y, receipt_x + receipt_w, receipt_y + receipt_h)
     draw_rounded_rect(draw, receipt, max(12, int(w * 0.035)), (250, 248, 240), (255, 255, 255), max(1, int(w * 0.006)))
     for i in range(5):
@@ -293,10 +301,10 @@ def hook_footage_overlay(frame_idx: int, scene_progress: float, canvas: np.ndarr
         draw.line((receipt_x + int(w * 0.035), y, receipt_x + int(w * 0.035) + line_w, y), fill=(112, 96, 82, 210), width=max(1, int(w * 0.008)))
     draw.text((receipt_x + int(w * 0.04), receipt_y + int(receipt_h * 0.78)), "$5.00", font=pil_font(max(14, int(w * 0.075))), fill=(168, 43, 40))
 
-    cup_x = int(w * (0.10 - 0.08 * (1.0 - snap)))
-    cup_y = int(h * (0.44 + 0.025 * math.sin(scene_progress * math.tau * 1.4)))
-    cup_w = int(w * 0.34)
-    cup_h = int(h * 0.27)
+    cup_x = int(w * (0.61 + 0.04 * (1.0 - snap)))
+    cup_y = int(h * (0.52 + 0.025 * math.sin(scene_progress * math.tau * 1.4)))
+    cup_w = int(w * 0.28)
+    cup_h = int(h * 0.23)
     draw.ellipse((cup_x + int(cup_w * 0.05), cup_y - int(cup_h * 0.11), cup_x + int(cup_w * 0.95), cup_y + int(cup_h * 0.12)), fill=(248, 250, 252), outline=(210, 218, 228), width=max(1, int(w * 0.008)))
     draw_rounded_rect(draw, (cup_x + int(cup_w * 0.12), cup_y, cup_x + int(cup_w * 0.88), cup_y + cup_h), max(12, int(w * 0.04)), (245, 245, 240), (214, 220, 228), max(1, int(w * 0.008)))
     draw_rounded_rect(draw, (cup_x + int(cup_w * 0.25), cup_y + int(cup_h * 0.38), cup_x + int(cup_w * 0.75), cup_y + int(cup_h * 0.62)), max(8, int(w * 0.025)), (47, 103, 91), None, 1)
@@ -306,16 +314,16 @@ def hook_footage_overlay(frame_idx: int, scene_progress: float, canvas: np.ndarr
         draw.arc((sx, sy, sx + int(w * 0.08), sy + int(h * 0.12)), 105, 245, fill=(255, 255, 255, 130), width=max(1, int(w * 0.006)))
 
     price_text = "$5/day = $1,825/year?"
-    price_font = pil_font(max(18, int(w * 0.092)), bold=True)
-    tw, th = text_size(draw, price_text, price_font)
     pad_x = int(w * 0.035)
     pad_y = int(h * 0.014)
+    price_font = fit_font(draw, price_text, max(18, int(w * 0.092)), area.right - area.left - pad_x * 2, min_size=max(14, int(w * 0.060)), bold=True)
+    tw, th = text_size(draw, price_text, price_font)
     price_w = min(area.right - area.left, tw + pad_x * 2)
     price_x = area.left + int((area.right - area.left - price_w) * 0.5)
     price_y = int(h * (0.16 + 0.035 * (1.0 - snap)))
     price_box = (price_x, price_y, price_x + price_w, price_y + th + pad_y * 2)
     draw_rounded_rect(draw, price_box, max(14, int(w * 0.045)), (250, 250, 250), (115, 231, 185), max(2, int(w * 0.01)))
-    draw.text((price_x + pad_x, price_y + pad_y - 2), price_text, font=price_font, fill=(19, 24, 33))
+    draw.text((price_x + max(0, (price_w - tw) // 2), price_y + pad_y - 2), price_text, font=price_font, fill=(19, 24, 33))
 
     for i in range(5):
         streak_y = int(h * (0.12 + i * 0.13) + math.sin(scene_progress * math.tau + i) * h * 0.015)
@@ -325,8 +333,8 @@ def hook_footage_overlay(frame_idx: int, scene_progress: float, canvas: np.ndarr
     report = draw_text_block(
         image,
         _scene_text(scene_config, "headline", "caption_text", "source_text", default="Small habits get expensive"),
-        (area.left, int(h * 0.52), area.right, int(h * 0.75)),
-        font_size=max(32, int(w * 0.115)),
+        (area.left, int(h * 0.50), int(w * 0.61), int(h * 0.75)),
+        font_size=max(30, int(w * 0.100)),
         accent=(115, 231, 185),
         max_lines=3,
     )
@@ -354,16 +362,15 @@ def money_shock_math(frame_idx: int, scene_progress: float, canvas: np.ndarray, 
     card = (area.left, int(h * 0.16), area.right, int(h * 0.70))
     draw_rounded_rect(draw, card, 38, (248, 250, 252), (226, 232, 240), 3)
     draw.line((card[0] + 50, card[1] + 170, card[2] - 50, card[1] + 170), fill=(210, 220, 230), width=4)
-    font_label = pil_font(46, bold=True)
-    font_num = pil_font(122, bold=True)
+    font_label = fit_font(draw, "DAILY COFFEE", 46, card[2] - card[0] - 120, min_size=30, bold=True)
+    number = _scene_text(scene_config, "number", "monthly_number", default="$150/mo")
+    font_num = fit_font(draw, number, 122, card[2] - card[0] - 80, min_size=58, bold=True)
     draw.text((card[0] + 60, card[1] + 58), "DAILY COFFEE", font=font_label, fill=(58, 69, 83))
-    count = int(150 * ease_out(scene_progress))
-    number = f"${count}/mo"
     nw, nh = text_size(draw, number, font_num)
     num_box = ((w - nw) // 2, card[1] + 225, (w + nw) // 2, card[1] + 225 + nh)
     draw.text((num_box[0], num_box[1]), number, font=font_num, fill=(184, 48, 44))
     formula = _scene_text(scene_config, "formula", default="$5 x 30 = $150/mo")
-    font_formula = pil_font(58, bold=True)
+    font_formula = fit_font(draw, formula, 58, card[2] - card[0] - 80, min_size=34, bold=True)
     fw, _ = text_size(draw, formula, font_formula)
     draw.text(((w - fw) // 2, card[1] + 430), formula, font=font_formula, fill=(20, 26, 36))
     if scene_progress < 0.28:
@@ -455,9 +462,9 @@ def comparison_split(frame_idx: int, scene_progress: float, canvas: np.ndarray, 
     draw.ellipse(desk_shadow, fill=(0, 0, 0, 70))
 
     scan = ease_in_out(scene_progress)
-    receipt_w = int(w * 0.46)
+    receipt_w = int(w * 0.43)
     receipt_h = int(h * 0.55)
-    receipt_x = area.left + int(w * 0.015) + int(math.sin(scene_progress * math.tau) * w * 0.012)
+    receipt_x = area.left + int(math.sin(scene_progress * math.tau) * w * 0.006)
     receipt_y = int(h * 0.16)
     receipt = (receipt_x, receipt_y, receipt_x + receipt_w, receipt_y + receipt_h)
     receipt_patch = cache.get("comparison_receipt_patch")
@@ -465,7 +472,9 @@ def comparison_split(frame_idx: int, scene_progress: float, canvas: np.ndarray, 
         receipt_patch = Image.new("RGBA", (receipt_w, receipt_h), (0, 0, 0, 0))
         patch_draw = ImageDraw.Draw(receipt_patch, "RGBA")
         draw_rounded_rect(patch_draw, (0, 0, receipt_w, receipt_h), max(14, int(w * 0.045)), (253, 250, 242), (235, 229, 214), max(1, int(w * 0.006)))
-        patch_draw.text((int(w * 0.045), int(h * 0.04)), "MONTHLY RUN", font=pil_font(max(15, int(w * 0.052))), fill=(90, 76, 62))
+        receipt_title = _scene_text(scene_config, "comparison_title", default="MONTHLY COST")
+        title_font = fit_font(patch_draw, receipt_title, max(15, int(w * 0.052)), receipt_w - int(w * 0.09), min_size=max(12, int(w * 0.038)), bold=True)
+        patch_draw.text((int(w * 0.045), int(h * 0.04)), receipt_title, font=title_font, fill=(90, 76, 62))
         row_font = pil_font(max(13, int(w * 0.045)), bold=False)
         rows = [("Coffee shop", "$150"), ("Home brew", "$20"), ("Difference", "$130")]
         for idx, (label, value) in enumerate(rows):
@@ -479,15 +488,15 @@ def comparison_split(frame_idx: int, scene_progress: float, canvas: np.ndarray, 
         cache["comparison_receipt_patch"] = receipt_patch
     paste_overlay_clipped(image, receipt_patch, (receipt_x, receipt_y))
     scan_y = receipt_y + int(receipt_h * (0.16 + 0.62 * scan))
-    draw.rectangle((receipt_x, scan_y - int(h * 0.007), receipt[2], scan_y + int(h * 0.007)), fill=(115, 231, 185, 120))
+    draw.rectangle((receipt_x, scan_y - int(h * 0.005), receipt[2], scan_y + int(h * 0.005)), fill=(115, 231, 185, 58))
 
-    phone_w = int(w * 0.43)
+    phone_w = int(w * 0.36)
     phone_h = int(h * 0.54)
     phone_enter = ease_out(min(1.0, scene_progress / 0.55))
-    phone_x = area.right - phone_w + int(w * 0.11 * (1.0 - phone_enter))
+    phone_x = area.right - phone_w + int(w * 0.06 * (1.0 - phone_enter))
     phone_y = int(h * 0.19)
     phone = (phone_x, phone_y, phone_x + phone_w, phone_y + phone_h)
-    save_text = "$130/mo"
+    save_text = _scene_text(scene_config, "savings_number", default="$130/mo")
     phone_patch = cache.get("comparison_phone_patch")
     if phone_patch is None:
         phone_patch = Image.new("RGBA", (phone_w, phone_h), (0, 0, 0, 0))
@@ -496,7 +505,7 @@ def comparison_split(frame_idx: int, scene_progress: float, canvas: np.ndarray, 
         screen_box = (int(w * 0.025), int(h * 0.035), phone_w - int(w * 0.025), phone_h - int(h * 0.035))
         draw_rounded_rect(phone_draw, screen_box, max(14, int(w * 0.045)), (235, 253, 246), None, 1)
         phone_draw.text((int(w * 0.055), int(h * 0.07)), "AI SWAP", font=pil_font(max(15, int(w * 0.055))), fill=(7, 90, 68))
-        save_font = pil_font(max(24, int(w * 0.13)), bold=True)
+        save_font = fit_font(phone_draw, save_text, max(24, int(w * 0.115)), phone_w - int(w * 0.10), min_size=max(18, int(w * 0.078)), bold=True)
         sw, sh = text_size(phone_draw, save_text, save_font)
         local_save_x = max(0, (phone_w - sw) // 2)
         local_save_y = int(h * 0.18)
@@ -556,13 +565,13 @@ def payoff_number_reveal(frame_idx: int, scene_progress: float, canvas: np.ndarr
     image = to_pil(canvas).convert("RGBA")
     draw = ImageDraw.Draw(image, "RGBA")
     count = int(1500 * ease_out(scene_progress))
-    number = _scene_text(scene_config, "number", default=f"${count:,}")
+    number = _scene_text(scene_config, "number", "payoff_number", default="$1,500+")
     if "{count}" in number:
         number = number.format(count=f"{count:,}")
 
     area = safe_area(w, h)
     phone_w = int(w * 0.66)
-    phone_h = int(h * 0.50)
+    phone_h = int(h * 0.48)
     phone_x = (w - phone_w) // 2
     phone_y = int(h * (0.18 + 0.03 * (1.0 - reveal)))
     phone = (phone_x, phone_y, phone_x + phone_w, phone_y + phone_h)
@@ -585,23 +594,23 @@ def payoff_number_reveal(frame_idx: int, scene_progress: float, canvas: np.ndarr
     paste_overlay_clipped(image, phone_patch, (phone_x, phone_y))
     screen = (phone_x + int(w * 0.035), phone_y + int(h * 0.040), phone[2] - int(w * 0.035), phone[3] - int(h * 0.040))
 
-    font_size = max(48, int(w * (0.36 + 0.035 * math.sin(scene_progress * math.tau * 1.2))))
-    font = pil_font(font_size, bold=True)
+    font_size = max(44, int(w * (0.225 + 0.014 * math.sin(scene_progress * math.tau * 1.2))))
+    font = fit_font(draw, number, font_size, screen[2] - screen[0] - int(w * 0.13), min_size=max(38, int(w * 0.14)), bold=True)
     nw, nh = text_size(draw, number, font)
-    num_y = screen[1] + int(h * (0.18 - 0.035 * (1.0 - reveal)))
+    num_y = screen[1] + int(h * (0.18 - 0.020 * (1.0 - reveal)))
     num_box = ((w - nw) // 2, num_y, (w + nw) // 2, num_y + nh)
     draw.text((num_box[0] + 4, num_box[1] + 5), number, font=font, fill=(0, 0, 0, 95))
     draw.text((num_box[0], num_box[1]), number, font=font, fill=(6, 150, 110))
 
     sub = _scene_text(scene_config, "subline", default="a year from one small habit")
-    sub_font = pil_font(max(18, int(w * 0.065)), bold=True)
+    sub_font = fit_font(draw, sub, max(18, int(w * 0.065)), screen[2] - screen[0] - int(w * 0.08), min_size=max(14, int(w * 0.040)), bold=True)
     sw, sh = text_size(draw, sub, sub_font)
-    sub_x = max(area.left, (w - sw) // 2)
-    sub_y = num_box[3] + int(h * 0.025)
+    sub_x = max(screen[0] + int(w * 0.04), (w - sw) // 2)
+    sub_y = min(num_box[3] + int(h * 0.035), screen[3] - int(h * 0.150))
     draw.text((sub_x + 2, sub_y + 2), sub, font=sub_font, fill=(0, 0, 0, 80))
     draw.text((sub_x, sub_y), sub, font=sub_font, fill=(22, 78, 62))
 
-    action_y = screen[3] - int(h * 0.105)
+    action_y = screen[3] - int(h * 0.082)
     actions = ["SAVE", "SHARE", "COMMENT"]
     action_font = pil_font(max(12, int(w * 0.041)), bold=True)
     x = screen[0] + int(w * 0.045)
@@ -614,7 +623,7 @@ def payoff_number_reveal(frame_idx: int, scene_progress: float, canvas: np.ndarr
         draw.text((pill[0] + int(w * 0.027), pill[1] + int(h * 0.011)), action, font=action_font, fill=(255, 255, 255))
         x = pill[2] + int(w * 0.025)
 
-    spark_count = 26
+    spark_count = 18
     for i in range(spark_count):
         p = (scene_progress + i / spark_count) % 1.0
         ang = i * 2.399 + settle * 0.8

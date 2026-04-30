@@ -4,7 +4,8 @@ import cv2
 
 from utils.hybrid_motion_qa import run_hybrid_motion_qa
 from utils.hybrid_motion_renderer import render_hybrid_video, split_caption_events
-from utils.hybrid_scene_templates import ai_prompt_mock, payoff_number_reveal
+from utils.hybrid_scene_templates import ai_prompt_mock, money_shock_math, payoff_number_reveal
+from utils.run_hybrid_motion_poc import build_day8_scenes
 
 
 def _tiny_scenes():
@@ -232,6 +233,22 @@ def test_payoff_scene_renders_number_reveal_config():
     assert report["number_reveal"] is True
     assert report["key_number_boxes"]
     assert canvas.sum() > 0
+
+
+def test_day8_story_numbers_match_narration():
+    scenes = {scene["id"]: scene for scene in build_day8_scenes()}
+    assert scenes["shock_math"]["monthly_number"] == "$150/mo"
+    assert scenes["shock_math"]["formula"] == "$5 x 30 = $150/mo"
+    assert scenes["comparison"]["savings_number"] == "$130/mo"
+    assert scenes["payoff"]["number"] == "$1,500+"
+
+    import numpy as np
+
+    canvas = np.zeros((480, 270, 3), dtype=np.uint8)
+    math_report = money_shock_math(0, 0.98, canvas, scenes["shock_math"])
+    payoff_report = payoff_number_reveal(0, 0.35, canvas, scenes["payoff"])
+    assert math_report["key_number_boxes"]
+    assert payoff_report["key_number_boxes"]
 
 
 def test_ai_prompt_mock_renders_without_browser_dependency():
