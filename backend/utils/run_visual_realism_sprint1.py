@@ -179,16 +179,30 @@ def _script_from_scenes(scenes: list[dict[str, Any]]) -> str:
     return " ".join(str(scene.get("narration_text") or scene.get("caption_text") or "") for scene in scenes).strip()
 
 
-def _human_review_notes(qa: dict[str, Any]) -> dict[str, str]:
+def _human_review_notes(qa: dict[str, Any], render_result: dict[str, Any]) -> dict[str, str]:
     postability = qa.get("postability_score") or {}
     scores = postability.get("categories") or {}
     ready = qa.get("technical_status") == "PASS" and qa.get("postability_status") in {"PASS", "STRONG_PASS"}
+    gate = render_result.get("visual_realism_human_gate") or {}
+    reports = render_result.get("scene_reports") or []
+    ai_compare = next((row for row in reports if row.get("scene_id") == "ai_compare"), {})
+    ai_capture_used = ai_compare.get("resolved_asset_type") == "playwright_capture" and ai_compare.get("asset_resolution_status") == "resolved"
+    drawn_placeholders = [
+        str(row.get("scene_id"))
+        for row in reports
+        if not row.get("resolved_asset_type") and ((row.get("scene_asset_strategy") or {}).get("visual_medium") != "motion_template")
+    ]
     return {
         "visual_realism_score": "8/10",
-        "object_credibility": "Textured grocery receipt, brown grocery bag, cart frame, and phone/app panels read as credible story props rather than playful icons.",
+        "object_credibility": "AI comparison now uses a local HTML/Playwright receipt-audit capture when available; receipt, grocery bag, cart, and phone/payoff scenes still use HMR template objects unless later resolved to stock/local assets.",
         "story_object_connection": "Every major object is tied to the script: receipt leak, repeat cart items, AI swap panel, yearly savings phone estimate, and grocery CTA.",
         "scene_asset_strategy_used": "Yes. Slice A attaches HMR scene asset strategy rows so review can see which scenes should move to stock, capture, local assets, or templates.",
-        "drawn_placeholder_risk": "medium until Slice B replaces planned stock/capture scenes with resolved assets",
+        "planned_real_sources": str(gate.get("planned_real_sources")),
+        "resolved_real_assets": str(gate.get("resolved_real_assets")),
+        "drawn_placeholder_risk": str(gate.get("drawn_placeholder_risk")),
+        "ai_compare_real_capture": "Yes, ai_compare used a real local Playwright HTML screenshot." if ai_capture_used else f"No, ai_compare fell back to the drawn template: {ai_compare.get('asset_resolution_status')}",
+        "visual_realism_vs_previous": "Improved versus Visual Realism Sprint 1 for the AI comparison scene only; hook/reveal/payoff/CTA still need Slice C stock or local asset resolution." if ai_capture_used else "Not improved versus Visual Realism Sprint 1 because the planned Playwright capture did not resolve.",
+        "drawn_placeholders_remaining": ", ".join(drawn_placeholders) if drawn_placeholders else "None among scenes planned for real sources.",
         "first_frame_clarity": "The first frame shows one grocery receipt loss number and a grocery-bag/cart context.",
         "first_second_clarity": "Strong: $2,080/year appears immediately as the yearly version of the $40/week leak.",
         "first_four_second_retention_likelihood": f"Likely stronger than coffee visuals: one loss number lands first, then repeat grocery items reveal before the AI panel. Hook score: {scores.get('hook_visual_strength')}; pacing score: {scores.get('pacing_retention')}.",
@@ -217,6 +231,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--preset", choices=sorted(PRESETS), default="full")
     parser.add_argument("--tts-provider", choices=["auto", "gtts", "pyttsx3", "silent"], default="gtts")
     parser.add_argument("--output-dir", default=str(_repo_root() / "backend" / "generated_videos" / "storyboard_review" / "visual_realism_sprint1_grocery"))
+    parser.add_argument("--sprint-name", default="visual_realism_sprint1")
+    parser.add_argument("--issue", default="#2 Visual Realism Sprint 1")
     return parser.parse_args()
 
 
@@ -263,9 +279,10 @@ def main() -> int:
         "stock_lookup_enabled": False,
     }
     qa = run_hybrid_motion_qa(result)
-    human_review = _human_review_notes(qa)
+    human_review = _human_review_notes(qa, result)
     result["sprint"] = {
-        "issue": "#2 Visual Realism Sprint 1",
+        "issue": args.issue,
+        "name": args.sprint_name,
         "topic": "Grocery receipt / inflation savings leak",
         "hook": "I found a $40/week leak in my grocery receipt.",
     }
@@ -283,8 +300,8 @@ def main() -> int:
     flat_package = _copy_flat_package(package, output_dir)
 
     summary = {
-        "sprint": "visual_realism_sprint1",
-        "issue": "#2 Visual Realism Sprint 1",
+        "sprint": args.sprint_name,
+        "issue": args.issue,
         "constraints": {
             "performance_optimized": False,
             "scoring_policy_changed": False,

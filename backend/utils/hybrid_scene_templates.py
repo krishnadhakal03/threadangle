@@ -453,6 +453,34 @@ def grocery_reveal_scene(frame_idx: int, scene_progress: float, canvas: np.ndarr
 
 def grocery_ai_comparison(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
     h, w = canvas.shape[:2]
+    capture_path = scene_config.get("resolved_asset_path")
+    if capture_path:
+        cache = scene_cache(scene_config)
+        cache_key = f"capture:{capture_path}:{w}x{h}"
+        capture = cache.get(cache_key)
+        if capture is None:
+            try:
+                capture = Image.open(str(capture_path)).convert("RGB").resize((w, h), Image.Resampling.LANCZOS)
+                cache[cache_key] = capture
+            except Exception:
+                capture = None
+        if capture is not None:
+            image = capture.convert("RGBA")
+            save_box = (int(w * 0.53), int(h * 0.705), int(w * 0.90), int(h * 0.785))
+            canvas[:] = to_cv_rgb(image)
+            return {
+                "template": "grocery_ai_comparison",
+                "text_boxes": [(int(w * 0.36), int(h * 0.07), int(w * 0.93), int(h * 0.85))],
+                "key_number_boxes": [save_box],
+                "cropped": False,
+                "motion_score": 0.82,
+                "postability_signals": {
+                    "motion_interruption": "ai_receipt_capture_reveal",
+                    "scene_treatment": "playwright_receipt_audit_capture",
+                    "visual_realism": "real_html_capture_ai_receipt_audit",
+                    "resolved_capture_used": True,
+                },
+            }
     animated_background(canvas, scene_progress, ((14, 21, 31), (26, 62, 58)))
     image = to_pil(canvas).convert("RGBA")
     draw = ImageDraw.Draw(image, "RGBA")

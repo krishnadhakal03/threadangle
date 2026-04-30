@@ -82,6 +82,9 @@ def test_scene_reports_include_media_classification(tmp_path, monkeypatch):
     assert result["media_mix"]
     assert result["scene_asset_strategy"]
     assert all("scene_asset_strategy" in row for row in result["scene_reports"])
+    assert all("resolved_asset_type" in row for row in result["scene_reports"])
+    assert all("asset_resolution_status" in row for row in result["scene_reports"])
+    assert result["visual_realism_human_gate"]["planned_real_sources"] >= 1
     assert result["visual_realism_human_gate"]["scene_asset_strategy_used"] is True
 
 

@@ -23,9 +23,11 @@ import numpy as np
 try:
     from .hybrid_scene_templates import draw_caption_band, get_template
     from .hmr_scene_asset_strategy import plan_hmr_scene_assets
+    from .hmr_playwright_capture import resolve_hmr_playwright_capture
 except ImportError:  # pragma: no cover - direct script execution fallback
     from hybrid_scene_templates import draw_caption_band, get_template
     from hmr_scene_asset_strategy import plan_hmr_scene_assets
+    from hmr_playwright_capture import resolve_hmr_playwright_capture
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -278,6 +280,8 @@ def _visual_realism_human_gate(asset_strategy: list[dict[str, Any]], scene_repor
             "visual_realism_score": "pending_human_review",
             "object_credibility": "pending_human_review",
             "scene_asset_strategy_used": False,
+            "planned_real_sources": 0,
+            "resolved_real_assets": 0,
             "drawn_placeholder_risk": "unknown",
             "post_no_post_recommendation": "pending_human_review",
         }
@@ -290,9 +294,9 @@ def _visual_realism_human_gate(asset_strategy: list[dict[str, Any]], scene_repor
     resolved_real_sources = sum(
         1
         for row in scene_reports
-        if row.get("media_classification") in {"REAL_STOCK", "LOCAL_CAPTURE"}
+        if row.get("resolved_asset_type") in {"playwright_capture", "stock_image", "stock_footage", "local_asset"}
     )
-    if resolved_real_sources == 0 and planned_real_sources > 0:
+    if resolved_real_sources < planned_real_sources:
         risk = "high_until_asset_resolution"
     elif motion_only >= max(2, len(asset_strategy) // 2):
         risk = "high"
@@ -304,6 +308,8 @@ def _visual_realism_human_gate(asset_strategy: list[dict[str, Any]], scene_repor
         "visual_realism_score": "pending_human_review",
         "object_credibility": "pending_human_review",
         "scene_asset_strategy_used": planned_real_sources > 0,
+        "planned_real_sources": planned_real_sources,
+        "resolved_real_assets": resolved_real_sources,
         "drawn_placeholder_risk": risk,
         "post_no_post_recommendation": "pending_human_review",
     }
@@ -427,17 +433,43 @@ def render_hybrid_video(
         duration = _scene_duration(scene, 2.6)
         bg_path = None
         stock_meta: dict[str, Any] = {}
+        asset_resolution: dict[str, Any] = {
+            "resolved_asset_type": None,
+            "resolved_asset_path": None,
+            "resolved_asset_provider": None,
+            "asset_resolution_status": "not_attempted",
+            "fallback_used": True,
+        }
+        scene_id = _scene_value(scene, "id", None) or _scene_value(scene, "scene", None) or _scene_value(scene, "scene_index", idx + 1)
+        asset_strategy = strategy_by_scene_id.get(str(scene_id), {})
         lookup_start = time.perf_counter()
-        if use_stock_backgrounds and template_name == "hook_footage_overlay" and _provider_available():
+        if asset_strategy.get("visual_medium") == "playwright_capture":
+            asset_resolution = resolve_hmr_playwright_capture(
+                scene if isinstance(scene, dict) else {},
+                str(asset_strategy.get("capture_hint") or ""),
+                CACHE_DIR / "captures",
+                width,
+                height,
+            )
+            if asset_resolution.get("fallback_used"):
+                warnings.append(f"asset_resolution_fallback:{scene_id}:{asset_resolution.get('asset_resolution_status')}")
+        elif use_stock_backgrounds and template_name == "hook_footage_overlay" and _provider_available():
             bg_path, stock_meta = _select_stock_background(scene, template_name, used_stock_ids, warnings)
             if bg_path:
                 stock_status["used"] = True
+                asset_resolution = {
+                    "resolved_asset_type": "stock_footage",
+                    "resolved_asset_path": str(bg_path),
+                    "resolved_asset_provider": str((stock_meta.get("chosen") or {}).get("provider") or "stock_provider"),
+                    "asset_resolution_status": "resolved",
+                    "fallback_used": False,
+                }
             elif not stock_status["reason"]:
                 stock_status["reason"] = stock_meta.get("reason") or "stock_unavailable_for_scene"
         elif use_stock_backgrounds and template_name == "hook_footage_overlay" and not _provider_available():
             stock_status["reason"] = "pexels_pixabay_keys_not_configured"
         asset_lookup_sec += time.perf_counter() - lookup_start
-        prepared.append((scene, template_name, duration, bg_path, stock_meta))
+        prepared.append((scene, template_name, duration, bg_path, stock_meta, asset_resolution))
 
     source_total_duration = sum(item[2] for item in prepared)
     probe_start = time.perf_counter()
@@ -454,16 +486,16 @@ def render_hybrid_video(
             prepared = [
                 first,
                 *[
-                    (scene, template_name, duration * scale, bg_path, stock_meta)
-                    for scene, template_name, duration, bg_path, stock_meta in prepared[1:]
+                    (scene, template_name, duration * scale, bg_path, stock_meta, asset_resolution)
+                    for scene, template_name, duration, bg_path, stock_meta, asset_resolution in prepared[1:]
                 ],
             ]
             duration_strategy = "scaled_to_audio_duration_preserve_hook"
         else:
             scale = audio_duration / source_total_duration
             prepared = [
-                (scene, template_name, duration * scale, bg_path, stock_meta)
-                for scene, template_name, duration, bg_path, stock_meta in prepared
+                (scene, template_name, duration * scale, bg_path, stock_meta, asset_resolution)
+                for scene, template_name, duration, bg_path, stock_meta, asset_resolution in prepared
             ]
             duration_strategy = "scaled_to_audio_duration"
     total_duration = sum(item[2] for item in prepared)
@@ -482,13 +514,15 @@ def render_hybrid_video(
     total_template_sec = 0.0
     total_caption_sec = 0.0
     total_writer_write_sec = 0.0
-    for scene_idx, (scene, template_name, duration, bg_path, stock_meta) in enumerate(prepared):
+    for scene_idx, (scene, template_name, duration, bg_path, stock_meta, asset_resolution) in enumerate(prepared):
         scene_profile_start = time.perf_counter()
         template = get_template(template_name)
         frame_count = max(1, int(round(duration * fps)))
         capture = cv2.VideoCapture(str(bg_path)) if bg_path else None
         media_class = "REAL_STOCK" if bg_path else "ANIMATED_FALLBACK"
-        if template_name == "ai_prompt_mock":
+        if asset_resolution.get("resolved_asset_type") == "playwright_capture":
+            media_class = "LOCAL_CAPTURE"
+        elif template_name == "ai_prompt_mock":
             media_class = "LOCAL_CAPTURE"
         elif template_name == "cta_callback":
             media_class = "ANIMATED_FALLBACK"
@@ -521,6 +555,11 @@ def render_hybrid_video(
                 **(scene if isinstance(scene, dict) else {}),
                 "has_real_background": bg_path is not None,
                 "style_preset": style_preset,
+                **{
+                    key: value
+                    for key, value in asset_resolution.items()
+                    if key.startswith("resolved_asset_") or key in {"asset_resolution_status", "fallback_used"}
+                },
                 "_template_cache": template_cache,
             }
             template_start = time.perf_counter()
@@ -593,7 +632,19 @@ def render_hybrid_video(
             "duration": round(duration, 3),
             "media_classification": media_class,
             "scene_asset_strategy": asset_strategy,
-            "provider_usage": stock_meta if bg_path else {"provider": None, "reason": stock_status.get("reason") or "animated_or_motion_template"},
+            "resolved_asset_type": asset_resolution.get("resolved_asset_type"),
+            "resolved_asset_path": asset_resolution.get("resolved_asset_path"),
+            "resolved_asset_provider": asset_resolution.get("resolved_asset_provider"),
+            "asset_resolution_status": asset_resolution.get("asset_resolution_status"),
+            "fallback_used": asset_resolution.get("fallback_used"),
+            "provider_usage": (
+                stock_meta
+                if bg_path
+                else {
+                    "provider": asset_resolution.get("resolved_asset_provider"),
+                    "reason": asset_resolution.get("asset_resolution_status") or stock_status.get("reason") or "animated_or_motion_template",
+                }
+            ),
             "background_id": str(bg_path) if bg_path else f"{media_class}:{template_name}",
             "caption_report": scene_caption_reports[0] if scene_caption_reports else {"caption": "", "word_count": 0},
             "text_cropped": text_cropped,

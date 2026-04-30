@@ -80,7 +80,12 @@ def _write_summary(
             ("object_credibility", "Object credibility"),
             ("story_object_connection", "Story-object connection"),
             ("scene_asset_strategy_used", "Scene asset strategy used"),
+            ("planned_real_sources", "Planned real sources"),
+            ("resolved_real_assets", "Resolved real assets"),
             ("drawn_placeholder_risk", "Drawn placeholder risk"),
+            ("ai_compare_real_capture", "AI compare real capture"),
+            ("visual_realism_vs_previous", "Visual realism versus previous"),
+            ("drawn_placeholders_remaining", "Drawn placeholders remaining"),
             ("first_frame_clarity", "First-frame clarity"),
             ("first_second_clarity", "First-second clarity"),
             ("first_second_shock_value", "First-second shock value"),
@@ -107,6 +112,18 @@ def _write_summary(
         )
         for row in strategy_rows
     ) or "- No scene asset strategy attached"
+    scene_reports = render_report.get("scene_reports") or []
+    resolution_lines = "\n".join(
+        "- `{scene_id}`: `{asset_type}` via `{provider}`; status: `{status}`; fallback: `{fallback}`; path: `{path}`".format(
+            scene_id=row.get("scene_id"),
+            asset_type=row.get("resolved_asset_type"),
+            provider=row.get("resolved_asset_provider"),
+            status=row.get("asset_resolution_status"),
+            fallback=row.get("fallback_used"),
+            path=Path(str(row.get("resolved_asset_path"))).name if row.get("resolved_asset_path") else "",
+        )
+        for row in scene_reports
+    ) or "- No scene asset resolution metadata attached"
 
     summary = f"""# HMR Human Review Package
 
@@ -139,6 +156,10 @@ Generated: {datetime.now().isoformat(timespec="seconds")}
 ## Visual Strategy
 
 {strategy_lines}
+
+## Asset Resolution
+
+{resolution_lines}
 
 ## Profiling
 
