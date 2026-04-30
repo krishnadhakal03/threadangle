@@ -41,17 +41,53 @@ HYBRID_METHOD_TO_TEMPLATE = {
 }
 
 
+def _semantic_caption_chunks(script_text: str, max_words: int = 4) -> list[str]:
+    sentences = [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?])\s+", script_text or "")
+        if sentence.strip()
+    ]
+    chunks: list[str] = []
+    number_words = {"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "fifteen", "twenty", "thirty", "forty", "fifty", "hundred", "thousand", "million"}
+    weak_end_words = {"a", "an", "the", "and", "or", "to", "of", "at", "on", "with", "for", "from", "in"}
+    for sentence in sentences:
+        words = re.findall(r"[A-Za-z0-9$']+", sentence)
+        if not words:
+            continue
+        start = 0
+        while start < len(words):
+            remaining = len(words) - start
+            size = min(max_words, remaining)
+            if size > 1 and start + size < len(words):
+                last = words[start + size - 1].lower()
+                nxt = words[start + size].lower()
+                if (last in number_words and nxt in number_words) or last in weak_end_words:
+                    size -= 1
+            chunk_words = words[start:start + size]
+            if chunks and len(chunk_words) == 1 and len(chunks[-1].split()) < max_words:
+                chunks[-1] = f"{chunks[-1]} {chunk_words[0]}"
+            else:
+                chunks.append(" ".join(chunk_words))
+            start += size
+    return chunks
+
+
 def split_caption_events(script_text: str, duration: float, max_words: int = 4) -> list[dict[str, Any]]:
-    words = re.findall(r"[A-Za-z0-9$']+", script_text or "")
-    if not words:
+    chunks = _semantic_caption_chunks(script_text, max_words=max_words)
+    if not chunks:
         return []
-    chunks = [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
-    slot = max(0.45, float(duration) / max(1, len(chunks)))
+    weights = [max(1.0, len(chunk.split()) + (0.35 if re.search(r"[$0-9]", chunk) else 0.0)) for chunk in chunks]
+    total_weight = sum(weights) or float(len(chunks))
     events = []
     t = 0.0
-    for chunk in chunks:
-        events.append({"start": round(t, 3), "end": round(min(duration, t + slot), 3), "text": chunk})
-        t += slot
+    for idx, (chunk, weight) in enumerate(zip(chunks, weights)):
+        if idx == len(chunks) - 1:
+            end = float(duration)
+        else:
+            slot = max(0.45, float(duration) * (weight / total_weight))
+            end = min(float(duration), t + slot)
+        events.append({"start": round(t, 3), "end": round(end, 3), "text": chunk})
+        t = end
     return events
 
 

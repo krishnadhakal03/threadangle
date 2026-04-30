@@ -85,6 +85,20 @@ def test_captions_stay_under_max_words():
     assert all(len(event["text"].split()) <= 4 for event in events)
 
 
+def test_captions_keep_semantic_sentence_boundaries():
+    script = (
+        "That small habit was one hundred fifty dollars a month. "
+        "Coffee shop was one hundred fifty. Home brew was about twenty. "
+        "That is over fifteen hundred dollars a year."
+    )
+    captions = [event["text"] for event in split_caption_events(script, duration=12.0, max_words=4)]
+    assert "small habit was one" not in captions
+    assert "at home Coffee shop" not in captions
+    assert "twenty That is over" not in captions
+    assert "one hundred fifty dollars" in captions
+    assert "Home brew was about" in captions
+
+
 def test_qa_catches_card_only_sequence():
     qa = run_hybrid_motion_qa({
         "media_mix": {"MOTION_CARD": 3},

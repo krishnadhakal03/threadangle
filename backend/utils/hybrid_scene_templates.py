@@ -190,39 +190,70 @@ def animated_background(canvas: np.ndarray, progress: float, palette: tuple[Colo
 
 def draw_caption_band(canvas: np.ndarray, caption: str, reserved_boxes: list[tuple[int, int, int, int]] | None = None) -> dict[str, Any]:
     if not caption:
-        return {"caption": "", "boxes": [], "word_count": 0, "overlaps_key_number": False}
+        return {"caption": "", "boxes": [], "word_count": 0, "overlaps_key_number": False, "emphasis_words": []}
     h, w = canvas.shape[:2]
     image = to_pil(canvas)
     draw = ImageDraw.Draw(image)
     area = safe_area(w, h)
     words = re.findall(r"\S+", caption)[:4]
     text = " ".join(words)
-    font = pil_font(48, bold=True)
+    font_size = 48
+    font = pil_font(font_size, bold=True)
     tw, th = text_size(draw, text, font)
+    while tw > (area.right - area.left) - 16 and font_size > 30:
+        font_size -= 3
+        font = pil_font(font_size, bold=True)
+        tw, th = text_size(draw, text, font)
     pad_x, pad_y = 34, 18
     x1 = max(area.left, (w - tw) // 2 - pad_x)
     x2 = min(area.right, x1 + tw + pad_x * 2)
     x1 = max(area.left, x2 - tw - pad_x * 2)
-    y2 = area.bottom
-    y1 = y2 - th - pad_y * 2
 
-    overlaps = False
-    for box in reserved_boxes or []:
-        bx1, by1, bx2, by2 = box
-        if not (x2 < bx1 or x1 > bx2 or y2 < by1 or y1 > by2):
-            overlaps = True
-            y2 = max(area.top + th + pad_y * 2, by1 - 24)
-            y1 = y2 - th - pad_y * 2
-    if overlaps:
-        overlaps = any(
-            not (x2 < bx1 or x1 > bx2 or y2 < by1 or y1 > by2)
+    box_h = th + pad_y * 2
+    candidates = [
+        area.bottom - box_h,
+        int(h * 0.72),
+        int(h * 0.12),
+        int(h * 0.52),
+    ]
+
+    def overlaps_reserved(candidate: tuple[int, int, int, int]) -> bool:
+        cx1, cy1, cx2, cy2 = candidate
+        return any(
+            not (cx2 < bx1 or cx1 > bx2 or cy2 < by1 or cy1 > by2)
             for bx1, by1, bx2, by2 in (reserved_boxes or [])
         )
 
+    selected = None
+    for y1_try in candidates:
+        y1_try = max(area.top, min(area.bottom - box_h, y1_try))
+        candidate = (x1, y1_try, x2, y1_try + box_h)
+        if not overlaps_reserved(candidate):
+            selected = candidate
+            break
+    if selected is None:
+        y1_try = max(area.top, min(area.bottom - box_h, candidates[0]))
+        selected = (x1, y1_try, x2, y1_try + box_h)
+    x1, y1, x2, y2 = selected
+    overlaps = overlaps_reserved(selected)
+
     draw_rounded_rect(draw, (x1, y1, x2, y2), 26, (10, 13, 18), (255, 255, 255), 2)
-    draw.text((x1 + pad_x, y1 + pad_y - 3), text, font=font, fill=(255, 255, 255))
+    emphasis_words: list[str] = []
+    action_words = {"save", "saved", "compare", "comment", "send", "prompt", "audit", "coffee"}
+    x = x1 + pad_x
+    y = y1 + pad_y - 3
+    space_w, _ = text_size(draw, " ", font)
+    for word in words:
+        clean = re.sub(r"[^A-Za-z0-9$]", "", word).lower()
+        emphasized = bool(re.search(r"[$0-9]", word)) or clean in action_words
+        fill = (115, 231, 185) if emphasized else (255, 255, 255)
+        draw.text((x, y), word, font=font, fill=fill)
+        if emphasized:
+            emphasis_words.append(word)
+        ww, _ = text_size(draw, word, font)
+        x += ww + space_w
     canvas[:] = to_cv(image)
-    return {"caption": text, "boxes": [(x1, y1, x2, y2)], "word_count": len(words), "overlaps_key_number": overlaps}
+    return {"caption": text, "boxes": [(x1, y1, x2, y2)], "word_count": len(words), "overlaps_key_number": overlaps, "emphasis_words": emphasis_words}
 
 
 def _scene_text(scene_config: dict[str, Any], *keys: str, default: str = "") -> str:
