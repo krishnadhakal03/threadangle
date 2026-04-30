@@ -1,0 +1,195 @@
+"""Create a human-review package for a Hybrid Motion Renderer output."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import shutil
+import subprocess
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _find_video(output_dir: Path, explicit: str | None) -> Path:
+    if explicit:
+        path = Path(explicit).expanduser().resolve()
+        if not path.exists():
+            raise FileNotFoundError(f"Video not found: {path}")
+        return path
+    candidates = sorted(output_dir.glob("hmr_benchmark_*_full.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not candidates:
+        candidates = sorted(output_dir.glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not candidates:
+        raise FileNotFoundError(f"No MP4 found under {output_dir}")
+    return candidates[0]
+
+
+def _run_ffmpeg_contact_sheet(video_path: Path, out_path: Path) -> None:
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(video_path),
+        "-vf",
+        "fps=1/4,scale=270:480,tile=4x2",
+        "-frames:v",
+        "1",
+        "-update",
+        "1",
+        str(out_path),
+    ]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=90)
+
+
+def _format_scores(scores: dict[str, Any]) -> str:
+    lines = []
+    for key, value in scores.items():
+        lines.append(f"- `{key}`: {value}")
+    return "\n".join(lines)
+
+
+def _write_summary(
+    review_dir: Path,
+    video_path: Path,
+    contact_sheet: Path,
+    render_report: dict[str, Any],
+    qa_report: dict[str, Any],
+) -> Path:
+    postability = qa_report.get("postability_score") or {}
+    scores = postability.get("categories") or {}
+    benchmark = render_report.get("benchmark") or {}
+    profile = render_report.get("render_profile") or {}
+    profile_rows = profile.get("per_template") or []
+    top_templates = "\n".join(
+        f"- `{row.get('template')}`: {row.get('total_sec')}s total, {row.get('sec_per_frame')}s/frame"
+        for row in profile_rows[:4]
+    ) or "- Not available"
+    recommendations = postability.get("recommendations") or []
+    recommendation_lines = "\n".join(f"- {item}" for item in recommendations) if recommendations else "- None"
+    final_recommendation = "Post" if qa_report.get("postability_status") in {"PASS", "STRONG_PASS"} else "Manual review before posting"
+
+    summary = f"""# HMR Human Review Package
+
+Generated: {datetime.now().isoformat(timespec="seconds")}
+
+## Files
+
+- Video: `{video_path}`
+- Contact sheet: `{contact_sheet.name}`
+- Render report: `render_report.json`
+- QA report: `qa_report.json`
+
+## QA
+
+- Technical status: `{qa_report.get("technical_status")}`
+- Postability status: `{qa_report.get("postability_status")}`
+- Average score: `{postability.get("average_score")}`
+- Preset: `{benchmark.get("preset")}`
+- Resolution/FPS: `{benchmark.get("width")}x{benchmark.get("height")} @ {benchmark.get("fps")}fps`
+- Render time: `{benchmark.get("wall_time_sec")}s`
+
+## Scores
+
+{_format_scores(scores)}
+
+## Recommendations
+
+{recommendation_lines}
+
+## Profiling
+
+- Total profile wall time: `{profile.get("total_wall_sec")}s`
+- Frame count: `{profile.get("frame_count")}`
+- Template composition: `{profile.get("frame_template_composition_sec")}s`
+- Caption composition: `{profile.get("caption_composition_sec")}s`
+- Writer writes: `{profile.get("writer_write_sec")}s`
+- Audio muxing: `{profile.get("mux_audio_sec")}s`
+
+Top templates:
+
+{top_templates}
+
+## Human Review Checklist
+
+- [ ] First 2 seconds hook is clear, thumb-stopping, and understandable without context.
+- [ ] Captions are readable on mobile and do not cover important numbers.
+- [ ] Caption phrasing does not feel semantically awkward or misleading.
+- [ ] Payoff visual density feels exciting rather than cluttered.
+- [ ] Overall motion and layout feel platform-native, not like a benchmark render.
+- [ ] Audio cadence feels aligned with scene changes and captions.
+- [ ] Post/no-post recommendation: `{final_recommendation}`
+
+## Reviewer Notes
+
+- First 2 seconds hook:
+- Caption readability:
+- Caption semantic awkwardness:
+- Payoff visual density:
+- Platform-native feel:
+- Final post/no-post decision:
+"""
+    path = review_dir / "review_summary.md"
+    path.write_text(summary, encoding="utf-8")
+    return path
+
+
+def create_review_package(output_dir: str, video: str | None = None, review_root: str | None = None) -> dict[str, str]:
+    source_dir = Path(output_dir).expanduser().resolve()
+    render_report_path = source_dir / "render_report.json"
+    qa_report_path = source_dir / "qa_report.json"
+    if not render_report_path.exists():
+        raise FileNotFoundError(f"Missing render report: {render_report_path}")
+    if not qa_report_path.exists():
+        raise FileNotFoundError(f"Missing QA report: {qa_report_path}")
+
+    video_path = _find_video(source_dir, video)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    root = Path(review_root).expanduser().resolve() if review_root else source_dir / "review_packages"
+    review_dir = root / f"{video_path.stem}_{stamp}"
+    review_dir.mkdir(parents=True, exist_ok=True)
+
+    copied_render = review_dir / "render_report.json"
+    copied_qa = review_dir / "qa_report.json"
+    shutil.copy2(render_report_path, copied_render)
+    shutil.copy2(qa_report_path, copied_qa)
+
+    contact_sheet = review_dir / "contact_sheet.jpg"
+    _run_ffmpeg_contact_sheet(video_path, contact_sheet)
+    summary = _write_summary(
+        review_dir,
+        video_path,
+        contact_sheet,
+        _load_json(copied_render),
+        _load_json(copied_qa),
+    )
+
+    return {
+        "review_dir": str(review_dir),
+        "contact_sheet": str(contact_sheet),
+        "render_report": str(copied_render),
+        "qa_report": str(copied_qa),
+        "summary": str(summary),
+    }
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Create a human-review package for an HMR render.")
+    parser.add_argument("--output-dir", required=True, help="Directory containing render_report.json and qa_report.json.")
+    parser.add_argument("--video", default=None, help="Optional explicit video path. Defaults to newest MP4 in output-dir.")
+    parser.add_argument("--review-root", default=None, help="Optional directory for review packages.")
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    print(json.dumps(create_review_package(args.output_dir, video=args.video, review_root=args.review_root), indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
