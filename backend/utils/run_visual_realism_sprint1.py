@@ -22,6 +22,7 @@ if __package__ is None or __package__ == "":
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from utils.create_hmr_review_package import create_review_package
+from utils.check_hmr_asset_readiness import check_hmr_asset_readiness
 from utils.hybrid_motion_qa import run_hybrid_motion_qa
 from utils.hybrid_motion_renderer import render_hybrid_video, save_render_report
 
@@ -250,7 +251,33 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default=str(_repo_root() / "backend" / "generated_videos" / "storyboard_review" / "visual_realism_sprint1_grocery"))
     parser.add_argument("--sprint-name", default="visual_realism_sprint1")
     parser.add_argument("--issue", default="#2 Visual Realism Sprint 1")
+    parser.add_argument("--skip-asset-readiness", action="store_true", help="Allow full render even when first-four-second real assets are missing.")
     return parser.parse_args()
+
+
+def _requires_asset_readiness(args: argparse.Namespace) -> bool:
+    issue = str(args.issue or "").lower()
+    sprint = str(args.sprint_name or "").lower()
+    return args.preset == "full" and ("#3" in issue or "scene_intelligence" in sprint)
+
+
+def _write_blocked_readiness_summary(output_dir: Path, args: argparse.Namespace, readiness: dict[str, Any]) -> Path:
+    summary = {
+        "sprint": args.sprint_name,
+        "issue": args.issue,
+        "status": "BLOCKED",
+        "reason": "Posting blocked by missing first-four-second real assets.",
+        "next_steps": [
+            "Add Pexels/Pixabay keys, or",
+            "Add local hook/reveal files under assets/hmr_local/grocery/.",
+        ],
+        "readiness": readiness,
+    }
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / "asset_readiness_blocked.json"
+    path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    print(json.dumps(summary, indent=2))
+    return path
 
 
 def main() -> int:
@@ -263,6 +290,12 @@ def main() -> int:
     preset = PRESETS[args.preset]
     output_dir = Path(args.output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
+    readiness = check_hmr_asset_readiness()
+    readiness_path = output_dir / "asset_readiness.json"
+    readiness_path.write_text(json.dumps(readiness, indent=2), encoding="utf-8")
+    if _requires_asset_readiness(args) and not args.skip_asset_readiness and readiness.get("status") != "PASS":
+        _write_blocked_readiness_summary(output_dir, args, readiness)
+        return 3
     scenes = build_grocery_scenes()
     script = _script_from_scenes(scenes)
     audio_path, audio_warnings = _free_audio(script, args.tts_provider)

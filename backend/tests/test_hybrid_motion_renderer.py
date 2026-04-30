@@ -2,6 +2,7 @@ from pathlib import Path
 
 import cv2
 
+from utils.check_hmr_asset_readiness import check_hmr_asset_readiness
 from utils.hybrid_motion_qa import run_hybrid_motion_qa
 from utils.hybrid_motion_renderer import render_hybrid_video, split_caption_events
 from utils.hmr_scene_asset_strategy import plan_hmr_scene_assets
@@ -125,6 +126,28 @@ def test_grocery_hook_reveal_report_missing_asset_setup(tmp_path, monkeypatch):
         assert row["asset_resolution_status"] == "stock_provider_keys_not_configured_and_local_asset_missing"
         assert "PEXELS_API_KEY" in row["missing_config"]
         assert row["queries_attempted"]
+
+
+def test_hmr_asset_readiness_blocks_without_keys_or_local_assets(tmp_path, monkeypatch):
+    monkeypatch.delenv("PEXELS_API_KEY", raising=False)
+    monkeypatch.delenv("PIXABAY_API_KEY", raising=False)
+    report = check_hmr_asset_readiness(tmp_path)
+    assert report["status"] == "BLOCKED"
+    assert report["provider_ready"] is False
+    assert report["local_hook_reveal_ready"] is False
+    assert "hook.mp4 or hook.jpg" in report["missing_required"]
+    assert "reveal.mp4 or reveal.jpg" in report["missing_required"]
+
+
+def test_hmr_asset_readiness_passes_with_local_hook_reveal(tmp_path, monkeypatch):
+    monkeypatch.delenv("PEXELS_API_KEY", raising=False)
+    monkeypatch.delenv("PIXABAY_API_KEY", raising=False)
+    (tmp_path / "hook.jpg").write_bytes(b"fake image placeholder")
+    (tmp_path / "reveal.mp4").write_bytes(b"fake video placeholder")
+    report = check_hmr_asset_readiness(tmp_path)
+    assert report["status"] == "PASS"
+    assert report["provider_ready"] is False
+    assert report["local_hook_reveal_ready"] is True
 
 
 def test_captions_stay_under_max_words():
