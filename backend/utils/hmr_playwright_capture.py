@@ -221,6 +221,161 @@ html, body {{
 """
 
 
+def _savings_dashboard_html(scene: dict[str, Any], width: int, height: int) -> str:
+    number = _clean_text(scene.get("number") or scene.get("payoff_number") or "$2,080")
+    subline = _clean_text(scene.get("subline") or "possible yearly savings")
+    data = {
+        "number": number,
+        "subline": subline,
+        "items": ["$40/week leak", "AI swap list", "repeatable cart"],
+    }
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width={width}, initial-scale=1">
+<title>Savings Dashboard Capture</title>
+<style>
+* {{ box-sizing: border-box; }}
+html, body {{
+  width: {width}px;
+  height: {height}px;
+  margin: 0;
+  overflow: hidden;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #102018;
+  background:
+    radial-gradient(circle at 82% 12%, rgba(46, 160, 112, 0.28), transparent 31%),
+    radial-gradient(circle at 8% 75%, rgba(28, 88, 58, 0.20), transparent 32%),
+    linear-gradient(180deg, #eef8f1 0%, #dcebe3 100%);
+}}
+.stage {{
+  width: {width}px;
+  height: {height}px;
+  position: relative;
+  padding: {int(height * 0.070)}px {int(width * 0.072)}px;
+}}
+.receipt {{
+  position: absolute;
+  width: {int(width * 0.34)}px;
+  left: {int(width * 0.055)}px;
+  bottom: {int(height * 0.115)}px;
+  padding: {int(width * 0.030)}px;
+  background: #fffdf2;
+  border: 1px solid rgba(105, 92, 67, 0.18);
+  box-shadow: 0 {int(height * 0.014)}px {int(width * 0.05)}px rgba(50, 42, 28, 0.22);
+  transform: rotate(-5deg);
+}}
+.receipt h2 {{ margin: 0 0 {int(height * 0.015)}px; font-size: {int(width * 0.032)}px; }}
+.rline {{
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px dashed rgba(83, 75, 59, 0.35);
+  padding: {int(height * 0.007)}px 0;
+  font-size: {int(width * 0.023)}px;
+}}
+.phone {{
+  position: absolute;
+  left: {int(width * 0.26)}px;
+  top: {int(height * 0.055)}px;
+  width: {int(width * 0.65)}px;
+  height: {int(height * 0.82)}px;
+  border-radius: {int(width * 0.060)}px;
+  background: #0f172a;
+  padding: {int(width * 0.026)}px;
+  box-shadow: 0 {int(height * 0.025)}px {int(width * 0.09)}px rgba(15, 23, 42, 0.36);
+}}
+.screen {{
+  height: 100%;
+  border-radius: {int(width * 0.043)}px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #f8fffb 0%, #eef8f1 100%);
+}}
+.top {{
+  padding: {int(height * 0.035)}px {int(width * 0.044)}px {int(height * 0.015)}px;
+  background: #113827;
+  color: #e8fff3;
+}}
+.eyebrow {{ font-size: {int(width * 0.025)}px; font-weight: 800; color: #a9f7c8; text-transform: uppercase; }}
+.title {{ margin-top: {int(height * 0.010)}px; font-size: {int(width * 0.052)}px; line-height: 1.04; font-weight: 900; }}
+.body {{ padding: {int(height * 0.035)}px {int(width * 0.042)}px; }}
+.number {{
+  margin-top: {int(height * 0.014)}px;
+  padding: {int(height * 0.030)}px {int(width * 0.020)}px;
+  border-radius: {int(width * 0.030)}px;
+  background: #dcfce7;
+  color: #06744f;
+  text-align: center;
+  font-size: {int(width * 0.105)}px;
+  font-weight: 900;
+  box-shadow: inset 0 0 0 1px rgba(22, 163, 74, 0.20);
+}}
+.subline {{ margin-top: {int(height * 0.010)}px; text-align: center; color: #1f6a4f; font-size: {int(width * 0.034)}px; font-weight: 800; }}
+.card {{
+  margin-top: {int(height * 0.025)}px;
+  padding: {int(height * 0.018)}px {int(width * 0.030)}px;
+  border-radius: {int(width * 0.022)}px;
+  background: #ffffff;
+  border: 1px solid #d6eadf;
+  box-shadow: 0 {int(height * 0.006)}px {int(width * 0.020)}px rgba(17, 56, 39, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: {int(width * 0.033)}px;
+  font-weight: 800;
+}}
+.check {{ color: #08875d; font-size: {int(width * 0.040)}px; }}
+.footer {{
+  margin-top: {int(height * 0.030)}px;
+  border-radius: {int(width * 0.025)}px;
+  padding: {int(height * 0.022)}px;
+  background: #123c2b;
+  color: #e8fff3;
+  font-size: {int(width * 0.034)}px;
+  font-weight: 800;
+  text-align: center;
+}}
+</style>
+</head>
+<body data-demo="{_safe_json(data)}">
+  <div class="stage">
+    <aside class="receipt">
+      <h2>RECEIPT AUDIT</h2>
+      <div class="rline"><span>EXTRAS</span><strong>$18</strong></div>
+      <div class="rline"><span>BRAND SWAPS</span><strong>$13</strong></div>
+      <div class="rline"><span>SNACKS</span><strong>$9</strong></div>
+      <div class="rline"><span>WEEKLY LEAK</span><strong>$40</strong></div>
+    </aside>
+    <section class="phone">
+      <div class="screen">
+        <div class="top">
+          <div class="eyebrow">AI savings result</div>
+          <div class="title">One receipt audit found the leak</div>
+        </div>
+        <div class="body">
+          <div class="number">{html.escape(number)}</div>
+          <div class="subline">{html.escape(subline)}</div>
+          <div id="cards"></div>
+          <div class="footer">$2,080/year saved from one boring receipt audit</div>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+    const data = JSON.parse(document.body.dataset.demo || '{{}}');
+    const cards = document.getElementById('cards');
+    (data.items || []).forEach((item) => {{
+      const node = document.createElement('div');
+      node.className = 'card';
+      node.innerHTML = `<span>${{item}}</span><span class="check">✓</span>`;
+      cards.appendChild(node);
+    }});
+  </script>
+</body>
+</html>
+"""
+
+
 async def _capture_html_to_png(html_text: str, output_path: Path, width: int, height: int) -> None:
     from playwright.async_api import async_playwright
 
@@ -250,7 +405,12 @@ def resolve_hmr_playwright_capture(
     """Resolve an HMR Playwright screenshot asset or report why it failed."""
     output_root = Path(output_dir)
     output_root.mkdir(parents=True, exist_ok=True)
-    if capture_hint != "receipt_audit_comparison":
+    html_builders = {
+        "receipt_audit_comparison": _receipt_audit_html,
+        "savings_dashboard": _savings_dashboard_html,
+    }
+    html_builder = html_builders.get(capture_hint)
+    if html_builder is None:
         return {
             "resolved_asset_type": None,
             "resolved_asset_path": None,
@@ -259,7 +419,7 @@ def resolve_hmr_playwright_capture(
             "fallback_used": True,
         }
 
-    html_text = _receipt_audit_html(scene, width, height)
+    html_text = html_builder(scene, width, height)
     digest_seed = json.dumps(scene, sort_keys=True, default=str) + f":{width}x{height}:{capture_hint}"
     digest = hashlib.sha256(digest_seed.encode("utf-8")).hexdigest()[:16]
     html_path = output_root / f"hmr_{capture_hint}_{digest}.html"

@@ -169,7 +169,7 @@ _TEMPLATE_MEDIUM_HINTS = {
     "comparison_split": "playwright_capture",
     "grocery_receipt_hook": "stock_footage",
     "grocery_reveal_scene": "stock_footage",
-    "grocery_savings_payoff": "stock_image",
+    "grocery_savings_payoff": "playwright_capture",
     "hook_footage_overlay": "stock_footage",
     "cta_callback": "stock_footage",
 }
@@ -177,6 +177,7 @@ _TEMPLATE_MEDIUM_HINTS = {
 _PLAYWRIGHT_HINTS = {
     "ai_prompt_mock": "ai_chat_typing",
     "grocery_ai_comparison": "receipt_audit_comparison",
+    "grocery_savings_payoff": "savings_dashboard",
     "comparison_split": "comparison_panel",
 }
 

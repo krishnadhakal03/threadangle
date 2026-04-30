@@ -99,7 +99,8 @@ def test_hmr_scene_asset_strategy_plans_grocery_visual_sources():
     assert by_id["ai_compare"]["visual_medium"] == "playwright_capture"
     assert by_id["ai_compare"]["capture_hint"] == "receipt_audit_comparison"
     assert "motion_template" in by_id["ai_compare"]["fallback_order"]
-    assert by_id["payoff"]["visual_medium"] == "stock_image"
+    assert by_id["payoff"]["visual_medium"] == "playwright_capture"
+    assert by_id["payoff"]["capture_hint"] == "savings_dashboard"
 
 
 def test_grocery_hook_reveal_report_missing_asset_setup(tmp_path, monkeypatch):

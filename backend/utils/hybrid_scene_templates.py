@@ -611,6 +611,40 @@ def grocery_ai_comparison(frame_idx: int, scene_progress: float, canvas: np.ndar
 
 def grocery_savings_payoff(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
     h, w = canvas.shape[:2]
+    capture_path = scene_config.get("resolved_asset_path")
+    if capture_path:
+        cache = scene_cache(scene_config)
+        cache_key = f"capture:{capture_path}:{w}x{h}"
+        capture = cache.get(cache_key)
+        if capture is None:
+            try:
+                capture = Image.open(str(capture_path)).convert("RGB").resize((w, h), Image.Resampling.LANCZOS)
+                cache[cache_key] = capture
+            except Exception:
+                capture = None
+        if capture is not None:
+            image = capture.convert("RGBA")
+            number = _scene_text(scene_config, "number", "payoff_number", default="$2,080")
+            draw = ImageDraw.Draw(image, "RGBA")
+            area = safe_area(w, h)
+            num_font = fit_font(draw, number, max(58, int(w * 0.18)), area.right - area.left - int(w * 0.16), min_size=max(38, int(w * 0.11)), bold=True)
+            nw, nh = text_size(draw, number, num_font)
+            num_box = ((w - nw) // 2, int(h * 0.245), (w + nw) // 2, int(h * 0.245) + nh)
+            canvas[:] = to_cv_rgb(image)
+            return {
+                "template": "grocery_savings_payoff",
+                "key_number_boxes": [num_box],
+                "cropped": False,
+                "motion_score": 0.84,
+                "number_reveal": True,
+                "postability_signals": {
+                    "scene_treatment": "playwright_savings_dashboard_capture",
+                    "foreground_layers": 1,
+                    "share_energy": True,
+                    "visual_realism": "real_html_capture_savings_dashboard",
+                    "resolved_capture_used": True,
+                },
+            }
     animated_background(canvas, scene_progress, ((20, 28, 30), (21, 92, 72)))
     image = to_pil(canvas).convert("RGBA")
     draw = ImageDraw.Draw(image, "RGBA")

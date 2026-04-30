@@ -187,9 +187,11 @@ def _human_review_notes(qa: dict[str, Any], render_result: dict[str, Any]) -> di
     gate = render_result.get("visual_realism_human_gate") or {}
     reports = render_result.get("scene_reports") or []
     ai_compare = next((row for row in reports if row.get("scene_id") == "ai_compare"), {})
+    payoff = next((row for row in reports if row.get("scene_id") == "payoff"), {})
     hook = next((row for row in reports if row.get("scene_id") == "hook"), {})
     reveal = next((row for row in reports if row.get("scene_id") == "reveal"), {})
     ai_capture_used = ai_compare.get("resolved_asset_type") == "playwright_capture" and ai_compare.get("asset_resolution_status") == "resolved"
+    payoff_capture_used = payoff.get("resolved_asset_type") == "playwright_capture" and payoff.get("asset_resolution_status") == "resolved"
     hook_reveal_resolved = all(
         row.get("resolved_asset_type") in {"stock_footage", "stock_image", "local_asset"}
         and row.get("asset_resolution_status") == "resolved"
@@ -203,18 +205,22 @@ def _human_review_notes(qa: dict[str, Any], render_result: dict[str, Any]) -> di
     human_ready = ready and hook_reveal_resolved
     return {
         "visual_realism_score": "8/10" if hook_reveal_resolved else "6/10",
-        "object_credibility": "AI comparison now uses a local HTML/Playwright receipt-audit capture when available; receipt, grocery bag, cart, and phone/payoff scenes still use HMR template objects unless later resolved to stock/local assets.",
+        "object_credibility": "Hook/reveal use stock footage when available; AI comparison and payoff use local HTML/Playwright captures when available. CTA may remain a template fallback until a later slice.",
         "story_object_connection": "Every major object is tied to the script: receipt leak, repeat cart items, AI swap panel, yearly savings phone estimate, and grocery CTA.",
         "scene_asset_strategy_used": "Yes. Slice A attaches HMR scene asset strategy rows so review can see which scenes should move to stock, capture, local assets, or templates.",
         "planned_real_sources": str(gate.get("planned_real_sources")),
         "resolved_real_assets": str(gate.get("resolved_real_assets")),
         "drawn_placeholder_risk": str(gate.get("drawn_placeholder_risk")),
         "ai_compare_real_capture": "Yes, ai_compare used a real local Playwright HTML screenshot." if ai_capture_used else f"No, ai_compare fell back to the drawn template: {ai_compare.get('asset_resolution_status')}",
+        "payoff_real_capture": "Yes, payoff used a local Playwright savings-dashboard screenshot." if payoff_capture_used else f"No, payoff fell back to the template: {payoff.get('asset_resolution_status')}",
         "visual_realism_vs_previous": (
-            "Improved versus Slice B: hook and reveal now use resolved real assets in the first four seconds, while ai_compare remains a real Playwright capture."
+            "Improved versus Slice C: payoff now uses a Playwright savings-dashboard capture instead of the PIL phone/card template."
+            if payoff_capture_used
+            else "Improved versus Slice B for the first four seconds if hook/reveal resolve, but payoff still uses the PIL/template version."
             if hook_reveal_resolved
             else "Not improved versus Slice B for the first four seconds: hook/reveal still fall back to motion templates because stock providers or local assets did not resolve."
         ),
+        "playwright_adapter_recommendation": "Promote Playwright as a standard adapter for UI/proof scenes if human review accepts the payoff dashboard; it should remain separate from real-world footage scenes.",
         "first_four_second_realism": (
             "Credible enough for posting review: hook and reveal use real resolved assets with minimal overlays."
             if hook_reveal_resolved
