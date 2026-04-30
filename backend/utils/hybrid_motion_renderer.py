@@ -23,11 +23,11 @@ import numpy as np
 try:
     from .hybrid_scene_templates import draw_caption_band, get_template
     from .hmr_scene_asset_strategy import plan_hmr_scene_assets
-    from .hmr_resolved_scene_spec import resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
+    from .hmr_resolved_scene_spec import build_resolved_scene_spec, resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
 except ImportError:  # pragma: no cover - direct script execution fallback
     from hybrid_scene_templates import draw_caption_band, get_template
     from hmr_scene_asset_strategy import plan_hmr_scene_assets
-    from hmr_resolved_scene_spec import resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
+    from hmr_resolved_scene_spec import build_resolved_scene_spec, resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -687,7 +687,17 @@ def render_hybrid_video(
         elif use_stock_backgrounds and template_name == "hook_footage_overlay" and not _provider_available():
             stock_status["reason"] = "pexels_pixabay_keys_not_configured"
         asset_lookup_sec += time.perf_counter() - lookup_start
-        prepared.append((scene, template_name, duration, bg_path, stock_meta, asset_resolution))
+        spec = build_resolved_scene_spec(
+            scene_id=scene_id,
+            template=template_name,
+            duration=duration,
+            scene=scene if isinstance(scene, dict) else {},
+            asset_strategy=asset_strategy,
+            asset_resolution=asset_resolution,
+            bg_path=bg_path,
+            stock_meta=stock_meta,
+        )
+        prepared.append((scene, template_name, duration, bg_path, stock_meta, asset_resolution, spec))
 
     source_total_duration = sum(item[2] for item in prepared)
     probe_start = time.perf_counter()
@@ -704,16 +714,50 @@ def render_hybrid_video(
             prepared = [
                 first,
                 *[
-                    (scene, template_name, duration * scale, bg_path, stock_meta, asset_resolution)
-                    for scene, template_name, duration, bg_path, stock_meta, asset_resolution in prepared[1:]
+                    (
+                        scene,
+                        template_name,
+                        duration * scale,
+                        bg_path,
+                        stock_meta,
+                        asset_resolution,
+                        build_resolved_scene_spec(
+                            scene_id=spec.scene_id,
+                            template=template_name,
+                            duration=duration * scale,
+                            scene=scene if isinstance(scene, dict) else {},
+                            asset_strategy=spec.asset_strategy,
+                            asset_resolution=asset_resolution,
+                            bg_path=bg_path,
+                            stock_meta=stock_meta,
+                        ),
+                    )
+                    for scene, template_name, duration, bg_path, stock_meta, asset_resolution, spec in prepared[1:]
                 ],
             ]
             duration_strategy = "scaled_to_audio_duration_preserve_hook"
         else:
             scale = audio_duration / source_total_duration
             prepared = [
-                (scene, template_name, duration * scale, bg_path, stock_meta, asset_resolution)
-                for scene, template_name, duration, bg_path, stock_meta, asset_resolution in prepared
+                (
+                    scene,
+                    template_name,
+                    duration * scale,
+                    bg_path,
+                    stock_meta,
+                    asset_resolution,
+                    build_resolved_scene_spec(
+                        scene_id=spec.scene_id,
+                        template=template_name,
+                        duration=duration * scale,
+                        scene=scene if isinstance(scene, dict) else {},
+                        asset_strategy=spec.asset_strategy,
+                        asset_resolution=asset_resolution,
+                        bg_path=bg_path,
+                        stock_meta=stock_meta,
+                    ),
+                )
+                for scene, template_name, duration, bg_path, stock_meta, asset_resolution, spec in prepared
             ]
             duration_strategy = "scaled_to_audio_duration"
     total_duration = sum(item[2] for item in prepared)
@@ -732,11 +776,12 @@ def render_hybrid_video(
     total_template_sec = 0.0
     total_caption_sec = 0.0
     total_writer_write_sec = 0.0
-    for scene_idx, (scene, template_name, duration, bg_path, stock_meta, asset_resolution) in enumerate(prepared):
+    for scene_idx, (scene, template_name, duration, bg_path, stock_meta, asset_resolution, spec) in enumerate(prepared):
         scene_profile_start = time.perf_counter()
         template = get_template(template_name)
         frame_count = max(1, int(round(duration * fps)))
-        resolved_type = str(asset_resolution.get("resolved_asset_type") or "")
+        asset_fields = spec.resolved_asset.to_report_fields()
+        resolved_type = str(asset_fields.get("resolved_asset_type") or "")
         bg_suffix = bg_path.suffix.lower() if bg_path else ""
         image_background = None
         if bg_path and (resolved_type == "stock_image" or bg_suffix in IMAGE_EXTENSIONS):
@@ -745,7 +790,7 @@ def render_hybrid_video(
                 image_background = _fit_background_frame(raw_image, width, height, 0.0)
         capture = cv2.VideoCapture(str(bg_path)) if bg_path and image_background is None else None
         media_class = "REAL_STOCK" if bg_path else "ANIMATED_FALLBACK"
-        if asset_resolution.get("resolved_asset_type") == "playwright_capture":
+        if asset_fields.get("resolved_asset_type") == "playwright_capture":
             media_class = "LOCAL_CAPTURE"
         elif template_name == "ai_prompt_mock":
             media_class = "LOCAL_CAPTURE"
@@ -785,7 +830,7 @@ def render_hybrid_video(
                 "style_preset": style_preset,
                 **{
                     key: value
-                    for key, value in asset_resolution.items()
+                    for key, value in asset_fields.items()
                     if key.startswith("resolved_asset_")
                     or key in {
                         "asset_resolution_status",
@@ -872,26 +917,26 @@ def render_hybrid_video(
             "duration": round(duration, 3),
             "media_classification": media_class,
             "scene_asset_strategy": asset_strategy,
-            "resolved_asset_type": asset_resolution.get("resolved_asset_type"),
-            "resolved_asset_path": asset_resolution.get("resolved_asset_path"),
-            "resolved_asset_paths": asset_resolution.get("resolved_asset_paths") or [],
-            "resolved_asset_provider": asset_resolution.get("resolved_asset_provider"),
-            "asset_resolution_status": asset_resolution.get("asset_resolution_status"),
-            "fallback_used": asset_resolution.get("fallback_used"),
-            "playwright_motion_mode": asset_resolution.get("playwright_motion_mode"),
-            "capture_steps": asset_resolution.get("capture_steps") or [],
-            "visible_interaction": asset_resolution.get("visible_interaction"),
-            "saved_chrome_profile_used": asset_resolution.get("saved_chrome_profile_used"),
-            "query_used": asset_resolution.get("query_used"),
-            "queries_attempted": asset_resolution.get("queries_attempted") or [],
-            "provider_available": asset_resolution.get("provider_available"),
-            "missing_config": asset_resolution.get("missing_config") or [],
+            "resolved_asset_type": asset_fields.get("resolved_asset_type"),
+            "resolved_asset_path": asset_fields.get("resolved_asset_path"),
+            "resolved_asset_paths": asset_fields.get("resolved_asset_paths") or [],
+            "resolved_asset_provider": asset_fields.get("resolved_asset_provider"),
+            "asset_resolution_status": asset_fields.get("asset_resolution_status"),
+            "fallback_used": asset_fields.get("fallback_used"),
+            "playwright_motion_mode": asset_fields.get("playwright_motion_mode"),
+            "capture_steps": asset_fields.get("capture_steps") or [],
+            "visible_interaction": asset_fields.get("visible_interaction"),
+            "saved_chrome_profile_used": asset_fields.get("saved_chrome_profile_used"),
+            "query_used": asset_fields.get("query_used"),
+            "queries_attempted": asset_fields.get("queries_attempted") or [],
+            "provider_available": asset_fields.get("provider_available"),
+            "missing_config": asset_fields.get("missing_config") or [],
             "provider_usage": (
                 stock_meta
                 if bg_path
                 else {
-                    "provider": asset_resolution.get("resolved_asset_provider"),
-                    "reason": asset_resolution.get("asset_resolution_status") or stock_status.get("reason") or "animated_or_motion_template",
+                    "provider": asset_fields.get("resolved_asset_provider"),
+                    "reason": asset_fields.get("asset_resolution_status") or stock_status.get("reason") or "animated_or_motion_template",
                 }
             ),
             "background_id": str(bg_path) if bg_path else f"{media_class}:{template_name}",

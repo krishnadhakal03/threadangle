@@ -7,7 +7,12 @@ from utils.check_hmr_asset_readiness import check_hmr_asset_readiness
 from utils.hybrid_motion_qa import run_hybrid_motion_qa
 from utils.hybrid_motion_renderer import render_hybrid_video, split_caption_events
 from utils.hmr_scene_asset_strategy import plan_hmr_scene_assets
-from utils.hmr_resolved_scene_spec import ResolvedSceneAsset, resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
+from utils.hmr_resolved_scene_spec import (
+    ResolvedSceneAsset,
+    build_resolved_scene_spec,
+    resolve_playwright_scene_asset,
+    resolve_stock_or_local_scene_asset,
+)
 from utils.hybrid_scene_templates import ai_prompt_mock, money_shock_math, payoff_number_reveal
 from utils.run_day9_bill_leak import build_bill_leak_scenes
 from utils.run_hybrid_motion_poc import build_day8_scenes
@@ -143,6 +148,41 @@ def test_resolved_scene_asset_serializes_playwright_report_fields():
     assert fields["visible_interaction"] is True
 
 
+def test_resolved_scene_spec_serializes_and_keeps_flat_report_fields():
+    spec = build_resolved_scene_spec(
+        scene_id="ai_compare",
+        template="grocery_ai_comparison",
+        duration=3.2,
+        scene={"id": "ai_compare", "prompt": "Compare this bill."},
+        asset_strategy={"visual_medium": "playwright_capture", "capture_hint": "receipt_audit_comparison"},
+        asset_resolution={
+            "resolved_asset_type": "playwright_capture",
+            "resolved_asset_path": "captures/result.png",
+            "resolved_asset_paths": ["captures/01.png", "captures/result.png"],
+            "resolved_asset_provider": "local_playwright_html",
+            "asset_resolution_status": "resolved",
+            "fallback_used": False,
+            "playwright_motion_mode": "screenshot_sequence",
+            "capture_steps": ["empty_input", "typing_prompt", "savings_result"],
+            "visible_interaction": True,
+        },
+    )
+    json.dumps(spec.to_report_fields())
+    flat = spec.flat_report_fields()
+    json.dumps(flat)
+    assert flat["scene_id"] == "ai_compare"
+    assert flat["template"] == "grocery_ai_comparison"
+    assert flat["duration"] == 3.2
+    assert flat["resolved_asset_type"] == "playwright_capture"
+    assert flat["resolved_asset_path"] == "captures/result.png"
+    assert flat["resolved_asset_provider"] == "local_playwright_html"
+    assert flat["asset_resolution_status"] == "resolved"
+    assert flat["fallback_used"] is False
+    assert flat["playwright_motion_mode"] == "screenshot_sequence"
+    assert flat["capture_steps"][-1] == "savings_result"
+    assert flat["visible_interaction"] is True
+
+
 def test_playwright_scene_asset_adapter_does_not_fake_missing_success(tmp_path):
     def fake_missing_resolver(scene, capture_hint, output_dir, width, height):
         return {
@@ -171,6 +211,66 @@ def test_playwright_scene_asset_adapter_does_not_fake_missing_success(tmp_path):
     assert fields["asset_resolution_status"] == "playwright_unavailable:missing"
     assert fields["fallback_used"] is True
     assert fields["visible_interaction"] is False
+
+
+def test_resolved_scene_spec_keeps_stock_local_and_missing_asset_fields(tmp_path):
+    stock_file = tmp_path / "stock.mp4"
+    stock_file.write_bytes(b"fake stock bytes")
+    stock_spec = build_resolved_scene_spec(
+        scene_id="hook",
+        template="grocery_receipt_hook",
+        duration=1.45,
+        scene={"id": "hook"},
+        asset_strategy={"visual_medium": "stock_footage", "query_candidates": ["person checking bill"]},
+        asset_resolution={
+            "resolved_asset_type": "stock_footage",
+            "resolved_asset_path": str(stock_file),
+            "resolved_asset_provider": "pexels",
+            "asset_resolution_status": "resolved",
+            "fallback_used": False,
+            "query_used": "person checking bill",
+            "queries_attempted": ["person checking bill"],
+            "provider_available": True,
+            "missing_config": [],
+        },
+        bg_path=stock_file,
+        stock_meta={"provider_available": True, "query_used": "person checking bill"},
+    )
+    flat_stock = stock_spec.flat_report_fields()
+    assert flat_stock["resolved_asset_type"] == "stock_footage"
+    assert flat_stock["query_used"] == "person checking bill"
+    assert flat_stock["queries_attempted"] == ["person checking bill"]
+    assert flat_stock["provider_available"] is True
+    assert flat_stock["missing_config"] == []
+    assert flat_stock["provider_usage"]["query_used"] == "person checking bill"
+
+    missing_spec = build_resolved_scene_spec(
+        scene_id="hook",
+        template="grocery_receipt_hook",
+        duration=1.45,
+        scene={"id": "hook"},
+        asset_strategy={"visual_medium": "stock_footage"},
+        asset_resolution={
+            "resolved_asset_type": None,
+            "resolved_asset_path": None,
+            "resolved_asset_provider": None,
+            "asset_resolution_status": "stock_provider_keys_not_configured_and_local_asset_missing",
+            "fallback_used": True,
+            "query_used": None,
+            "queries_attempted": ["person checking bill"],
+            "provider_available": False,
+            "missing_config": ["PEXELS_API_KEY", "assets/hmr_local/grocery/hook.mp4"],
+        },
+    )
+    flat_missing = missing_spec.flat_report_fields()
+    json.dumps(flat_missing)
+    assert flat_missing["resolved_asset_type"] is None
+    assert flat_missing["resolved_asset_path"] is None
+    assert flat_missing["resolved_asset_provider"] is None
+    assert flat_missing["asset_resolution_status"] == "stock_provider_keys_not_configured_and_local_asset_missing"
+    assert flat_missing["fallback_used"] is True
+    assert flat_missing["provider_available"] is False
+    assert "PEXELS_API_KEY" in flat_missing["missing_config"]
 
 
 def test_stock_or_local_scene_asset_adapter_serializes_resolved_stock(tmp_path):

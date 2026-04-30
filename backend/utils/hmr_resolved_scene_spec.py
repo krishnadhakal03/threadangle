@@ -85,11 +85,68 @@ class ResolvedSceneSpec:
         data["resolved_asset"] = self.resolved_asset.to_report_fields()
         return data
 
+    def flat_report_fields(self) -> dict[str, Any]:
+        """Return existing top-level report fields for compatibility."""
+        return {
+            "scene_id": self.scene_id,
+            "template": self.template,
+            "duration": round(self.duration, 3),
+            "scene_asset_strategy": self.asset_strategy,
+            **self.resolved_asset.to_report_fields(),
+            **self.report,
+        }
+
 
 PlaywrightResolver = Callable[[dict[str, Any], str, str | Path, int, int], dict[str, Any]]
 StockSelector = Callable[[list[str], list[str], set[str], list[str]], tuple[Path | None, dict[str, Any]]]
 LocalResolver = Callable[[Any, dict[str, Any]], tuple[Path | None, dict[str, Any]]]
 ProviderStatusGetter = Callable[[], dict[str, Any]]
+
+
+def build_resolved_scene_spec(
+    *,
+    scene_id: Any,
+    template: str,
+    duration: float,
+    scene: dict[str, Any],
+    asset_strategy: dict[str, Any],
+    asset_resolution: dict[str, Any],
+    bg_path: str | Path | None = None,
+    stock_meta: dict[str, Any] | None = None,
+) -> ResolvedSceneSpec:
+    """Combine scene, strategy, resolved asset, and render metadata."""
+    resolved_asset = ResolvedSceneAsset.from_report_fields(asset_resolution)
+    render_config = {
+        "background_path": str(bg_path) if bg_path else None,
+        "has_real_background": bg_path is not None,
+        "resolved_asset_path": resolved_asset.resolved_asset_path,
+        "resolved_asset_paths": resolved_asset.resolved_asset_paths,
+        "playwright_motion_mode": resolved_asset.playwright_motion_mode,
+        "capture_steps": resolved_asset.capture_steps,
+        "visible_interaction": resolved_asset.visible_interaction,
+        "saved_chrome_profile_used": resolved_asset.saved_chrome_profile_used,
+    }
+    provider_usage = (
+        stock_meta
+        if bg_path
+        else {
+            "provider": resolved_asset.resolved_asset_provider,
+            "reason": resolved_asset.asset_resolution_status,
+        }
+    )
+    return ResolvedSceneSpec(
+        scene_id=str(scene_id),
+        template=template,
+        duration=float(duration),
+        scene=dict(scene or {}),
+        asset_strategy=dict(asset_strategy or {}),
+        resolved_asset=resolved_asset,
+        render_config=render_config,
+        report={
+            "provider_usage": provider_usage,
+            "background_id": str(bg_path) if bg_path else None,
+        },
+    )
 
 
 def resolve_playwright_scene_asset(
