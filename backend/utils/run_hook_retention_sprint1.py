@@ -260,6 +260,7 @@ def _human_review_notes(variant: dict[str, Any], qa: dict[str, Any]) -> dict[str
         "first_four_second_retention_likelihood": f"Likely improved versus baseline: payoff-first number lands before 0:01 and habit reveal completes by about 0:03. Pacing score: {pacing_score}.",
         "number_consistency": "Opening display uses $1,825/year; payoff display uses $1,500+ saved/year. Captions spell the same numbers as narration.",
         "caption_naturalness": "Short, conversational captions; no multiple changing dollar figures in the first three seconds.",
+        "payoff_clarity": "Clear: the ending reframes the early $1,825/year loss as $1,500+ a year the viewer could keep after the AI comparison.",
         "post_no_post_recommendation": recommendation if variant["id"] != "personal_confession_hook" else "Best candidate to post next if technical QA passes.",
     }
 

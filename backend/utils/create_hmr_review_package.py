@@ -81,6 +81,7 @@ def _write_summary(
             ("first_four_second_retention_likelihood", "First-four-second retention likelihood"),
             ("number_consistency", "Number consistency"),
             ("caption_naturalness", "Caption naturalness"),
+            ("payoff_clarity", "Payoff clarity"),
             ("post_no_post_recommendation", "Post/no-post recommendation"),
         )
         if human_review.get(key)
