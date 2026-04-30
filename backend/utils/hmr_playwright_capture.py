@@ -24,7 +24,7 @@ def _safe_json(value: Any) -> str:
     return html.escape(json.dumps(value, ensure_ascii=False), quote=True)
 
 
-def _receipt_audit_html(scene: dict[str, Any], width: int, height: int) -> str:
+def _receipt_audit_html(scene: dict[str, Any], width: int, height: int, state: dict[str, Any] | None = None) -> str:
     prompt = _clean_text(scene.get("prompt") or "Find cheaper swaps for these repeat grocery items.")
     rows = scene.get("swap_rows") or [
         ("Brand cereal", "$8.49", "store brand", "$4.19"),
@@ -32,6 +32,14 @@ def _receipt_audit_html(scene: dict[str, Any], width: int, height: int) -> str:
         ("Drinks", "$13.20", "home pack", "$7.10"),
     ]
     savings = _clean_text(scene.get("savings_number") or "$40/week")
+    state = state or {"name": "result_reveal", "prompt": prompt, "rows": rows[:3], "saving_visible": True}
+    shown_prompt = _clean_text(state.get("prompt") if state.get("prompt") is not None else prompt)
+    shown_rows = list(state.get("rows") or [])
+    saving_visible = bool(state.get("saving_visible", True))
+    loading_text = _clean_text(state.get("loading_text") or "")
+    button_text = _clean_text(state.get("button_text") or "Analyze")
+    cursor = bool(state.get("cursor", False))
+    visible_rows_json = json.dumps([list(row) for row in shown_rows], ensure_ascii=False)
     data = {
         "prompt": prompt,
         "rows": [list(row) for row in rows[:3]],
@@ -144,10 +152,41 @@ html, body {{
   margin-top: {int(height * 0.023)}px;
   padding: {int(height * 0.018)}px {int(width * 0.028)}px;
   border-radius: {int(width * 0.018)}px;
-  background: #111827;
-  color: #f8fafc;
+  background: {"#111827" if shown_prompt else "#ffffff"};
+  color: {"#f8fafc" if shown_prompt else "#64748b"};
+  border: 1px solid {"#111827" if shown_prompt else "#cbd5e1"};
   font-size: {int(width * 0.027)}px;
   line-height: 1.18;
+  min-height: {int(height * 0.095)}px;
+}}
+.cursor {{
+  display: inline-block;
+  width: {max(3, int(width * 0.006))}px;
+  height: {int(width * 0.030)}px;
+  margin-left: {int(width * 0.006)}px;
+  background: #a7f3d0;
+  vertical-align: -4px;
+}}
+.action {{
+  margin-top: {int(height * 0.016)}px;
+  display: flex;
+  align-items: center;
+  gap: {int(width * 0.018)}px;
+}}
+.button {{
+  display: inline-block;
+  padding: {int(height * 0.012)}px {int(width * 0.035)}px;
+  border-radius: {int(width * 0.022)}px;
+  background: #0f7b55;
+  color: #ffffff;
+  font-size: {int(width * 0.026)}px;
+  font-weight: 900;
+  box-shadow: 0 {int(height * 0.004)}px {int(width * 0.018)}px rgba(15, 123, 85, 0.25);
+}}
+.loading {{
+  color: #475569;
+  font-size: {int(width * 0.025)}px;
+  font-weight: 800;
 }}
 .row {{
   display: grid;
@@ -174,6 +213,7 @@ html, body {{
   text-align: center;
   font-size: {int(width * 0.066)}px;
   font-weight: 900;
+  visibility: {"visible" if saving_visible else "hidden"};
 }}
 </style>
 </head>
@@ -199,7 +239,8 @@ html, body {{
         <div class="content">
           <div class="eyebrow">AI receipt audit</div>
           <div class="title">Cheaper swaps I would actually buy</div>
-          <div class="prompt">{html.escape(prompt)}</div>
+          <div class="prompt">{html.escape(shown_prompt or "Paste receipt audit prompt...")}{'<span class="cursor"></span>' if cursor else ''}</div>
+          <div class="action"><span class="button">{html.escape(button_text)}</span><span class="loading">{html.escape(loading_text)}</span></div>
           <div id="rows"></div>
           <div class="saving">{html.escape(savings)}</div>
         </div>
@@ -209,7 +250,8 @@ html, body {{
   <script>
     const data = JSON.parse(document.body.dataset.demo || '{{}}');
     const rows = document.getElementById('rows');
-    (data.rows || []).forEach((row) => {{
+    const visibleRows = {visible_rows_json};
+    (visibleRows || []).forEach((row) => {{
       const node = document.createElement('div');
       node.className = 'row';
       node.innerHTML = `<span>${{row[0]}}</span><span class="old">${{row[1]}}</span><span class="new">${{row[2]}}</span><span class="new">${{row[3]}}</span>`;
@@ -219,6 +261,57 @@ html, body {{
 </body>
 </html>
 """
+
+
+def _receipt_audit_motion_states(scene: dict[str, Any]) -> list[dict[str, Any]]:
+    prompt = _clean_text(scene.get("prompt") or "Find cheaper swaps for these repeat grocery items.")
+    rows = scene.get("swap_rows") or [
+        ("Brand cereal", "$8.49", "store brand", "$4.19"),
+        ("Snack packs", "$11.80", "bulk bag", "$6.40"),
+        ("Drinks", "$13.20", "home pack", "$7.10"),
+    ]
+    typed_prompt = prompt[: max(24, int(len(prompt) * 0.58))].rstrip()
+    return [
+        {
+            "name": "empty_input",
+            "prompt": "",
+            "rows": [],
+            "saving_visible": False,
+            "button_text": "Paste prompt",
+        },
+        {
+            "name": "typing_prompt",
+            "prompt": typed_prompt,
+            "rows": [],
+            "saving_visible": False,
+            "button_text": "Analyze",
+            "cursor": True,
+        },
+        {
+            "name": "submit_analyze",
+            "prompt": prompt,
+            "rows": [],
+            "saving_visible": False,
+            "button_text": "Analyze",
+            "loading_text": "Scanning receipt...",
+        },
+        {
+            "name": "results_reveal",
+            "prompt": prompt,
+            "rows": rows[:2],
+            "saving_visible": False,
+            "button_text": "Done",
+            "loading_text": "Swaps found",
+        },
+        {
+            "name": "savings_result",
+            "prompt": prompt,
+            "rows": rows[:3],
+            "saving_visible": True,
+            "button_text": "Done",
+            "loading_text": "Weekly leak found",
+        },
+    ]
 
 
 def _savings_dashboard_html(scene: dict[str, Any], width: int, height: int) -> str:
@@ -395,6 +488,82 @@ async def _capture_html_to_png(html_text: str, output_path: Path, width: int, he
         await browser.close()
 
 
+def _capture_receipt_audit_sequence(
+    scene: dict[str, Any],
+    output_root: Path,
+    width: int,
+    height: int,
+    digest: str,
+) -> dict[str, Any]:
+    states = _receipt_audit_motion_states(scene)
+    png_paths: list[Path] = []
+    html_paths: list[Path] = []
+    step_names = [str(row["name"]) for row in states]
+    for idx, state in enumerate(states):
+        html_text = _receipt_audit_html(scene, width, height, state=state)
+        html_path = output_root / f"hmr_receipt_audit_motion_{digest}_{idx:02d}_{state['name']}.html"
+        png_path = output_root / f"hmr_receipt_audit_motion_{digest}_{idx:02d}_{state['name']}.png"
+        html_path.write_text(html_text, encoding="utf-8")
+        try:
+            asyncio.run(_capture_html_to_png(html_text, png_path, width, height))
+        except ImportError as exc:
+            return {
+                "resolved_asset_type": None,
+                "resolved_asset_path": None,
+                "resolved_asset_provider": None,
+                "asset_resolution_status": f"playwright_unavailable:{exc}",
+                "fallback_used": True,
+                "html_fallback_path": str(html_path),
+                "playwright_motion_mode": "screenshot_sequence",
+                "capture_steps": step_names,
+                "visible_interaction": False,
+                "saved_chrome_profile_used": False,
+            }
+        except Exception as exc:
+            return {
+                "resolved_asset_type": None,
+                "resolved_asset_path": None,
+                "resolved_asset_provider": None,
+                "asset_resolution_status": f"playwright_capture_failed:{str(exc)[:120]}",
+                "fallback_used": True,
+                "html_fallback_path": str(html_path),
+                "playwright_motion_mode": "screenshot_sequence",
+                "capture_steps": step_names,
+                "visible_interaction": False,
+                "saved_chrome_profile_used": False,
+            }
+        if not png_path.exists() or png_path.stat().st_size < 1000:
+            return {
+                "resolved_asset_type": None,
+                "resolved_asset_path": None,
+                "resolved_asset_provider": None,
+                "asset_resolution_status": "playwright_capture_empty",
+                "fallback_used": True,
+                "html_fallback_path": str(html_path),
+                "playwright_motion_mode": "screenshot_sequence",
+                "capture_steps": step_names,
+                "visible_interaction": False,
+                "saved_chrome_profile_used": False,
+            }
+        html_paths.append(html_path)
+        png_paths.append(png_path)
+
+    return {
+        "resolved_asset_type": "playwright_capture",
+        "resolved_asset_path": str(png_paths[-1]),
+        "resolved_asset_paths": [str(path) for path in png_paths],
+        "resolved_asset_provider": "local_playwright_html",
+        "asset_resolution_status": "resolved",
+        "fallback_used": False,
+        "html_fallback_path": str(html_paths[-1]),
+        "html_fallback_paths": [str(path) for path in html_paths],
+        "playwright_motion_mode": "screenshot_sequence",
+        "capture_steps": step_names,
+        "visible_interaction": True,
+        "saved_chrome_profile_used": False,
+    }
+
+
 def resolve_hmr_playwright_capture(
     scene: dict[str, Any],
     capture_hint: str,
@@ -417,11 +586,18 @@ def resolve_hmr_playwright_capture(
             "resolved_asset_provider": None,
             "asset_resolution_status": "unsupported_capture_hint",
             "fallback_used": True,
+            "playwright_motion_mode": "static_capture",
+            "capture_steps": [],
+            "visible_interaction": False,
+            "saved_chrome_profile_used": False,
         }
 
-    html_text = html_builder(scene, width, height)
     digest_seed = json.dumps(scene, sort_keys=True, default=str) + f":{width}x{height}:{capture_hint}"
     digest = hashlib.sha256(digest_seed.encode("utf-8")).hexdigest()[:16]
+    if capture_hint == "receipt_audit_comparison":
+        return _capture_receipt_audit_sequence(scene, output_root, width, height, digest)
+
+    html_text = html_builder(scene, width, height)
     html_path = output_root / f"hmr_{capture_hint}_{digest}.html"
     png_path = output_root / f"hmr_{capture_hint}_{digest}.png"
     html_path.write_text(html_text, encoding="utf-8")
@@ -436,6 +612,10 @@ def resolve_hmr_playwright_capture(
             "asset_resolution_status": f"playwright_unavailable:{exc}",
             "fallback_used": True,
             "html_fallback_path": str(html_path),
+            "playwright_motion_mode": "static_capture",
+            "capture_steps": [],
+            "visible_interaction": False,
+            "saved_chrome_profile_used": False,
         }
     except Exception as exc:
         return {
@@ -445,6 +625,10 @@ def resolve_hmr_playwright_capture(
             "asset_resolution_status": f"playwright_capture_failed:{str(exc)[:120]}",
             "fallback_used": True,
             "html_fallback_path": str(html_path),
+            "playwright_motion_mode": "static_capture",
+            "capture_steps": [],
+            "visible_interaction": False,
+            "saved_chrome_profile_used": False,
         }
 
     if not png_path.exists() or png_path.stat().st_size < 1000:
@@ -455,6 +639,10 @@ def resolve_hmr_playwright_capture(
             "asset_resolution_status": "playwright_capture_empty",
             "fallback_used": True,
             "html_fallback_path": str(html_path),
+            "playwright_motion_mode": "static_capture",
+            "capture_steps": [],
+            "visible_interaction": False,
+            "saved_chrome_profile_used": False,
         }
 
     return {
@@ -464,4 +652,8 @@ def resolve_hmr_playwright_capture(
         "asset_resolution_status": "resolved",
         "fallback_used": False,
         "html_fallback_path": str(html_path),
+        "playwright_motion_mode": "static_capture",
+        "capture_steps": ["static_capture"],
+        "visible_interaction": False,
+        "saved_chrome_profile_used": False,
     }

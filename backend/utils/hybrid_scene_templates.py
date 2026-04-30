@@ -526,7 +526,15 @@ def grocery_reveal_scene(frame_idx: int, scene_progress: float, canvas: np.ndarr
 
 def grocery_ai_comparison(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
     h, w = canvas.shape[:2]
+    capture_paths = [
+        str(path)
+        for path in (scene_config.get("resolved_asset_paths") or [])
+        if str(path).strip()
+    ]
     capture_path = scene_config.get("resolved_asset_path")
+    if capture_paths:
+        step_index = min(len(capture_paths) - 1, int(scene_progress * len(capture_paths)))
+        capture_path = capture_paths[step_index]
     if capture_path:
         cache = scene_cache(scene_config)
         cache_key = f"capture:{capture_path}:{w}x{h}"
@@ -550,8 +558,14 @@ def grocery_ai_comparison(frame_idx: int, scene_progress: float, canvas: np.ndar
                 "postability_signals": {
                     "motion_interruption": "ai_receipt_capture_reveal",
                     "scene_treatment": "playwright_receipt_audit_capture",
-                    "visual_realism": "real_html_capture_ai_receipt_audit",
+                    "visual_realism": (
+                        "real_html_capture_ai_receipt_audit_motion"
+                        if capture_paths
+                        else "real_html_capture_ai_receipt_audit"
+                    ),
                     "resolved_capture_used": True,
+                    "visible_interaction": bool(scene_config.get("visible_interaction")),
+                    "playwright_motion_mode": scene_config.get("playwright_motion_mode") or "static_capture",
                 },
             }
     animated_background(canvas, scene_progress, ((14, 21, 31), (26, 62, 58)))

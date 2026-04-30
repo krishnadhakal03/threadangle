@@ -835,7 +835,19 @@ def render_hybrid_video(
                 **{
                     key: value
                     for key, value in asset_resolution.items()
-                    if key.startswith("resolved_asset_") or key in {"asset_resolution_status", "fallback_used", "query_used", "queries_attempted", "provider_available", "missing_config"}
+                    if key.startswith("resolved_asset_")
+                    or key in {
+                        "asset_resolution_status",
+                        "fallback_used",
+                        "query_used",
+                        "queries_attempted",
+                        "provider_available",
+                        "missing_config",
+                        "playwright_motion_mode",
+                        "capture_steps",
+                        "visible_interaction",
+                        "saved_chrome_profile_used",
+                    }
                 },
                 "_template_cache": template_cache,
             }
@@ -911,9 +923,14 @@ def render_hybrid_video(
             "scene_asset_strategy": asset_strategy,
             "resolved_asset_type": asset_resolution.get("resolved_asset_type"),
             "resolved_asset_path": asset_resolution.get("resolved_asset_path"),
+            "resolved_asset_paths": asset_resolution.get("resolved_asset_paths") or [],
             "resolved_asset_provider": asset_resolution.get("resolved_asset_provider"),
             "asset_resolution_status": asset_resolution.get("asset_resolution_status"),
             "fallback_used": asset_resolution.get("fallback_used"),
+            "playwright_motion_mode": asset_resolution.get("playwright_motion_mode"),
+            "capture_steps": asset_resolution.get("capture_steps") or [],
+            "visible_interaction": asset_resolution.get("visible_interaction"),
+            "saved_chrome_profile_used": asset_resolution.get("saved_chrome_profile_used"),
             "query_used": asset_resolution.get("query_used"),
             "queries_attempted": asset_resolution.get("queries_attempted") or [],
             "provider_available": asset_resolution.get("provider_available"),

@@ -192,6 +192,7 @@ def _human_review_notes(qa: dict[str, Any], render_result: dict[str, Any]) -> di
     hook = next((row for row in reports if row.get("scene_id") == "hook"), {})
     reveal = next((row for row in reports if row.get("scene_id") == "reveal"), {})
     ai_capture_used = ai_compare.get("resolved_asset_type") == "playwright_capture" and ai_compare.get("asset_resolution_status") == "resolved"
+    ai_visible_interaction = bool(ai_compare.get("visible_interaction"))
     payoff_capture_used = payoff.get("resolved_asset_type") == "playwright_capture" and payoff.get("asset_resolution_status") == "resolved"
     hook_reveal_resolved = all(
         row.get("resolved_asset_type") in {"stock_footage", "stock_image", "local_asset"}
@@ -212,7 +213,13 @@ def _human_review_notes(qa: dict[str, Any], render_result: dict[str, Any]) -> di
         "planned_real_sources": str(gate.get("planned_real_sources")),
         "resolved_real_assets": str(gate.get("resolved_real_assets")),
         "drawn_placeholder_risk": str(gate.get("drawn_placeholder_risk")),
-        "ai_compare_real_capture": "Yes, ai_compare used a real local Playwright HTML screenshot." if ai_capture_used else f"No, ai_compare fell back to the drawn template: {ai_compare.get('asset_resolution_status')}",
+        "ai_compare_real_capture": (
+            "Yes, ai_compare used a local Playwright screenshot sequence with visible prompt/UI interaction."
+            if ai_capture_used and ai_visible_interaction
+            else "Yes, ai_compare used a real local Playwright HTML screenshot."
+            if ai_capture_used
+            else f"No, ai_compare fell back to the drawn template: {ai_compare.get('asset_resolution_status')}"
+        ),
         "payoff_real_capture": "Yes, payoff used a local Playwright savings-dashboard screenshot." if payoff_capture_used else f"No, payoff fell back to the template: {payoff.get('asset_resolution_status')}",
         "visual_realism_vs_previous": (
             "Improved versus Slice C: payoff now uses a Playwright savings-dashboard capture instead of the PIL phone/card template."
@@ -221,7 +228,14 @@ def _human_review_notes(qa: dict[str, Any], render_result: dict[str, Any]) -> di
             if hook_reveal_resolved
             else "Not improved versus Slice B for the first four seconds: hook/reveal still fall back to motion templates because stock providers or local assets did not resolve."
         ),
-        "playwright_adapter_recommendation": "Promote Playwright as a standard adapter for UI/proof scenes if human review accepts the payoff dashboard; it should remain separate from real-world footage scenes.",
+        "playwright_adapter_recommendation": (
+            "Promote Playwright proof motion as the standard adapter for UI/proof scenes; keep it separate from real-world footage scenes."
+            if ai_visible_interaction
+            else "Promote Playwright as a standard adapter for UI/proof scenes if human review accepts the payoff dashboard; it should remain separate from real-world footage scenes."
+        ),
+        "playwright_visible_interaction": "Yes: ai_compare progresses through empty input, typing prompt, analyze/loading, result reveal, and savings result." if ai_visible_interaction else "No: Playwright capture is still static.",
+        "playwright_proof_motion": "Real proof motion via screenshot_sequence." if ai_compare.get("playwright_motion_mode") == "screenshot_sequence" else "Static screenshot capture.",
+        "playwright_visual_credibility_delta": "Improved versus the static Playwright candidate because the AI comparison now visibly shows prompt/UI interaction." if ai_visible_interaction else "No proof-motion improvement yet.",
         "first_four_second_realism": (
             "Credible enough for posting review: hook and reveal use real resolved assets with minimal overlays."
             if hook_reveal_resolved

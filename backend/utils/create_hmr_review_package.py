@@ -91,6 +91,9 @@ def _write_summary(
             ("first_four_second_realism", "First-four-second realism"),
             ("drawn_placeholders_remaining", "Drawn placeholders remaining"),
             ("playwright_adapter_recommendation", "Playwright adapter recommendation"),
+            ("playwright_visible_interaction", "Playwright visible interaction"),
+            ("playwright_proof_motion", "Playwright proof motion"),
+            ("playwright_visual_credibility_delta", "Playwright visual credibility delta"),
             ("first_frame_clarity", "First-frame clarity"),
             ("first_second_clarity", "First-second clarity"),
             ("first_second_shock_value", "First-second shock value"),
@@ -119,7 +122,7 @@ def _write_summary(
     ) or "- No scene asset strategy attached"
     scene_reports = render_report.get("scene_reports") or []
     resolution_lines = "\n".join(
-        "- `{scene_id}`: `{asset_type}` via `{provider}`; status: `{status}`; fallback: `{fallback}`; query: `{query}`; path: `{path}`".format(
+        "- `{scene_id}`: `{asset_type}` via `{provider}`; status: `{status}`; fallback: `{fallback}`; query: `{query}`; path: `{path}`; motion: `{motion}`; steps: {steps}; visible interaction: `{visible}`".format(
             scene_id=row.get("scene_id"),
             asset_type=row.get("resolved_asset_type"),
             provider=row.get("resolved_asset_provider"),
@@ -127,6 +130,9 @@ def _write_summary(
             fallback=row.get("fallback_used"),
             query=row.get("query_used"),
             path=Path(str(row.get("resolved_asset_path"))).name if row.get("resolved_asset_path") else "",
+            motion=row.get("playwright_motion_mode") or "",
+            steps=", ".join(f"`{step}`" for step in (row.get("capture_steps") or [])) or "`none`",
+            visible=row.get("visible_interaction"),
         )
         for row in scene_reports
     ) or "- No scene asset resolution metadata attached"
