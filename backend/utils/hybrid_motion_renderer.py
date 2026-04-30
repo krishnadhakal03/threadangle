@@ -328,10 +328,13 @@ def render_hybrid_video(
     style_preset: str = "documentary_money_short",
 ) -> dict[str, Any]:
     start_time = time.time()
+    profile_start = time.perf_counter()
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     warnings: list[str] = []
     scene_reports: list[dict[str, Any]] = []
+    profile_scene_reports: list[dict[str, Any]] = []
+    profile_template_totals: dict[str, dict[str, Any]] = {}
     used_stock_ids: set[str] = set()
     media_mix: dict[str, int] = {}
     stock_status = {
@@ -341,11 +344,13 @@ def render_hybrid_video(
     }
 
     prepared = []
+    asset_lookup_sec = 0.0
     for idx, scene in enumerate(scenes):
         template_name = _scene_template(scene, idx)
         duration = _scene_duration(scene, 2.6)
         bg_path = None
         stock_meta: dict[str, Any] = {}
+        lookup_start = time.perf_counter()
         if use_stock_backgrounds and template_name == "hook_footage_overlay" and _provider_available():
             bg_path, stock_meta = _select_stock_background(scene, template_name, used_stock_ids, warnings)
             if bg_path:
@@ -354,10 +359,13 @@ def render_hybrid_video(
                 stock_status["reason"] = stock_meta.get("reason") or "stock_unavailable_for_scene"
         elif use_stock_backgrounds and template_name == "hook_footage_overlay" and not _provider_available():
             stock_status["reason"] = "pexels_pixabay_keys_not_configured"
+        asset_lookup_sec += time.perf_counter() - lookup_start
         prepared.append((scene, template_name, duration, bg_path, stock_meta))
 
     source_total_duration = sum(item[2] for item in prepared)
+    probe_start = time.perf_counter()
     audio_duration = _probe_media_duration(audio_path)
+    audio_probe_sec = time.perf_counter() - probe_start
     duration_strategy = "scene_durations"
     if audio_duration and source_total_duration > 0 and abs(audio_duration - source_total_duration) > 0.35:
         if audio_duration > source_total_duration and len(prepared) > 1:
@@ -384,14 +392,21 @@ def render_hybrid_video(
     total_duration = sum(item[2] for item in prepared)
     caption_events = split_caption_events(script_text, total_duration, max_words=4)
 
+    writer_open_start = time.perf_counter()
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(str(output), fourcc, float(fps), (width, height))
     if not writer.isOpened():
         raise RuntimeError(f"Unable to open VideoWriter for {output}")
+    writer_open_sec = time.perf_counter() - writer_open_start
 
     global_frame = 0
     elapsed = 0.0
+    total_bg_read_sec = 0.0
+    total_template_sec = 0.0
+    total_caption_sec = 0.0
+    total_writer_write_sec = 0.0
     for scene_idx, (scene, template_name, duration, bg_path, stock_meta) in enumerate(prepared):
+        scene_profile_start = time.perf_counter()
         template = get_template(template_name)
         frame_count = max(1, int(round(duration * fps)))
         capture = cv2.VideoCapture(str(bg_path)) if bg_path else None
@@ -411,17 +426,29 @@ def render_hybrid_video(
         key_boxes: list[tuple[int, int, int, int]] = []
         motion_scores = []
         postability_signals: dict[str, Any] = {}
+        scene_bg_read_sec = 0.0
+        scene_template_sec = 0.0
+        scene_caption_sec = 0.0
+        scene_writer_write_sec = 0.0
         for local_frame in range(frame_count):
             progress = local_frame / max(1, frame_count - 1)
+            bg_start = time.perf_counter()
             canvas = _read_bg_frame(capture, width, height, progress)
             if canvas is None:
                 canvas = np.zeros((height, width, 3), dtype=np.uint8)
+            bg_elapsed = time.perf_counter() - bg_start
+            scene_bg_read_sec += bg_elapsed
+            total_bg_read_sec += bg_elapsed
             scene_config = {
                 **(scene if isinstance(scene, dict) else {}),
                 "has_real_background": bg_path is not None,
                 "style_preset": style_preset,
             }
+            template_start = time.perf_counter()
             template_report = template(local_frame, progress, canvas, scene_config)
+            template_elapsed = time.perf_counter() - template_start
+            scene_template_sec += template_elapsed
+            total_template_sec += template_elapsed
             text_cropped = text_cropped or bool(template_report.get("cropped"))
             key_boxes = [tuple(b) for b in template_report.get("key_number_boxes", [])]
             motion_scores.append(float(template_report.get("motion_score") or 0.5))
@@ -431,14 +458,54 @@ def render_hybrid_video(
 
             current_t = elapsed + local_frame / float(fps)
             active_caption = next((ev["text"] for ev in caption_events if ev["start"] <= current_t < ev["end"]), "")
+            caption_start = time.perf_counter()
             cap_report = draw_caption_band(canvas, active_caption, reserved_boxes=key_boxes)
+            caption_elapsed = time.perf_counter() - caption_start
+            scene_caption_sec += caption_elapsed
+            total_caption_sec += caption_elapsed
             if local_frame == 0 and cap_report.get("caption"):
                 scene_caption_reports.append(cap_report)
+            writer_start = time.perf_counter()
             writer.write(canvas)
+            writer_elapsed = time.perf_counter() - writer_start
+            scene_writer_write_sec += writer_elapsed
+            total_writer_write_sec += writer_elapsed
             global_frame += 1
 
         if capture is not None:
             capture.release()
+        scene_total_sec = time.perf_counter() - scene_profile_start
+        profile_scene_reports.append({
+            "scene_id": _scene_value(scene, "id", None) or _scene_value(scene, "scene", None) or _scene_value(scene, "scene_index", scene_idx + 1),
+            "template": template_name,
+            "frame_count": frame_count,
+            "total_sec": round(scene_total_sec, 4),
+            "asset_loading_resizing_sec": round(scene_bg_read_sec, 4),
+            "template_composition_sec": round(scene_template_sec, 4),
+            "caption_composition_sec": round(scene_caption_sec, 4),
+            "writer_write_sec": round(scene_writer_write_sec, 4),
+            "sec_per_frame": round(scene_total_sec / max(1, frame_count), 5),
+        })
+        template_profile = profile_template_totals.setdefault(
+            template_name,
+            {
+                "template": template_name,
+                "scene_count": 0,
+                "frame_count": 0,
+                "total_sec": 0.0,
+                "asset_loading_resizing_sec": 0.0,
+                "template_composition_sec": 0.0,
+                "caption_composition_sec": 0.0,
+                "writer_write_sec": 0.0,
+            },
+        )
+        template_profile["scene_count"] += 1
+        template_profile["frame_count"] += frame_count
+        template_profile["total_sec"] += scene_total_sec
+        template_profile["asset_loading_resizing_sec"] += scene_bg_read_sec
+        template_profile["template_composition_sec"] += scene_template_sec
+        template_profile["caption_composition_sec"] += scene_caption_sec
+        template_profile["writer_write_sec"] += scene_writer_write_sec
         scene_id = _scene_value(scene, "id", None) or _scene_value(scene, "scene", None) or _scene_value(scene, "scene_index", scene_idx + 1)
         scene_reports.append({
             "scene_id": scene_id,
@@ -455,12 +522,35 @@ def render_hybrid_video(
         })
         elapsed += duration
 
+    writer_release_start = time.perf_counter()
     writer.release()
+    writer_release_sec = time.perf_counter() - writer_release_start
+    mux_audio_sec = 0.0
     if audio_path or use_free_tts:
+        mux_start = time.perf_counter()
         _mux_audio(output, audio_path, total_duration, warnings)
+        mux_audio_sec = time.perf_counter() - mux_start
+    final_probe_start = time.perf_counter()
     final_video_duration = _probe_media_duration(output)
+    final_probe_sec = time.perf_counter() - final_probe_start
     sync_target_duration = audio_duration or total_duration
     sync_delta = abs((final_video_duration or total_duration) - sync_target_duration) if sync_target_duration else None
+    template_totals = []
+    for row in profile_template_totals.values():
+        frame_count = int(row["frame_count"] or 0)
+        out = {
+            "template": row["template"],
+            "scene_count": row["scene_count"],
+            "frame_count": frame_count,
+            "total_sec": round(float(row["total_sec"]), 4),
+            "asset_loading_resizing_sec": round(float(row["asset_loading_resizing_sec"]), 4),
+            "template_composition_sec": round(float(row["template_composition_sec"]), 4),
+            "caption_composition_sec": round(float(row["caption_composition_sec"]), 4),
+            "writer_write_sec": round(float(row["writer_write_sec"]), 4),
+            "sec_per_frame": round(float(row["total_sec"]) / max(1, frame_count), 5),
+        }
+        template_totals.append(out)
+    total_profile_sec = time.perf_counter() - profile_start
 
     return {
         "video_path": str(output),
@@ -475,6 +565,25 @@ def render_hybrid_video(
             "duration_strategy": duration_strategy,
         },
         "scene_reports": scene_reports,
+        "render_profile": {
+            "total_wall_sec": round(total_profile_sec, 4),
+            "frame_count": global_frame,
+            "fps": fps,
+            "width": width,
+            "height": height,
+            "asset_lookup_sec": round(asset_lookup_sec, 4),
+            "audio_probe_sec": round(audio_probe_sec, 4),
+            "final_video_probe_sec": round(final_probe_sec, 4),
+            "writer_open_sec": round(writer_open_sec, 4),
+            "writer_write_sec": round(total_writer_write_sec, 4),
+            "writer_release_sec": round(writer_release_sec, 4),
+            "mux_audio_sec": round(mux_audio_sec, 4),
+            "asset_loading_resizing_sec": round(total_bg_read_sec, 4),
+            "frame_template_composition_sec": round(total_template_sec, 4),
+            "caption_composition_sec": round(total_caption_sec, 4),
+            "per_scene": profile_scene_reports,
+            "per_template": sorted(template_totals, key=lambda row: row["total_sec"], reverse=True),
+        },
         "media_mix": media_mix,
         "warnings": warnings,
         "render_time_sec": round(time.time() - start_time, 3),

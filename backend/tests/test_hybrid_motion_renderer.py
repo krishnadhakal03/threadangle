@@ -54,6 +54,9 @@ def test_renderer_creates_mp4(tmp_path, monkeypatch):
     assert int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) > 0
     cap.release()
     assert result["video_path"] == str(out)
+    assert result["render_profile"]["frame_count"] > 0
+    assert result["render_profile"]["per_scene"]
+    assert result["render_profile"]["per_template"]
 
 
 def test_scene_reports_include_media_classification(tmp_path, monkeypatch):
