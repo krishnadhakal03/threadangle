@@ -142,6 +142,38 @@ _DOMAIN_PACKS: dict[str, dict[str, object]] = {
             "person reacting to expensive invoice",
         ],
     },
+    "bill_leak": {
+        "keyword_triggers": [
+            "bill",
+            "bills",
+            "monthly bill",
+            "price changed",
+            "plan",
+            "cancel",
+            "downgrade",
+            "negotiate",
+            "subscription",
+            "billing",
+        ],
+        "preferred_hook_visual_query_seeds": [
+            "person checking monthly bill on phone close up",
+            "household bill statement phone payment close up",
+            "person reviewing subscription bill laptop phone",
+        ],
+        "proof_visual_query_seeds": [
+            "phone bill statement close up",
+            "subscription billing screen phone close up",
+            "person comparing monthly bills laptop",
+        ],
+        "cta_visual_query_seeds": [
+            "person typing comment on phone close up",
+            "phone social media comment close up",
+        ],
+        "fallback_stock_query_seeds": [
+            "monthly bills paperwork phone vertical",
+            "person checking online payment bill vertical",
+        ],
+    },
     "creator_tools": {
         "keyword_triggers": ["prompt", "chatgpt", "ai tool", "ai tools", "creator", "script", "write me"],
         "preferred_hook_visual_query_seeds": [
@@ -203,7 +235,6 @@ def _scene_template(scene: Any) -> str:
 def _scene_blob(scene: Any) -> str:
     parts = [
         _scene_value(scene, "id", ""),
-        _scene_value(scene, "template", ""),
         _scene_value(scene, "part", ""),
         _scene_value(scene, "scene_type", ""),
         _scene_value(scene, "headline", ""),

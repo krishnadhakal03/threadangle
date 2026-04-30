@@ -26,11 +26,27 @@ def _safe_json(value: Any) -> str:
 
 def _receipt_audit_html(scene: dict[str, Any], width: int, height: int, state: dict[str, Any] | None = None) -> str:
     prompt = _clean_text(scene.get("prompt") or "Find cheaper swaps for these repeat grocery items.")
+    receipt_title = _clean_text(scene.get("receipt_title") or "FRESH MART")
+    browser_label = _clean_text(scene.get("browser_label") or "receipt-audit.local")
+    eyebrow = _clean_text(scene.get("audit_eyebrow") or "AI receipt audit")
+    title = _clean_text(scene.get("audit_title") or "Cheaper swaps I would actually buy")
+    placeholder = _clean_text(scene.get("prompt_placeholder") or "Paste receipt audit prompt...")
     rows = scene.get("swap_rows") or [
         ("Brand cereal", "$8.49", "store brand", "$4.19"),
         ("Snack packs", "$11.80", "bulk bag", "$6.40"),
         ("Drinks", "$13.20", "home pack", "$7.10"),
     ]
+    receipt_lines = scene.get("receipt_lines") or [
+        ("BRAND CEREAL", "$8.49"),
+        ("SNACK PACKS", "$11.80"),
+        ("DRINKS", "$13.20"),
+        ("EXTRAS", "$6.51"),
+        ("LEAK FLAG", scene.get("savings_number") or "$40/week"),
+    ]
+    receipt_lines_html = "\n".join(
+        f'      <div class="line"><span>{html.escape(_clean_text(label))}</span><strong>{html.escape(_clean_text(value))}</strong></div>'
+        for label, value in receipt_lines[:6]
+    )
     savings = _clean_text(scene.get("savings_number") or "$40/week")
     state = state or {"name": "result_reveal", "prompt": prompt, "rows": rows[:3], "saving_visible": True}
     shown_prompt = _clean_text(state.get("prompt") if state.get("prompt") is not None else prompt)
@@ -221,12 +237,8 @@ html, body {{
   <div class="stage">
     <div class="desk"></div>
     <aside class="receipt">
-      <h2>FRESH MART</h2>
-      <div class="line"><span>BRAND CEREAL</span><strong>$8.49</strong></div>
-      <div class="line"><span>SNACK PACKS</span><strong>$11.80</strong></div>
-      <div class="line"><span>DRINKS</span><strong>$13.20</strong></div>
-      <div class="line"><span>EXTRAS</span><strong>$6.51</strong></div>
-      <div class="line"><span>LEAK FLAG</span><strong>{html.escape(savings)}</strong></div>
+      <h2>{html.escape(receipt_title)}</h2>
+{receipt_lines_html}
     </aside>
     <section class="phone">
       <div class="screen">
@@ -234,12 +246,12 @@ html, body {{
           <span class="dot" style="background:#ef4444"></span>
           <span class="dot" style="background:#f59e0b"></span>
           <span class="dot" style="background:#22c55e"></span>
-          <span>receipt-audit.local</span>
+          <span>{html.escape(browser_label)}</span>
         </div>
         <div class="content">
-          <div class="eyebrow">AI receipt audit</div>
-          <div class="title">Cheaper swaps I would actually buy</div>
-          <div class="prompt">{html.escape(shown_prompt or "Paste receipt audit prompt...")}{'<span class="cursor"></span>' if cursor else ''}</div>
+          <div class="eyebrow">{html.escape(eyebrow)}</div>
+          <div class="title">{html.escape(title)}</div>
+          <div class="prompt">{html.escape(shown_prompt or placeholder)}{'<span class="cursor"></span>' if cursor else ''}</div>
           <div class="action"><span class="button">{html.escape(button_text)}</span><span class="loading">{html.escape(loading_text)}</span></div>
           <div id="rows"></div>
           <div class="saving">{html.escape(savings)}</div>
@@ -265,6 +277,9 @@ html, body {{
 
 def _receipt_audit_motion_states(scene: dict[str, Any]) -> list[dict[str, Any]]:
     prompt = _clean_text(scene.get("prompt") or "Find cheaper swaps for these repeat grocery items.")
+    loading_text = _clean_text(scene.get("loading_text") or "Scanning receipt...")
+    found_text = _clean_text(scene.get("found_text") or "Swaps found")
+    result_text = _clean_text(scene.get("result_text") or "Weekly leak found")
     rows = scene.get("swap_rows") or [
         ("Brand cereal", "$8.49", "store brand", "$4.19"),
         ("Snack packs", "$11.80", "bulk bag", "$6.40"),
@@ -293,7 +308,7 @@ def _receipt_audit_motion_states(scene: dict[str, Any]) -> list[dict[str, Any]]:
             "rows": [],
             "saving_visible": False,
             "button_text": "Analyze",
-            "loading_text": "Scanning receipt...",
+            "loading_text": loading_text,
         },
         {
             "name": "results_reveal",
@@ -301,7 +316,7 @@ def _receipt_audit_motion_states(scene: dict[str, Any]) -> list[dict[str, Any]]:
             "rows": rows[:2],
             "saving_visible": False,
             "button_text": "Done",
-            "loading_text": "Swaps found",
+            "loading_text": found_text,
         },
         {
             "name": "savings_result",
@@ -309,7 +324,7 @@ def _receipt_audit_motion_states(scene: dict[str, Any]) -> list[dict[str, Any]]:
             "rows": rows[:3],
             "saving_visible": True,
             "button_text": "Done",
-            "loading_text": "Weekly leak found",
+            "loading_text": result_text,
         },
     ]
 
@@ -317,10 +332,25 @@ def _receipt_audit_motion_states(scene: dict[str, Any]) -> list[dict[str, Any]]:
 def _savings_dashboard_html(scene: dict[str, Any], width: int, height: int) -> str:
     number = _clean_text(scene.get("number") or scene.get("payoff_number") or "$2,080")
     subline = _clean_text(scene.get("subline") or "possible yearly savings")
+    items = [_clean_text(item) for item in (scene.get("dashboard_items") or ["$40/week leak", "AI swap list", "repeatable cart"])]
+    receipt_title = _clean_text(scene.get("receipt_title") or "RECEIPT AUDIT")
+    receipt_lines = scene.get("receipt_lines") or [
+        ("EXTRAS", "$18"),
+        ("BRAND SWAPS", "$13"),
+        ("SNACKS", "$9"),
+        ("WEEKLY LEAK", "$40"),
+    ]
+    receipt_lines_html = "\n".join(
+        f'      <div class="rline"><span>{html.escape(_clean_text(label))}</span><strong>{html.escape(_clean_text(value))}</strong></div>'
+        for label, value in receipt_lines[:6]
+    )
+    eyebrow = _clean_text(scene.get("dashboard_eyebrow") or "AI savings result")
+    title = _clean_text(scene.get("dashboard_title") or "One receipt audit found the leak")
+    footer = _clean_text(scene.get("dashboard_footer") or "$2,080/year saved from one boring receipt audit")
     data = {
         "number": number,
         "subline": subline,
-        "items": ["$40/week leak", "AI swap list", "repeatable cart"],
+        "items": items,
     }
     return f"""<!doctype html>
 <html lang="en">
@@ -433,23 +463,20 @@ html, body {{
 <body data-demo="{_safe_json(data)}">
   <div class="stage">
     <aside class="receipt">
-      <h2>RECEIPT AUDIT</h2>
-      <div class="rline"><span>EXTRAS</span><strong>$18</strong></div>
-      <div class="rline"><span>BRAND SWAPS</span><strong>$13</strong></div>
-      <div class="rline"><span>SNACKS</span><strong>$9</strong></div>
-      <div class="rline"><span>WEEKLY LEAK</span><strong>$40</strong></div>
+      <h2>{html.escape(receipt_title)}</h2>
+{receipt_lines_html}
     </aside>
     <section class="phone">
       <div class="screen">
         <div class="top">
-          <div class="eyebrow">AI savings result</div>
-          <div class="title">One receipt audit found the leak</div>
+          <div class="eyebrow">{html.escape(eyebrow)}</div>
+          <div class="title">{html.escape(title)}</div>
         </div>
         <div class="body">
           <div class="number">{html.escape(number)}</div>
           <div class="subline">{html.escape(subline)}</div>
           <div id="cards"></div>
-          <div class="footer">$2,080/year saved from one boring receipt audit</div>
+          <div class="footer">{html.escape(footer)}</div>
         </div>
       </div>
     </section>
@@ -460,7 +487,7 @@ html, body {{
     (data.items || []).forEach((item) => {{
       const node = document.createElement('div');
       node.className = 'card';
-      node.innerHTML = `<span>${{item}}</span><span class="check">✓</span>`;
+      node.innerHTML = `<span>${{item}}</span><span class="check">&#10003;</span>`;
       cards.appendChild(node);
     }});
   </script>

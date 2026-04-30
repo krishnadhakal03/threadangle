@@ -7,6 +7,7 @@ from utils.hybrid_motion_qa import run_hybrid_motion_qa
 from utils.hybrid_motion_renderer import render_hybrid_video, split_caption_events
 from utils.hmr_scene_asset_strategy import plan_hmr_scene_assets
 from utils.hybrid_scene_templates import ai_prompt_mock, money_shock_math, payoff_number_reveal
+from utils.run_day9_bill_leak import build_bill_leak_scenes
 from utils.run_hybrid_motion_poc import build_day8_scenes
 from utils.run_visual_realism_sprint1 import build_grocery_scenes
 
@@ -101,6 +102,18 @@ def test_hmr_scene_asset_strategy_plans_grocery_visual_sources():
     assert "motion_template" in by_id["ai_compare"]["fallback_order"]
     assert by_id["payoff"]["visual_medium"] == "playwright_capture"
     assert by_id["payoff"]["capture_hint"] == "savings_dashboard"
+
+
+def test_hmr_scene_asset_strategy_plans_bill_leak_visual_sources():
+    strategy = plan_hmr_scene_assets(build_bill_leak_scenes())
+    by_id = {row["scene_id"]: row for row in strategy}
+    assert by_id["hook"]["visual_medium"] == "stock_footage"
+    assert any("bill" in query.lower() for query in by_id["hook"]["query_candidates"])
+    assert by_id["ai_compare"]["visual_medium"] == "playwright_capture"
+    assert by_id["ai_compare"]["capture_hint"] == "receipt_audit_comparison"
+    assert by_id["payoff"]["visual_medium"] == "playwright_capture"
+    assert by_id["payoff"]["capture_hint"] == "savings_dashboard"
+    assert build_bill_leak_scenes()[-1]["headline"] == "Comment bill for the prompt"
 
 
 def test_grocery_hook_reveal_report_missing_asset_setup(tmp_path, monkeypatch):
