@@ -71,8 +71,10 @@ def _write_summary(
     ) or "- Not available"
     recommendations = postability.get("recommendations") or []
     recommendation_lines = "\n".join(f"- {item}" for item in recommendations) if recommendations else "- None"
-    final_recommendation = "Post" if qa_report.get("postability_status") in {"PASS", "STRONG_PASS"} else "Manual review before posting"
     human_review = render_report.get("human_review") or qa_report.get("human_review") or render_report.get("visual_realism_human_gate") or {}
+    final_recommendation = human_review.get("post_no_post_recommendation") or (
+        "Post" if qa_report.get("postability_status") in {"PASS", "STRONG_PASS"} else "Manual review before posting"
+    )
     human_review_lines = "\n".join(
         f"- {label}: {human_review.get(key, '')}"
         for key, label in (
@@ -85,6 +87,7 @@ def _write_summary(
             ("drawn_placeholder_risk", "Drawn placeholder risk"),
             ("ai_compare_real_capture", "AI compare real capture"),
             ("visual_realism_vs_previous", "Visual realism versus previous"),
+            ("first_four_second_realism", "First-four-second realism"),
             ("drawn_placeholders_remaining", "Drawn placeholders remaining"),
             ("first_frame_clarity", "First-frame clarity"),
             ("first_second_clarity", "First-second clarity"),
@@ -114,12 +117,13 @@ def _write_summary(
     ) or "- No scene asset strategy attached"
     scene_reports = render_report.get("scene_reports") or []
     resolution_lines = "\n".join(
-        "- `{scene_id}`: `{asset_type}` via `{provider}`; status: `{status}`; fallback: `{fallback}`; path: `{path}`".format(
+        "- `{scene_id}`: `{asset_type}` via `{provider}`; status: `{status}`; fallback: `{fallback}`; query: `{query}`; path: `{path}`".format(
             scene_id=row.get("scene_id"),
             asset_type=row.get("resolved_asset_type"),
             provider=row.get("resolved_asset_provider"),
             status=row.get("asset_resolution_status"),
             fallback=row.get("fallback_used"),
+            query=row.get("query_used"),
             path=Path(str(row.get("resolved_asset_path"))).name if row.get("resolved_asset_path") else "",
         )
         for row in scene_reports

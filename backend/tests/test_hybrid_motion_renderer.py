@@ -84,6 +84,7 @@ def test_scene_reports_include_media_classification(tmp_path, monkeypatch):
     assert all("scene_asset_strategy" in row for row in result["scene_reports"])
     assert all("resolved_asset_type" in row for row in result["scene_reports"])
     assert all("asset_resolution_status" in row for row in result["scene_reports"])
+    assert all("query_used" in row for row in result["scene_reports"])
     assert result["visual_realism_human_gate"]["planned_real_sources"] >= 1
     assert result["visual_realism_human_gate"]["scene_asset_strategy_used"] is True
 
@@ -98,6 +99,32 @@ def test_hmr_scene_asset_strategy_plans_grocery_visual_sources():
     assert by_id["ai_compare"]["capture_hint"] == "receipt_audit_comparison"
     assert "motion_template" in by_id["ai_compare"]["fallback_order"]
     assert by_id["payoff"]["visual_medium"] == "stock_image"
+
+
+def test_grocery_hook_reveal_report_missing_asset_setup(tmp_path, monkeypatch):
+    monkeypatch.delenv("PEXELS_API_KEY", raising=False)
+    monkeypatch.delenv("PIXABAY_API_KEY", raising=False)
+    scenes = build_grocery_scenes()[:2]
+    for scene in scenes:
+        scene["duration"] = 0.25
+    result = render_hybrid_video(
+        scenes,
+        "I found a forty dollar leak. Repeat items did it.",
+        tmp_path / "grocery_missing_assets.mp4",
+        fps=6,
+        width=270,
+        height=480,
+        use_stock_backgrounds=True,
+        use_free_tts=False,
+    )
+    by_id = {row["scene_id"]: row for row in result["scene_reports"]}
+    for scene_id in ("hook", "reveal"):
+        row = by_id[scene_id]
+        assert row["fallback_used"] is True
+        assert row["provider_available"] is False
+        assert row["asset_resolution_status"] == "stock_provider_keys_not_configured_and_local_asset_missing"
+        assert "PEXELS_API_KEY" in row["missing_config"]
+        assert row["queries_attempted"]
 
 
 def test_captions_stay_under_max_words():

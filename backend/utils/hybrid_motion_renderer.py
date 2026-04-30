@@ -34,6 +34,10 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 GENERATED_DIR = BASE_DIR / "generated_videos"
 CACHE_DIR = GENERATED_DIR / "cache" / "hybrid_motion"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
+REPO_ROOT = BASE_DIR.parent
+LOCAL_HMR_ASSET_DIR = REPO_ROOT / "assets" / "hmr_local"
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".webm"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 HYBRID_METHOD_TO_TEMPLATE = {
     "stock_plus_motion_overlay": "hook_footage_overlay",
@@ -158,9 +162,26 @@ def _provider_available() -> bool:
     return bool(os.getenv("PEXELS_API_KEY") or os.getenv("PIXABAY_API_KEY"))
 
 
-def _stock_cache_path(url: str) -> Path:
+def _provider_config_status() -> dict[str, Any]:
+    pexels = bool(os.getenv("PEXELS_API_KEY", "").strip())
+    pixabay = bool(os.getenv("PIXABAY_API_KEY", "").strip())
+    missing = []
+    if not pexels:
+        missing.append("PEXELS_API_KEY")
+    if not pixabay:
+        missing.append("PIXABAY_API_KEY")
+    return {
+        "provider_available": pexels or pixabay,
+        "pexels_configured": pexels,
+        "pixabay_configured": pixabay,
+        "missing_config": missing,
+    }
+
+
+def _stock_cache_path(url: str, suffix: str = ".mp4") -> Path:
     digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
-    return CACHE_DIR / f"stock_{digest}.mp4"
+    clean_suffix = suffix if suffix.startswith(".") else f".{suffix}"
+    return CACHE_DIR / f"stock_{digest}{clean_suffix}"
 
 
 def _fetch_pexels_candidates(query: str) -> list[dict[str, Any]]:
@@ -184,6 +205,7 @@ def _fetch_pexels_candidates(query: str) -> list[dict[str, Any]]:
                     chosen = ranked[0]
                     out.append({
                         "provider": "pexels",
+                        "media_type": "stock_footage",
                         "url": chosen.get("link"),
                         "width": chosen.get("width"),
                         "height": chosen.get("height"),
@@ -214,11 +236,74 @@ def _fetch_pixabay_candidates(query: str) -> list[dict[str, Any]]:
                 if chosen.get("url"):
                     out.append({
                         "provider": "pixabay",
+                        "media_type": "stock_footage",
                         "url": chosen.get("url"),
                         "width": chosen.get("width"),
                         "height": chosen.get("height"),
                         "duration": video.get("duration"),
                         "id": f"pixabay:{video.get('id')}",
+                    })
+            return out
+    except Exception:
+        return []
+
+
+def _fetch_pexels_image_candidates(query: str) -> list[dict[str, Any]]:
+    key = os.getenv("PEXELS_API_KEY", "").strip()
+    if not key:
+        return []
+    try:
+        with httpx.Client(timeout=12.0, follow_redirects=True) as client:
+            res = client.get(
+                "https://api.pexels.com/v1/search",
+                headers={"Authorization": key},
+                params={"query": query, "per_page": 5, "orientation": "portrait"},
+            )
+            if res.status_code != 200:
+                return []
+            out = []
+            for photo in res.json().get("photos", [])[:5]:
+                src = photo.get("src") or {}
+                url = src.get("portrait") or src.get("large2x") or src.get("large") or src.get("original")
+                if url:
+                    out.append({
+                        "provider": "pexels",
+                        "media_type": "stock_image",
+                        "url": url,
+                        "width": photo.get("width"),
+                        "height": photo.get("height"),
+                        "duration": 0,
+                        "id": f"pexels_photo:{photo.get('id')}",
+                    })
+            return out
+    except Exception:
+        return []
+
+
+def _fetch_pixabay_image_candidates(query: str) -> list[dict[str, Any]]:
+    key = os.getenv("PIXABAY_API_KEY", "").strip()
+    if not key:
+        return []
+    try:
+        with httpx.Client(timeout=12.0, follow_redirects=True) as client:
+            res = client.get(
+                "https://pixabay.com/api/",
+                params={"key": key, "q": query, "per_page": 5, "image_type": "photo", "orientation": "vertical"},
+            )
+            if res.status_code != 200:
+                return []
+            out = []
+            for photo in res.json().get("hits", [])[:5]:
+                url = photo.get("largeImageURL") or photo.get("webformatURL")
+                if url:
+                    out.append({
+                        "provider": "pixabay",
+                        "media_type": "stock_image",
+                        "url": url,
+                        "width": photo.get("imageWidth") or photo.get("webformatWidth"),
+                        "height": photo.get("imageHeight") or photo.get("webformatHeight"),
+                        "duration": 0,
+                        "id": f"pixabay_photo:{photo.get('id')}",
                     })
             return out
     except Exception:
@@ -235,7 +320,9 @@ def _score_stock_candidate(candidate: dict[str, Any], used_ids: set[str]) -> flo
     if height >= width:
         score += 80
     score += min(height, 1920) / 50.0
-    if 2 <= duration <= 20:
+    if candidate.get("media_type") == "stock_image":
+        score += 10
+    elif 2 <= duration <= 20:
         score += 20
     return score
 
@@ -244,7 +331,8 @@ def _download_stock_candidate(candidate: dict[str, Any], warnings: list[str]) ->
     url = candidate.get("url")
     if not url:
         return None
-    out = _stock_cache_path(url)
+    suffix = ".jpg" if candidate.get("media_type") == "stock_image" else ".mp4"
+    out = _stock_cache_path(url, suffix=suffix)
     if out.exists() and out.stat().st_size > 1000:
         return out
     try:
@@ -260,18 +348,167 @@ def _download_stock_candidate(candidate: dict[str, Any], warnings: list[str]) ->
         return None
 
 
+def _stock_candidates_for_query(query: str, media_type: str) -> list[dict[str, Any]]:
+    if media_type == "stock_image":
+        return _fetch_pexels_image_candidates(query) + _fetch_pixabay_image_candidates(query)
+    return _fetch_pexels_candidates(query) + _fetch_pixabay_candidates(query)
+
+
+def _select_stock_asset(
+    query_candidates: list[str],
+    media_order: list[str],
+    used_ids: set[str],
+    warnings: list[str],
+) -> tuple[Path | None, dict[str, Any]]:
+    provider_status = _provider_config_status()
+    queries = [str(query).strip() for query in query_candidates if str(query).strip()]
+    queries_attempted = queries[:]
+    if not provider_status["provider_available"]:
+        return None, {
+            **provider_status,
+            "queries_attempted": queries_attempted,
+            "query_used": None,
+            "candidates": 0,
+            "reason": "stock_provider_keys_not_configured",
+        }
+
+    total_candidates = 0
+    for media_type in media_order:
+        if media_type not in {"stock_footage", "stock_image"}:
+            continue
+        for query in queries:
+            candidates = _stock_candidates_for_query(query, media_type)
+            total_candidates += len(candidates)
+            ranked = sorted(candidates, key=lambda c: _score_stock_candidate(c, used_ids), reverse=True)
+            for candidate in ranked[:5]:
+                path = _download_stock_candidate(candidate, warnings)
+                if path:
+                    used_ids.add(str(candidate.get("id")))
+                    return path, {
+                        **provider_status,
+                        "queries_attempted": queries_attempted,
+                        "query_used": query,
+                        "candidates": total_candidates,
+                        "chosen": candidate,
+                        "reason": "resolved",
+                    }
+    return None, {
+        **provider_status,
+        "queries_attempted": queries_attempted,
+        "query_used": None,
+        "candidates": total_candidates,
+        "reason": "no_stock_asset_resolved",
+    }
+
+
 def _select_stock_background(scene: Any, template: str, used_ids: set[str], warnings: list[str]) -> tuple[Path | None, dict[str, Any]]:
-    query = _scene_query(scene, template)
-    candidates = _fetch_pexels_candidates(query) + _fetch_pixabay_candidates(query)
-    if not candidates:
-        return None, {"query": query, "candidates": 0, "provider_available": _provider_available(), "reason": "no_candidates"}
-    ranked = sorted(candidates, key=lambda c: _score_stock_candidate(c, used_ids), reverse=True)
-    for candidate in ranked[:5]:
-        path = _download_stock_candidate(candidate, warnings)
-        if path:
-            used_ids.add(str(candidate.get("id")))
-            return path, {"query": query, "candidates": len(candidates), "chosen": candidate, "provider_available": True}
-    return None, {"query": query, "candidates": len(candidates), "provider_available": True, "reason": "download_or_validation_failed"}
+    return _select_stock_asset([_scene_query(scene, template)], ["stock_footage"], used_ids, warnings)
+
+
+def _local_asset_candidates(scene_id: Any, asset_strategy: dict[str, Any]) -> list[Path]:
+    scene_key = str(scene_id or "").lower().strip()
+    role = str(asset_strategy.get("asset_role") or "").lower().strip()
+    roots = [LOCAL_HMR_ASSET_DIR / "grocery", LOCAL_HMR_ASSET_DIR]
+    names = [scene_key]
+    if "hook" in scene_key or "hook" in role:
+        names.extend(["hook", "grocery_hook", "receipt_hook"])
+    if "reveal" in scene_key or "context" in role:
+        names.extend(["reveal", "grocery_reveal", "receipt_reveal"])
+    out: list[Path] = []
+    for root in roots:
+        for name in names:
+            for ext in [*VIDEO_EXTENSIONS, *IMAGE_EXTENSIONS]:
+                out.append(root / f"{name}{ext}")
+            out.extend(sorted((root / name).glob("*")) if (root / name).exists() else [])
+    return [path for path in out if path.exists() and path.is_file()]
+
+
+def _resolve_local_asset(scene_id: Any, asset_strategy: dict[str, Any]) -> tuple[Path | None, dict[str, Any]]:
+    candidates = _local_asset_candidates(scene_id, asset_strategy)
+    for path in candidates:
+        suffix = path.suffix.lower()
+        if suffix in VIDEO_EXTENSIONS:
+            asset_type = "stock_footage"
+        elif suffix in IMAGE_EXTENSIONS:
+            asset_type = "stock_image"
+        else:
+            continue
+        return path, {
+            "resolved_asset_type": asset_type,
+            "resolved_asset_path": str(path),
+            "resolved_asset_provider": "local_asset",
+            "asset_resolution_status": "resolved",
+            "fallback_used": False,
+            "query_used": None,
+            "queries_attempted": [],
+            "provider_available": True,
+            "missing_config": [],
+        }
+    return None, {
+        "resolved_asset_type": None,
+        "resolved_asset_path": None,
+        "resolved_asset_provider": None,
+        "asset_resolution_status": "local_asset_missing",
+        "fallback_used": True,
+        "query_used": None,
+        "queries_attempted": [],
+        "provider_available": False,
+        "missing_config": [
+            "Add files such as assets/hmr_local/grocery/hook.mp4 or reveal.jpg",
+        ],
+    }
+
+
+def _resolve_hook_reveal_asset(
+    scene_id: Any,
+    asset_strategy: dict[str, Any],
+    used_ids: set[str],
+    warnings: list[str],
+    use_stock_backgrounds: bool,
+) -> tuple[Path | None, dict[str, Any]]:
+    queries = [str(query) for query in asset_strategy.get("query_candidates") or [] if str(query).strip()]
+    media_order = ["stock_footage", "stock_image"]
+    stock_meta: dict[str, Any] = {}
+    if use_stock_backgrounds:
+        stock_path, stock_meta = _select_stock_asset(queries, media_order, used_ids, warnings)
+        if stock_path:
+            chosen = stock_meta.get("chosen") or {}
+            return stock_path, {
+                "resolved_asset_type": str(chosen.get("media_type") or "stock_footage"),
+                "resolved_asset_path": str(stock_path),
+                "resolved_asset_provider": str(chosen.get("provider") or "stock_provider"),
+                "asset_resolution_status": "resolved",
+                "fallback_used": False,
+                "query_used": stock_meta.get("query_used"),
+                "queries_attempted": stock_meta.get("queries_attempted") or queries,
+                "provider_available": stock_meta.get("provider_available"),
+                "missing_config": stock_meta.get("missing_config") or [],
+            }
+
+    local_path, local_meta = _resolve_local_asset(scene_id, asset_strategy)
+    if local_path:
+        local_meta["queries_attempted"] = queries
+        local_meta["provider_available"] = stock_meta.get("provider_available", _provider_available())
+        local_meta["missing_config"] = stock_meta.get("missing_config") or []
+        return local_path, local_meta
+
+    provider_status = _provider_config_status()
+    missing_config = list(provider_status.get("missing_config") or [])
+    missing_config.extend(local_meta.get("missing_config") or [])
+    status = "stock_provider_keys_not_configured_and_local_asset_missing"
+    if provider_status["provider_available"]:
+        status = "stock_unresolved_and_local_asset_missing"
+    return None, {
+        "resolved_asset_type": None,
+        "resolved_asset_path": None,
+        "resolved_asset_provider": None,
+        "asset_resolution_status": status,
+        "fallback_used": True,
+        "query_used": stock_meta.get("query_used"),
+        "queries_attempted": stock_meta.get("queries_attempted") or queries,
+        "provider_available": provider_status["provider_available"],
+        "missing_config": missing_config,
+    }
 
 
 def _visual_realism_human_gate(asset_strategy: list[dict[str, Any]], scene_reports: list[dict[str, Any]]) -> dict[str, Any]:
@@ -422,6 +659,7 @@ def render_hybrid_video(
         "provider_available": _provider_available(),
         "used": False,
         "reason": "",
+        "provider_config": _provider_config_status(),
     }
     scene_asset_strategy = plan_hmr_scene_assets(scenes)
     strategy_by_scene_id = {str(row.get("scene_id")): row for row in scene_asset_strategy}
@@ -439,6 +677,10 @@ def render_hybrid_video(
             "resolved_asset_provider": None,
             "asset_resolution_status": "not_attempted",
             "fallback_used": True,
+            "query_used": None,
+            "queries_attempted": [],
+            "provider_available": None,
+            "missing_config": [],
         }
         scene_id = _scene_value(scene, "id", None) or _scene_value(scene, "scene", None) or _scene_value(scene, "scene_index", idx + 1)
         asset_strategy = strategy_by_scene_id.get(str(scene_id), {})
@@ -453,6 +695,27 @@ def render_hybrid_video(
             )
             if asset_resolution.get("fallback_used"):
                 warnings.append(f"asset_resolution_fallback:{scene_id}:{asset_resolution.get('asset_resolution_status')}")
+        elif str(scene_id) in {"hook", "reveal"} and asset_strategy.get("visual_medium") in {"stock_footage", "stock_image"}:
+            bg_path, asset_resolution = _resolve_hook_reveal_asset(
+                scene_id,
+                asset_strategy,
+                used_stock_ids,
+                warnings,
+                use_stock_backgrounds,
+            )
+            stock_meta = {
+                "provider_available": asset_resolution.get("provider_available"),
+                "queries_attempted": asset_resolution.get("queries_attempted") or [],
+                "query_used": asset_resolution.get("query_used"),
+                "reason": asset_resolution.get("asset_resolution_status"),
+                "missing_config": asset_resolution.get("missing_config") or [],
+            }
+            if bg_path and asset_resolution.get("resolved_asset_provider") != "local_asset":
+                stock_status["used"] = True
+            elif not stock_status["reason"]:
+                stock_status["reason"] = asset_resolution.get("asset_resolution_status") or "asset_unresolved_for_scene"
+            if asset_resolution.get("fallback_used"):
+                warnings.append(f"asset_resolution_fallback:{scene_id}:{asset_resolution.get('asset_resolution_status')}")
         elif use_stock_backgrounds and template_name == "hook_footage_overlay" and _provider_available():
             bg_path, stock_meta = _select_stock_background(scene, template_name, used_stock_ids, warnings)
             if bg_path:
@@ -463,6 +726,10 @@ def render_hybrid_video(
                     "resolved_asset_provider": str((stock_meta.get("chosen") or {}).get("provider") or "stock_provider"),
                     "asset_resolution_status": "resolved",
                     "fallback_used": False,
+                    "query_used": stock_meta.get("query_used") or stock_meta.get("query"),
+                    "queries_attempted": stock_meta.get("queries_attempted") or [stock_meta.get("query")],
+                    "provider_available": True,
+                    "missing_config": [],
                 }
             elif not stock_status["reason"]:
                 stock_status["reason"] = stock_meta.get("reason") or "stock_unavailable_for_scene"
@@ -518,7 +785,14 @@ def render_hybrid_video(
         scene_profile_start = time.perf_counter()
         template = get_template(template_name)
         frame_count = max(1, int(round(duration * fps)))
-        capture = cv2.VideoCapture(str(bg_path)) if bg_path else None
+        resolved_type = str(asset_resolution.get("resolved_asset_type") or "")
+        bg_suffix = bg_path.suffix.lower() if bg_path else ""
+        image_background = None
+        if bg_path and (resolved_type == "stock_image" or bg_suffix in IMAGE_EXTENSIONS):
+            raw_image = cv2.imread(str(bg_path))
+            if raw_image is not None:
+                image_background = _fit_background_frame(raw_image, width, height, 0.0)
+        capture = cv2.VideoCapture(str(bg_path)) if bg_path and image_background is None else None
         media_class = "REAL_STOCK" if bg_path else "ANIMATED_FALLBACK"
         if asset_resolution.get("resolved_asset_type") == "playwright_capture":
             media_class = "LOCAL_CAPTURE"
@@ -545,7 +819,10 @@ def render_hybrid_video(
         for local_frame in range(frame_count):
             progress = local_frame / max(1, frame_count - 1)
             bg_start = time.perf_counter()
-            canvas = _read_bg_frame(capture, width, height, progress)
+            if image_background is not None:
+                canvas = image_background.copy()
+            else:
+                canvas = _read_bg_frame(capture, width, height, progress)
             if canvas is None:
                 canvas = np.zeros((height, width, 3), dtype=np.uint8)
             bg_elapsed = time.perf_counter() - bg_start
@@ -558,7 +835,7 @@ def render_hybrid_video(
                 **{
                     key: value
                     for key, value in asset_resolution.items()
-                    if key.startswith("resolved_asset_") or key in {"asset_resolution_status", "fallback_used"}
+                    if key.startswith("resolved_asset_") or key in {"asset_resolution_status", "fallback_used", "query_used", "queries_attempted", "provider_available", "missing_config"}
                 },
                 "_template_cache": template_cache,
             }
@@ -637,6 +914,10 @@ def render_hybrid_video(
             "resolved_asset_provider": asset_resolution.get("resolved_asset_provider"),
             "asset_resolution_status": asset_resolution.get("asset_resolution_status"),
             "fallback_used": asset_resolution.get("fallback_used"),
+            "query_used": asset_resolution.get("query_used"),
+            "queries_attempted": asset_resolution.get("queries_attempted") or [],
+            "provider_available": asset_resolution.get("provider_available"),
+            "missing_config": asset_resolution.get("missing_config") or [],
             "provider_usage": (
                 stock_meta
                 if bg_path

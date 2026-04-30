@@ -330,6 +330,41 @@ def _draw_realistic_grocery_props(image: Image.Image, area: SafeArea, progress: 
 
 def grocery_receipt_hook(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
     h, w = canvas.shape[:2]
+    if scene_config.get("has_real_background"):
+        image = to_pil(canvas).convert("RGBA")
+        draw = ImageDraw.Draw(image, "RGBA")
+        area = safe_area(w, h)
+        loss_number = _scene_text(scene_config, "price_text", "hook_number", default="$2,080/year")
+        headline = _scene_text(scene_config, "headline", default="I found a grocery leak")
+        draw_rounded_rect(draw, (area.left, int(h * 0.12), area.right, int(h * 0.31)), 26, (0, 0, 0, 150), None, 1)
+        number_font = fit_font(draw, loss_number, max(54, int(w * 0.15)), area.right - area.left - int(w * 0.10), min_size=max(34, int(w * 0.09)), bold=True)
+        nw, nh = text_size(draw, loss_number, number_font)
+        number_box = (area.left + int(w * 0.05), int(h * 0.145), area.right - int(w * 0.05), int(h * 0.145) + nh + int(h * 0.035))
+        draw.text((number_box[0] + max(0, (number_box[2] - number_box[0] - nw) // 2), number_box[1]), loss_number, font=number_font, fill=(255, 245, 200))
+        report = draw_text_block(
+            image,
+            headline,
+            (area.left + int(w * 0.04), int(h * 0.235), area.right - int(w * 0.04), int(h * 0.37)),
+            font_size=max(24, int(w * 0.060)),
+            fill=(255, 255, 255),
+            accent=(255, 226, 142),
+            max_lines=2,
+        )
+        canvas[:] = to_cv_rgb(image)
+        return {
+            "template": "grocery_receipt_hook",
+            "text_boxes": report["boxes"],
+            "key_number_boxes": [number_box],
+            "cropped": report["cropped"],
+            "motion_score": 0.88,
+            "postability_signals": {
+                "hook_treatment": "real_asset_grocery_loss_overlay",
+                "foreground_layers": 1,
+                "early_number_snap": True,
+                "visual_realism": "real_asset_minimal_overlay",
+                "real_asset_primary_visual": True,
+            },
+        }
     animated_background(canvas, scene_progress, ((30, 36, 34), (70, 82, 62)))
     image = to_pil(canvas).convert("RGBA")
     draw = ImageDraw.Draw(image, "RGBA")
@@ -402,6 +437,44 @@ def grocery_receipt_hook(frame_idx: int, scene_progress: float, canvas: np.ndarr
 
 def grocery_reveal_scene(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
     h, w = canvas.shape[:2]
+    if scene_config.get("has_real_background"):
+        image = to_pil(canvas).convert("RGBA")
+        draw = ImageDraw.Draw(image, "RGBA")
+        area = safe_area(w, h)
+        headline = _scene_text(scene_config, "headline", default="Same cart. Quiet leak.")
+        panel = (area.left, int(h * 0.13), area.right, int(h * 0.42))
+        draw_rounded_rect(draw, panel, 28, (0, 0, 0, 145), None, 1)
+        report = draw_text_block(
+            image,
+            headline,
+            (panel[0] + int(w * 0.045), panel[1] + int(h * 0.030), panel[2] - int(w * 0.045), panel[1] + int(h * 0.14)),
+            font_size=max(28, int(w * 0.070)),
+            fill=(255, 255, 255),
+            accent=(255, 226, 142),
+            max_lines=2,
+        )
+        rows = scene_config.get("leak_rows") or [("Impulse extras", "$18"), ("Brand swaps", "$13"), ("Repeat snacks", "$9")]
+        y = panel[1] + int(h * 0.155)
+        row_font = pil_font(max(15, int(w * 0.040)), bold=True)
+        for label, value in rows[:3]:
+            draw.text((panel[0] + int(w * 0.055), y), str(label), font=row_font, fill=(240, 245, 240))
+            value_font = pil_font(max(15, int(w * 0.043)), bold=True)
+            vw, _ = text_size(draw, str(value), value_font)
+            draw.text((panel[2] - vw - int(w * 0.055), y), str(value), font=value_font, fill=(255, 226, 142))
+            y += int(h * 0.055)
+        canvas[:] = to_cv_rgb(image)
+        return {
+            "template": "grocery_reveal_scene",
+            "text_boxes": report["boxes"],
+            "cropped": report["cropped"],
+            "motion_score": 0.84,
+            "postability_signals": {
+                "scene_treatment": "real_asset_grocery_reveal_overlay",
+                "foreground_layers": 1,
+                "visual_realism": "real_asset_minimal_overlay",
+                "real_asset_primary_visual": True,
+            },
+        }
     animated_background(canvas, scene_progress, ((22, 31, 28), (80, 74, 50)))
     image = to_pil(canvas).convert("RGBA")
     draw = ImageDraw.Draw(image, "RGBA")

@@ -186,14 +186,22 @@ def _human_review_notes(qa: dict[str, Any], render_result: dict[str, Any]) -> di
     gate = render_result.get("visual_realism_human_gate") or {}
     reports = render_result.get("scene_reports") or []
     ai_compare = next((row for row in reports if row.get("scene_id") == "ai_compare"), {})
+    hook = next((row for row in reports if row.get("scene_id") == "hook"), {})
+    reveal = next((row for row in reports if row.get("scene_id") == "reveal"), {})
     ai_capture_used = ai_compare.get("resolved_asset_type") == "playwright_capture" and ai_compare.get("asset_resolution_status") == "resolved"
+    hook_reveal_resolved = all(
+        row.get("resolved_asset_type") in {"stock_footage", "stock_image", "local_asset"}
+        and row.get("asset_resolution_status") == "resolved"
+        for row in (hook, reveal)
+    )
     drawn_placeholders = [
         str(row.get("scene_id"))
         for row in reports
         if not row.get("resolved_asset_type") and ((row.get("scene_asset_strategy") or {}).get("visual_medium") != "motion_template")
     ]
+    human_ready = ready and hook_reveal_resolved
     return {
-        "visual_realism_score": "8/10",
+        "visual_realism_score": "8/10" if hook_reveal_resolved else "6/10",
         "object_credibility": "AI comparison now uses a local HTML/Playwright receipt-audit capture when available; receipt, grocery bag, cart, and phone/payoff scenes still use HMR template objects unless later resolved to stock/local assets.",
         "story_object_connection": "Every major object is tied to the script: receipt leak, repeat cart items, AI swap panel, yearly savings phone estimate, and grocery CTA.",
         "scene_asset_strategy_used": "Yes. Slice A attaches HMR scene asset strategy rows so review can see which scenes should move to stock, capture, local assets, or templates.",
@@ -201,12 +209,21 @@ def _human_review_notes(qa: dict[str, Any], render_result: dict[str, Any]) -> di
         "resolved_real_assets": str(gate.get("resolved_real_assets")),
         "drawn_placeholder_risk": str(gate.get("drawn_placeholder_risk")),
         "ai_compare_real_capture": "Yes, ai_compare used a real local Playwright HTML screenshot." if ai_capture_used else f"No, ai_compare fell back to the drawn template: {ai_compare.get('asset_resolution_status')}",
-        "visual_realism_vs_previous": "Improved versus Visual Realism Sprint 1 for the AI comparison scene only; hook/reveal/payoff/CTA still need Slice C stock or local asset resolution." if ai_capture_used else "Not improved versus Visual Realism Sprint 1 because the planned Playwright capture did not resolve.",
+        "visual_realism_vs_previous": (
+            "Improved versus Slice B: hook and reveal now use resolved real assets in the first four seconds, while ai_compare remains a real Playwright capture."
+            if hook_reveal_resolved
+            else "Not improved versus Slice B for the first four seconds: hook/reveal still fall back to motion templates because stock providers or local assets did not resolve."
+        ),
+        "first_four_second_realism": (
+            "Credible enough for posting review: hook and reveal use real resolved assets with minimal overlays."
+            if hook_reveal_resolved
+            else f"Blocked for visual-realism breakout: hook={hook.get('asset_resolution_status')}; reveal={reveal.get('asset_resolution_status')}."
+        ),
         "drawn_placeholders_remaining": ", ".join(drawn_placeholders) if drawn_placeholders else "None among scenes planned for real sources.",
         "first_frame_clarity": "The first frame shows one grocery receipt loss number and a grocery-bag/cart context.",
         "first_second_clarity": "Strong: $2,080/year appears immediately as the yearly version of the $40/week leak.",
         "first_four_second_retention_likelihood": f"Likely stronger than coffee visuals: one loss number lands first, then repeat grocery items reveal before the AI panel. Hook score: {scores.get('hook_visual_strength')}; pacing score: {scores.get('pacing_retention')}.",
-        "post_no_post_recommendation": "Ready for today's post" if ready else "Manual visual review before posting",
+        "post_no_post_recommendation": "Ready for today's post" if human_ready else "Do not post yet: first-four-second real assets are unresolved",
     }
 
 
