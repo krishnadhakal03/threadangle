@@ -76,7 +76,11 @@ def _write_summary(
     human_review_lines = "\n".join(
         f"- {label}: {human_review.get(key, '')}"
         for key, label in (
+            ("visual_realism_score", "Visual realism score"),
+            ("object_credibility", "Object credibility"),
+            ("story_object_connection", "Story-object connection"),
             ("first_frame_clarity", "First-frame clarity"),
+            ("first_second_clarity", "First-second clarity"),
             ("first_second_shock_value", "First-second shock value"),
             ("first_four_second_retention_likelihood", "First-four-second retention likelihood"),
             ("number_consistency", "Number consistency"),

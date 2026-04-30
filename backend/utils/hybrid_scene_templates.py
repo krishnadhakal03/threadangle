@@ -272,6 +272,291 @@ def _scene_text(scene_config: dict[str, Any], *keys: str, default: str = "") -> 
     return default
 
 
+def _draw_paper_texture(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], color: Color = (252, 248, 238)) -> None:
+    x1, y1, x2, y2 = box
+    draw_rounded_rect(draw, box, max(18, int((x2 - x1) * 0.045)), color, (230, 222, 205), max(1, int((x2 - x1) * 0.006)))
+    for i in range(20):
+        y = y1 + int((i + 1) * (y2 - y1) / 22)
+        alpha = 22 + (i % 3) * 8
+        draw.line((x1 + 18, y, x2 - 18, y + (i % 2)), fill=(174, 160, 135, alpha), width=1)
+    for i in range(34):
+        x = x1 + 16 + (i * 47) % max(1, (x2 - x1 - 32))
+        y = y1 + 18 + (i * 71) % max(1, (y2 - y1 - 36))
+        draw.ellipse((x, y, x + 2, y + 1), fill=(126, 112, 91, 35))
+
+
+def _draw_realistic_grocery_props(image: Image.Image, area: SafeArea, progress: float) -> None:
+    draw = ImageDraw.Draw(image, "RGBA")
+    w, h = image.size
+    table_y = int(h * 0.74)
+    draw.rectangle((0, table_y, w, h), fill=(52, 42, 34, 210))
+    for i in range(8):
+        x = int(w * (i / 7))
+        draw.line((x, table_y, x - int(w * 0.12), h), fill=(78, 62, 48, 120), width=max(1, int(w * 0.004)))
+
+    bag_x = area.left + int(w * 0.03 * math.sin(progress * math.tau))
+    bag_y = int(h * 0.46)
+    bag_w = int(w * 0.36)
+    bag_h = int(h * 0.33)
+    draw.polygon(
+        [(bag_x, bag_y + bag_h), (bag_x + int(bag_w * 0.12), bag_y + int(bag_h * 0.12)), (bag_x + int(bag_w * 0.92), bag_y), (bag_x + bag_w, bag_y + bag_h)],
+        fill=(190, 142, 86, 245),
+    )
+    draw.polygon(
+        [(bag_x + int(bag_w * 0.12), bag_y + int(bag_h * 0.12)), (bag_x + int(bag_w * 0.24), bag_y + int(bag_h * 0.04)), (bag_x + int(bag_w * 0.92), bag_y), (bag_x + int(bag_w * 0.76), bag_y + int(bag_h * 0.13))],
+        fill=(226, 178, 108, 235),
+    )
+    draw.line((bag_x + int(bag_w * 0.28), bag_y + int(bag_h * 0.05), bag_x + int(bag_w * 0.38), bag_y - int(h * 0.04), bag_x + int(bag_w * 0.55), bag_y + int(bag_h * 0.04)), fill=(127, 89, 52, 220), width=max(2, int(w * 0.009)))
+
+    apple = (bag_x + int(bag_w * 0.18), bag_y - int(h * 0.02), bag_x + int(bag_w * 0.36), bag_y + int(h * 0.08))
+    draw.ellipse(apple, fill=(181, 44, 48, 245))
+    draw.ellipse((apple[0] + int(w * 0.025), apple[1] + int(h * 0.015), apple[0] + int(w * 0.055), apple[1] + int(h * 0.035)), fill=(250, 226, 210, 110))
+    draw.ellipse((bag_x + int(bag_w * 0.46), bag_y - int(h * 0.04), bag_x + int(bag_w * 0.72), bag_y + int(h * 0.055)), fill=(42, 126, 75, 240))
+    draw.rectangle((bag_x + int(bag_w * 0.62), bag_y - int(h * 0.065), bag_x + int(bag_w * 0.82), bag_y - int(h * 0.01)), fill=(38, 116, 72, 230))
+
+    cart_x = area.right - int(w * 0.38)
+    cart_y = int(h * 0.61)
+    cart_w = int(w * 0.30)
+    cart_h = int(h * 0.13)
+    draw.line((cart_x, cart_y, cart_x + cart_w, cart_y + int(cart_h * 0.18)), fill=(190, 198, 205, 230), width=max(2, int(w * 0.010)))
+    draw.line((cart_x + int(cart_w * 0.08), cart_y + cart_h, cart_x + cart_w, cart_y + int(cart_h * 0.18)), fill=(190, 198, 205, 230), width=max(2, int(w * 0.010)))
+    for i in range(5):
+        x = cart_x + int(cart_w * (0.16 + i * 0.15))
+        draw.line((x, cart_y + int(cart_h * 0.08), x - int(w * 0.02), cart_y + cart_h), fill=(220, 226, 232, 160), width=max(1, int(w * 0.004)))
+    draw.line((cart_x + cart_w, cart_y + int(cart_h * 0.18), cart_x + cart_w + int(w * 0.07), cart_y - int(h * 0.035)), fill=(190, 198, 205, 230), width=max(2, int(w * 0.01)))
+    for cx in (cart_x + int(cart_w * 0.18), cart_x + int(cart_w * 0.84)):
+        draw.ellipse((cx, cart_y + cart_h, cx + int(w * 0.05), cart_y + cart_h + int(w * 0.05)), fill=(24, 31, 42, 230))
+
+
+def grocery_receipt_hook(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
+    h, w = canvas.shape[:2]
+    animated_background(canvas, scene_progress, ((30, 36, 34), (70, 82, 62)))
+    image = to_pil(canvas).convert("RGBA")
+    draw = ImageDraw.Draw(image, "RGBA")
+    area = safe_area(w, h)
+    _draw_realistic_grocery_props(image, area, scene_progress)
+
+    snap = ease_out(min(1.0, scene_progress / 0.30))
+    receipt_w = int(w * 0.54)
+    receipt_h = int(h * 0.62)
+    rx = area.right - receipt_w - int(w * 0.01) + int(w * 0.10 * (1 - snap))
+    ry = int(h * 0.20 - h * 0.025 * (1 - snap))
+    shadow = (rx + int(w * 0.025), ry + int(h * 0.025), rx + receipt_w + int(w * 0.025), ry + receipt_h + int(h * 0.025))
+    draw_rounded_rect(draw, shadow, max(18, int(w * 0.035)), (0, 0, 0, 76), None, 1)
+    receipt = (rx, ry, rx + receipt_w, ry + receipt_h)
+    _draw_paper_texture(draw, receipt)
+
+    store = _scene_text(scene_config, "store_name", default="MARKET RECEIPT")
+    loss_number = _scene_text(scene_config, "price_text", "hook_number", default="$2,080/year")
+    title_font = fit_font(draw, store, max(22, int(w * 0.048)), receipt_w - int(w * 0.10), min_size=max(16, int(w * 0.034)), bold=True)
+    draw.text((rx + int(w * 0.05), ry + int(h * 0.045)), store, font=title_font, fill=(55, 48, 42))
+    draw.text((rx + int(w * 0.05), ry + int(h * 0.085)), "weekly repeat items", font=pil_font(max(15, int(w * 0.033)), bold=False), fill=(110, 96, 80))
+    rows = scene_config.get("receipt_rows") or [("snacks", "$11.80"), ("brand cereal", "$8.49"), ("drinks", "$13.20"), ("extras", "$6.51")]
+    row_font = pil_font(max(15, int(w * 0.034)), bold=False)
+    y = ry + int(h * 0.155)
+    for idx, row in enumerate(rows[:5]):
+        label, value = row
+        draw.text((rx + int(w * 0.05), y), str(label).upper(), font=row_font, fill=(68, 58, 48))
+        value_font = pil_font(max(15, int(w * 0.036)), bold=True)
+        vw, _ = text_size(draw, str(value), value_font)
+        draw.text((rx + receipt_w - vw - int(w * 0.05), y), str(value), font=value_font, fill=(68, 58, 48))
+        y += int(h * 0.055)
+        if idx < 4:
+            draw.line((rx + int(w * 0.045), y - int(h * 0.018), rx + receipt_w - int(w * 0.045), y - int(h * 0.018)), fill=(190, 178, 156, 85), width=1)
+
+    box_y = ry + int(h * 0.43)
+    number_font = fit_font(draw, loss_number, max(44, int(w * 0.116)), receipt_w - int(w * 0.12), min_size=max(30, int(w * 0.070)), bold=True)
+    nw, nh = text_size(draw, loss_number, number_font)
+    number_box = (rx + int(w * 0.045), box_y, rx + receipt_w - int(w * 0.045), box_y + nh + int(h * 0.055))
+    draw_rounded_rect(draw, number_box, max(14, int(w * 0.030)), (255, 245, 232), (207, 74, 58), max(2, int(w * 0.006)))
+    draw.text((number_box[0] + max(0, (number_box[2] - number_box[0] - nw) // 2), number_box[1] + int(h * 0.022)), loss_number, font=number_font, fill=(178, 48, 42))
+    sub = _scene_text(scene_config, "subline", default="hidden grocery leak")
+    sub_font = fit_font(draw, sub, max(18, int(w * 0.043)), number_box[2] - number_box[0] - int(w * 0.05), min_size=max(14, int(w * 0.032)), bold=True)
+    sw, _ = text_size(draw, sub, sub_font)
+    draw.text((number_box[0] + max(0, (number_box[2] - number_box[0] - sw) // 2), number_box[3] + int(h * 0.018)), sub, font=sub_font, fill=(75, 65, 54))
+
+    headline = _scene_text(scene_config, "headline", default="I found a grocery leak")
+    report = draw_text_block(
+        image,
+        headline,
+        (area.left, int(h * 0.16), rx - int(w * 0.04), int(h * 0.42)),
+        font_size=max(32, int(w * 0.086)),
+        accent=(255, 226, 142),
+        max_lines=3,
+    )
+    canvas[:] = to_cv_rgb(image)
+    return {
+        "template": "grocery_receipt_hook",
+        "text_boxes": report["boxes"],
+        "key_number_boxes": [number_box],
+        "cropped": report["cropped"],
+        "motion_score": 0.93,
+        "postability_signals": {
+            "hook_treatment": "realistic_grocery_receipt_loss",
+            "foreground_layers": 4,
+            "early_number_snap": True,
+            "visual_realism": "textured_receipt_grocery_props",
+        },
+    }
+
+
+def grocery_reveal_scene(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
+    h, w = canvas.shape[:2]
+    animated_background(canvas, scene_progress, ((22, 31, 28), (80, 74, 50)))
+    image = to_pil(canvas).convert("RGBA")
+    draw = ImageDraw.Draw(image, "RGBA")
+    area = safe_area(w, h)
+    _draw_realistic_grocery_props(image, area, scene_progress)
+
+    phone_w = int(w * 0.55)
+    phone_h = int(h * 0.54)
+    px = area.right - phone_w + int(w * 0.06 * (1 - ease_out(scene_progress)))
+    py = int(h * 0.17)
+    draw.ellipse((px - int(w * 0.04), py + phone_h - int(h * 0.02), px + phone_w + int(w * 0.04), py + phone_h + int(h * 0.05)), fill=(0, 0, 0, 88))
+    draw_rounded_rect(draw, (px, py, px + phone_w, py + phone_h), max(24, int(w * 0.065)), (17, 24, 32), (84, 94, 106), max(2, int(w * 0.006)))
+    screen = (px + int(w * 0.035), py + int(h * 0.04), px + phone_w - int(w * 0.035), py + phone_h - int(h * 0.04))
+    draw_rounded_rect(draw, screen, max(18, int(w * 0.050)), (248, 250, 247), None, 1)
+    draw.text((screen[0] + int(w * 0.04), screen[1] + int(h * 0.035)), "WEEKLY CART", font=pil_font(max(18, int(w * 0.048))), fill=(43, 52, 64))
+    rows = scene_config.get("leak_rows") or [("Impulse extras", "$18"), ("Brand swaps", "$13"), ("Repeat snacks", "$9")]
+    y = screen[1] + int(h * 0.105)
+    row_font = pil_font(max(15, int(w * 0.040)), bold=True)
+    for label, value in rows:
+        draw_rounded_rect(draw, (screen[0] + int(w * 0.035), y, screen[2] - int(w * 0.035), y + int(h * 0.066)), max(10, int(w * 0.025)), (238, 242, 238), None, 1)
+        draw.text((screen[0] + int(w * 0.06), y + int(h * 0.018)), str(label), font=row_font, fill=(50, 58, 70))
+        value_font = pil_font(max(15, int(w * 0.042)), bold=True)
+        vw, _ = text_size(draw, str(value), value_font)
+        draw.text((screen[2] - vw - int(w * 0.06), y + int(h * 0.018)), str(value), font=value_font, fill=(186, 58, 48))
+        y += int(h * 0.083)
+
+    headline = _scene_text(scene_config, "headline", default="It was repeat grocery extras")
+    report = draw_text_block(
+        image,
+        headline,
+        (area.left, int(h * 0.16), px - int(w * 0.045), int(h * 0.45)),
+        font_size=max(30, int(w * 0.078)),
+        accent=(255, 226, 142),
+        max_lines=3,
+    )
+    canvas[:] = to_cv_rgb(image)
+    return {
+        "template": "grocery_reveal_scene",
+        "text_boxes": report["boxes"],
+        "cropped": report["cropped"],
+        "motion_score": 0.88,
+        "postability_signals": {
+            "scene_treatment": "phone_cart_breakdown",
+            "foreground_layers": 4,
+            "visual_realism": "grocery_bag_cart_phone",
+        },
+    }
+
+
+def grocery_ai_comparison(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
+    h, w = canvas.shape[:2]
+    animated_background(canvas, scene_progress, ((14, 21, 31), (26, 62, 58)))
+    image = to_pil(canvas).convert("RGBA")
+    draw = ImageDraw.Draw(image, "RGBA")
+    area = safe_area(w, h)
+    panel = (area.left, int(h * 0.12), area.right, int(h * 0.77))
+    draw_rounded_rect(draw, (panel[0] + int(w * 0.02), panel[1] + int(h * 0.025), panel[2] + int(w * 0.02), panel[3] + int(h * 0.025)), 34, (0, 0, 0, 86), None, 1)
+    draw_rounded_rect(draw, panel, 34, (246, 248, 250), (205, 214, 224), max(2, int(w * 0.004)))
+    draw_rounded_rect(draw, (panel[0] + int(w * 0.035), panel[1] + int(h * 0.03), panel[2] - int(w * 0.035), panel[1] + int(h * 0.088)), 16, (226, 232, 240), None, 1)
+    for i, c in enumerate([(239, 68, 68), (245, 158, 11), (34, 197, 94)]):
+        draw.ellipse((panel[0] + int(w * (0.065 + 0.038 * i)), panel[1] + int(h * 0.048), panel[0] + int(w * (0.087 + 0.038 * i)), panel[1] + int(h * 0.060)), fill=c)
+    draw.text((panel[0] + int(w * 0.19), panel[1] + int(h * 0.046)), "AI receipt audit", font=pil_font(max(16, int(w * 0.038)), bold=True), fill=(71, 85, 105))
+
+    prompt = _scene_text(scene_config, "prompt", default="Find cheaper swaps for these repeat grocery items.")
+    prompt_box = (panel[0] + int(w * 0.055), panel[1] + int(h * 0.13), panel[2] - int(w * 0.055), panel[1] + int(h * 0.27))
+    draw_rounded_rect(draw, prompt_box, 20, (18, 27, 42), None, 1)
+    typed = prompt[: int(len(prompt) * min(1.0, scene_progress / 0.42))]
+    draw_text_block(image, typed, (prompt_box[0] + int(w * 0.035), prompt_box[1] + int(h * 0.018), prompt_box[2] - int(w * 0.035), prompt_box[3] - int(h * 0.015)), font_size=max(20, int(w * 0.046)), fill=(241, 245, 249), max_lines=2)
+
+    rows = scene_config.get("swap_rows") or [("Brand cereal", "$8.49", "store brand", "$4.19"), ("Snack packs", "$11.80", "bulk bag", "$6.40"), ("Drinks", "$13.20", "home pack", "$7.10")]
+    y = panel[1] + int(h * 0.33)
+    alpha = int(255 * ease_out(max(0.0, (scene_progress - 0.35) / 0.65)))
+    for idx, (old, old_price, new, new_price) in enumerate(rows[:3]):
+        row = (panel[0] + int(w * 0.055), y, panel[2] - int(w * 0.055), y + int(h * 0.095))
+        draw_rounded_rect(draw, row, 18, (255, 255, 255, alpha), (218, 226, 234), max(1, int(w * 0.003)))
+        draw.text((row[0] + int(w * 0.035), row[1] + int(h * 0.018)), str(old), font=pil_font(max(14, int(w * 0.034)), bold=True), fill=(55, 65, 81, alpha))
+        draw.text((row[0] + int(w * 0.035), row[1] + int(h * 0.052)), str(old_price), font=pil_font(max(13, int(w * 0.032)), bold=True), fill=(190, 58, 48, alpha))
+        arrow_x = row[0] + int(w * 0.42)
+        draw.line((arrow_x, row[1] + int(h * 0.047), arrow_x + int(w * 0.10), row[1] + int(h * 0.047)), fill=(70, 90, 110, alpha), width=max(2, int(w * 0.006)))
+        draw.polygon([(arrow_x + int(w * 0.10), row[1] + int(h * 0.047)), (arrow_x + int(w * 0.075), row[1] + int(h * 0.032)), (arrow_x + int(w * 0.075), row[1] + int(h * 0.062))], fill=(70, 90, 110, alpha))
+        draw.text((row[0] + int(w * 0.57), row[1] + int(h * 0.018)), str(new), font=pil_font(max(14, int(w * 0.034)), bold=True), fill=(30, 105, 78, alpha))
+        draw.text((row[0] + int(w * 0.57), row[1] + int(h * 0.052)), str(new_price), font=pil_font(max(13, int(w * 0.032)), bold=True), fill=(30, 130, 90, alpha))
+        y += int(h * 0.115)
+
+    save = _scene_text(scene_config, "savings_number", default="$40/week")
+    save_font = fit_font(draw, save, max(32, int(w * 0.082)), panel[2] - panel[0] - int(w * 0.18), min_size=max(24, int(w * 0.060)), bold=True)
+    sw, sh = text_size(draw, save, save_font)
+    save_box = (panel[0] + int(w * 0.16), panel[3] - int(h * 0.115), panel[2] - int(w * 0.16), panel[3] - int(h * 0.035))
+    draw_rounded_rect(draw, save_box, 18, (220, 252, 235), (72, 187, 120), max(2, int(w * 0.004)))
+    draw.text((save_box[0] + max(0, (save_box[2] - save_box[0] - sw) // 2), save_box[1] + int(h * 0.017)), save, font=save_font, fill=(8, 118, 79))
+
+    canvas[:] = to_cv_rgb(image)
+    return {
+        "template": "grocery_ai_comparison",
+        "text_boxes": [panel],
+        "key_number_boxes": [save_box],
+        "cropped": False,
+        "motion_score": 0.90,
+        "postability_signals": {
+            "motion_interruption": "ai_swap_panel_reveal",
+            "scene_treatment": "screen_capture_style_ai_panel",
+            "visual_realism": "dense_ai_receipt_audit",
+        },
+    }
+
+
+def grocery_savings_payoff(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
+    h, w = canvas.shape[:2]
+    animated_background(canvas, scene_progress, ((20, 28, 30), (21, 92, 72)))
+    image = to_pil(canvas).convert("RGBA")
+    draw = ImageDraw.Draw(image, "RGBA")
+    area = safe_area(w, h)
+    _draw_realistic_grocery_props(image, area, scene_progress)
+
+    reveal = ease_out(min(1.0, scene_progress / 0.50))
+    phone_w = int(w * 0.68)
+    phone_h = int(h * 0.54)
+    px = (w - phone_w) // 2
+    py = int(h * (0.14 + 0.035 * (1 - reveal)))
+    draw.ellipse((px - int(w * 0.05), py + phone_h - int(h * 0.02), px + phone_w + int(w * 0.05), py + phone_h + int(h * 0.06)), fill=(0, 0, 0, 96))
+    draw_rounded_rect(draw, (px, py, px + phone_w, py + phone_h), max(26, int(w * 0.07)), (14, 21, 31), (74, 88, 104), max(2, int(w * 0.006)))
+    screen = (px + int(w * 0.035), py + int(h * 0.04), px + phone_w - int(w * 0.035), py + phone_h - int(h * 0.04))
+    draw_rounded_rect(draw, screen, max(18, int(w * 0.052)), (239, 253, 244), None, 1)
+    draw.text((screen[0] + int(w * 0.05), screen[1] + int(h * 0.045)), "SAVINGS ESTIMATE", font=pil_font(max(17, int(w * 0.045))), fill=(15, 95, 72))
+    number = _scene_text(scene_config, "number", "payoff_number", default="$2,080")
+    num_font = fit_font(draw, number, max(58, int(w * 0.18)), screen[2] - screen[0] - int(w * 0.10), min_size=max(38, int(w * 0.11)), bold=True)
+    nw, nh = text_size(draw, number, num_font)
+    num_y = screen[1] + int(h * 0.15)
+    num_box = ((w - nw) // 2, num_y, (w + nw) // 2, num_y + nh)
+    draw.text((num_box[0] + 4, num_box[1] + 5), number, font=num_font, fill=(0, 0, 0, 86))
+    draw.text((num_box[0], num_box[1]), number, font=num_font, fill=(6, 132, 92))
+    sub = _scene_text(scene_config, "subline", default="possible yearly savings")
+    sub_font = fit_font(draw, sub, max(20, int(w * 0.055)), screen[2] - screen[0] - int(w * 0.12), min_size=max(15, int(w * 0.038)), bold=True)
+    sw, _ = text_size(draw, sub, sub_font)
+    draw.text(((w - sw) // 2, num_box[3] + int(h * 0.025)), sub, font=sub_font, fill=(23, 83, 68))
+    for idx, text in enumerate(["$40/week leak", "AI swap list", "repeatable cart"]):
+        y = screen[1] + int(h * (0.36 + idx * 0.065))
+        draw_rounded_rect(draw, (screen[0] + int(w * 0.055), y, screen[2] - int(w * 0.055), y + int(h * 0.047)), max(9, int(w * 0.020)), (255, 255, 255), (192, 223, 208), 1)
+        draw.text((screen[0] + int(w * 0.082), y + int(h * 0.011)), text, font=pil_font(max(12, int(w * 0.033)), bold=True), fill=(42, 78, 65))
+    canvas[:] = to_cv_rgb(image)
+    return {
+        "template": "grocery_savings_payoff",
+        "key_number_boxes": [num_box],
+        "cropped": False,
+        "motion_score": 0.94,
+        "number_reveal": True,
+        "postability_signals": {
+            "scene_treatment": "realistic_phone_savings_estimate",
+            "foreground_layers": 4,
+            "share_energy": True,
+            "visual_realism": "phone_app_grocery_payoff",
+        },
+    }
+
+
 def hook_footage_overlay(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
     h, w = canvas.shape[:2]
     if not scene_config.get("has_real_background"):
@@ -677,6 +962,10 @@ TEMPLATES: dict[str, Callable[[int, float, np.ndarray, dict[str, Any]], dict[str
     "comparison_split": comparison_split,
     "payoff_number_reveal": payoff_number_reveal,
     "cta_callback": cta_callback,
+    "grocery_receipt_hook": grocery_receipt_hook,
+    "grocery_reveal_scene": grocery_reveal_scene,
+    "grocery_ai_comparison": grocery_ai_comparison,
+    "grocery_savings_payoff": grocery_savings_payoff,
 }
 
 
