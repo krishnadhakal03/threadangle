@@ -445,29 +445,97 @@ def comparison_split(frame_idx: int, scene_progress: float, canvas: np.ndarray, 
 
 def payoff_number_reveal(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
     h, w = canvas.shape[:2]
-    animated_background(canvas, scene_progress, ((8, 18, 30), (12, 84, 73)))
-    for i in range(36):
-        ang = (i / 36.0) * math.tau + scene_progress * 1.4
-        rad = 250 + 170 * math.sin(scene_progress * math.pi + i)
+    animated_background(canvas, scene_progress, ((8, 18, 30), (10, 92, 76)))
+    reveal = ease_out(min(1.0, scene_progress / 0.58))
+    settle = ease_in_out(min(1.0, max(0.0, (scene_progress - 0.40) / 0.60)))
+
+    for i in range(44):
+        ang = (i / 44.0) * math.tau + scene_progress * 1.8
+        rad = (w * 0.34) + (w * 0.18) * math.sin(scene_progress * math.pi + i)
         cx = int(w / 2 + math.cos(ang) * rad)
-        cy = int(h * 0.42 + math.sin(ang) * rad * 0.55)
-        cv2.circle(canvas, (cx, cy), 4, (130, 245, 210), -1, lineType=cv2.LINE_AA)
+        cy = int(h * 0.36 + math.sin(ang) * rad * 0.48)
+        cv2.circle(canvas, (cx, cy), max(2, int(w * 0.012)), (130, 245, 210), -1, lineType=cv2.LINE_AA)
+    for i in range(8):
+        y = int(h * (0.11 + i * 0.095) + math.sin(scene_progress * math.tau + i) * h * 0.014)
+        x = int(w * ((scene_progress * 0.22 + i * 0.15) % 1.1) - w * 0.10)
+        cv2.line(canvas, (x, y), (x + int(w * 0.28), y - int(h * 0.025)), (64, 210, 170), max(1, int(w * 0.006)), lineType=cv2.LINE_AA)
+
     image = to_pil(canvas)
     draw = ImageDraw.Draw(image, "RGBA")
     count = int(1500 * ease_out(scene_progress))
     number = _scene_text(scene_config, "number", default=f"${count:,}")
     if "{count}" in number:
         number = number.format(count=f"{count:,}")
-    font = pil_font(150, bold=True)
+
+    area = safe_area(w, h)
+    phone_w = int(w * 0.66)
+    phone_h = int(h * 0.50)
+    phone_x = (w - phone_w) // 2
+    phone_y = int(h * (0.18 + 0.03 * (1.0 - reveal)))
+    phone = (phone_x, phone_y, phone_x + phone_w, phone_y + phone_h)
+    draw.ellipse((phone_x - int(w * 0.04), phone[3] - int(h * 0.035), phone[2] + int(w * 0.04), phone[3] + int(h * 0.06)), fill=(0, 0, 0, 86))
+    draw_rounded_rect(draw, phone, max(20, int(w * 0.065)), (12, 18, 28), (81, 100, 115), max(1, int(w * 0.008)))
+    screen = (phone_x + int(w * 0.035), phone_y + int(h * 0.040), phone[2] - int(w * 0.035), phone[3] - int(h * 0.040))
+    draw_rounded_rect(draw, screen, max(16, int(w * 0.05)), (236, 253, 246), None, 1)
+
+    badge_text = "SAVED"
+    badge_font = pil_font(max(16, int(w * 0.062)), bold=True)
+    bw, bh = text_size(draw, badge_text, badge_font)
+    badge = (screen[0] + int(w * 0.045), screen[1] + int(h * 0.040), screen[0] + int(w * 0.045) + bw + int(w * 0.09), screen[1] + int(h * 0.040) + bh + int(h * 0.034))
+    draw_rounded_rect(draw, badge, max(12, int(w * 0.04)), (8, 112, 84), None, 1)
+    draw.text((badge[0] + int(w * 0.045), badge[1] + int(h * 0.014)), badge_text, font=badge_font, fill=(255, 255, 255))
+
+    font_size = max(48, int(w * (0.36 + 0.035 * math.sin(scene_progress * math.tau * 1.2))))
+    font = pil_font(font_size, bold=True)
     nw, nh = text_size(draw, number, font)
-    num_box = ((w - nw) // 2, int(h * 0.31), (w + nw) // 2, int(h * 0.31) + nh)
-    draw.text((num_box[0] + 5, num_box[1] + 6), number, font=font, fill=(0, 0, 0, 180))
-    draw.text((num_box[0], num_box[1]), number, font=font, fill=(167, 243, 208))
+    num_y = screen[1] + int(h * (0.18 - 0.035 * (1.0 - reveal)))
+    num_box = ((w - nw) // 2, num_y, (w + nw) // 2, num_y + nh)
+    draw.text((num_box[0] + 4, num_box[1] + 5), number, font=font, fill=(0, 0, 0, 95))
+    draw.text((num_box[0], num_box[1]), number, font=font, fill=(6, 150, 110))
+
     sub = _scene_text(scene_config, "subline", default="a year from one small habit")
-    sw, _ = text_size(draw, sub, pil_font(52, bold=True))
-    draw.text(((w - sw) // 2, num_box[3] + 34), sub, font=pil_font(52, bold=True), fill=(255, 255, 255))
+    sub_font = pil_font(max(18, int(w * 0.065)), bold=True)
+    sw, sh = text_size(draw, sub, sub_font)
+    sub_x = max(area.left, (w - sw) // 2)
+    sub_y = num_box[3] + int(h * 0.025)
+    draw.text((sub_x + 2, sub_y + 2), sub, font=sub_font, fill=(0, 0, 0, 80))
+    draw.text((sub_x, sub_y), sub, font=sub_font, fill=(22, 78, 62))
+
+    action_y = screen[3] - int(h * 0.105)
+    actions = ["SAVE", "SHARE", "COMMENT"]
+    action_font = pil_font(max(12, int(w * 0.041)), bold=True)
+    x = screen[0] + int(w * 0.045)
+    for idx, action in enumerate(actions):
+        aw, ah = text_size(draw, action, action_font)
+        lift = int(math.sin(scene_progress * math.tau * 1.5 + idx) * h * 0.006)
+        pill = (x, action_y + lift, x + aw + int(w * 0.055), action_y + lift + ah + int(h * 0.028))
+        fill = (14, 22, 38) if idx != 2 else (8, 112, 84)
+        draw_rounded_rect(draw, pill, max(9, int(w * 0.030)), fill, (115, 231, 185), max(1, int(w * 0.004)))
+        draw.text((pill[0] + int(w * 0.027), pill[1] + int(h * 0.011)), action, font=action_font, fill=(255, 255, 255))
+        x = pill[2] + int(w * 0.025)
+
+    spark_count = 26
+    for i in range(spark_count):
+        p = (scene_progress + i / spark_count) % 1.0
+        ang = i * 2.399 + settle * 0.8
+        sx = int(w / 2 + math.cos(ang) * w * (0.18 + 0.18 * p))
+        sy = int(h * 0.35 + math.sin(ang) * h * (0.10 + 0.12 * p))
+        alpha = int(150 * (1.0 - p))
+        draw.line((sx - 3, sy, sx + 3, sy), fill=(255, 255, 255, alpha), width=max(1, int(w * 0.006)))
+
     canvas[:] = to_cv(image)
-    return {"template": "payoff_number_reveal", "key_number_boxes": [num_box], "cropped": False, "motion_score": 0.92, "number_reveal": True}
+    return {
+        "template": "payoff_number_reveal",
+        "key_number_boxes": [num_box],
+        "cropped": False,
+        "motion_score": 0.95,
+        "number_reveal": True,
+        "postability_signals": {
+            "scene_treatment": "platform_payoff_phone_overlay",
+            "foreground_layers": 3,
+            "share_energy": True,
+        },
+    }
 
 
 def cta_callback(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
