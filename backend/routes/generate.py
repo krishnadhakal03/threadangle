@@ -384,9 +384,15 @@ def build_hmr_ui_generation_smoke_plan(
     smoke_run_id = run_id or f"hmr_ui_smoke_{new_run_id()}"
     output_path = output_root / f"{smoke_run_id}.mp4"
     assert_not_frozen_output(output_path)
+    from utils.first_three_seconds import build_first_3_seconds_plan
     from utils.hmr_render_jobs import create_hmr_render_job_state
     from utils.hmr_ui_productization import build_hmr_ui_productization_metadata
 
+    selected_hook = request.hook or parse_script(request.full_script or request.script or "").hook
+    first_3_seconds = build_first_3_seconds_plan(
+        selected_hook=selected_hook or request.script,
+        topic=request.niche or selected_hook,
+    )
     productization = build_hmr_ui_productization_metadata(
         generated_root=output_root,
         run_id=smoke_run_id,
@@ -421,6 +427,7 @@ def build_hmr_ui_generation_smoke_plan(
         "productization": productization,
         "non_blocking_hmr_requested": bool(request.hmr_async),
         "hmr_render_job": hmr_job.to_dict(),
+        "first_3_seconds": first_3_seconds,
         "render_invoked": False,
     }
 
@@ -1027,11 +1034,16 @@ async def generate_free_video(
                 visual_description=getattr(scene, "visual_description", ""),
             )
         if hybrid_motion_requested:
+            from utils.first_three_seconds import attach_first_3_seconds_to_report, build_first_3_seconds_plan
             from utils.hybrid_motion_renderer import render_hybrid_video
             from utils.hmr_ui_productization import materialize_hmr_ui_review_workflow
 
             generated_root = Path(__file__).resolve().parents[1] / "generated_videos"
             hybrid_output_path = generated_root / f"{run_id}.mp4"
+            first_3_seconds_plan = build_first_3_seconds_plan(
+                selected_hook=parts.hook or script_text,
+                topic=request.niche,
+            )
             hybrid_result = render_hybrid_video(
                 scenes=make_scene_response(scenes),
                 script_text=script_text,
@@ -1044,6 +1056,8 @@ async def generate_free_video(
                 use_free_tts=True,
                 style_preset="documentary_money_short",
             )
+            hybrid_result = attach_first_3_seconds_to_report(hybrid_result, first_3_seconds_plan)
+            hybrid_result["first_3_seconds"] = first_3_seconds_plan
             hmr_productization = materialize_hmr_ui_review_workflow(
                 generated_root=generated_root,
                 run_id=run_id,

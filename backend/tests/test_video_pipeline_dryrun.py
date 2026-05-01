@@ -938,6 +938,11 @@ class TestHMRUISmokePreflight:
         assert job["percent"] == 2
         assert job["render_invoked"] is False
         assert job["artifact_paths"]["review_package"].endswith("review_package")
+        first_3 = plan["first_3_seconds"]
+        assert first_3["first_frame_style"] == "claim_proof_payoff"
+        assert first_3["no_slow_intro"] is True
+        assert first_3["pattern_interrupt"]["time_seconds"] < 2
+        assert first_3["caption_text_preserved"]
 
     def test_hmr_ui_smoke_plan_respects_frozen_manifest(self, monkeypatch, tmp_path):
         from routes.generate import GenerateVideoRequest, build_hmr_ui_generation_smoke_plan

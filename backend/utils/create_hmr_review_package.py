@@ -113,6 +113,8 @@ def _write_summary(
             ("first_frame_clarity", "First-frame clarity"),
             ("first_second_clarity", "First-second clarity"),
             ("first_second_shock_value", "First-second shock value"),
+            ("first_frame_style", "First-frame style"),
+            ("first_three_seconds_strategy", "First-three-second strategy"),
             ("first_four_second_retention_likelihood", "First-four-second retention likelihood"),
             ("number_consistency", "Number consistency"),
             ("caption_naturalness", "Caption naturalness"),
