@@ -315,7 +315,7 @@ def main() -> int:
     preset = PRESETS[args.preset]
     output_dir = Path(args.output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    readiness = check_hmr_asset_readiness()
+    readiness = check_hmr_asset_readiness(domain="grocery_savings")
     readiness_path = output_dir / "asset_readiness.json"
     readiness_path.write_text(json.dumps(readiness, indent=2), encoding="utf-8")
     if _requires_asset_readiness(args) and not args.skip_asset_readiness and readiness.get("status") != "PASS":

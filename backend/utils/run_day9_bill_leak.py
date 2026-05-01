@@ -237,7 +237,7 @@ def main() -> int:
     preset = PRESETS[args.preset]
     output_dir = Path(args.output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    readiness = check_hmr_asset_readiness()
+    readiness = check_hmr_asset_readiness(domain="bill_leak")
     (output_dir / "asset_readiness.json").write_text(json.dumps(readiness, indent=2), encoding="utf-8")
 
     scenes = build_bill_leak_scenes()

@@ -667,6 +667,87 @@ def test_hmr_asset_readiness_passes_with_local_hook_reveal(tmp_path, monkeypatch
     assert report["local_hook_reveal_ready"] is True
 
 
+def test_hmr_asset_strategy_includes_domain_for_bill_leak():
+    plans = plan_hmr_scene_assets(build_bill_leak_scenes())
+    assert plans
+    assert {row["domain"] for row in plans} == {"bill_leak"}
+
+
+def test_domain_local_asset_lookup_prefers_bill_leak_folder(tmp_path, monkeypatch):
+    monkeypatch.setattr(hmr, "LOCAL_HMR_ASSET_DIR", tmp_path)
+    grocery = tmp_path / "grocery"
+    bill_leak = tmp_path / "bill_leak"
+    grocery.mkdir()
+    bill_leak.mkdir()
+    (grocery / "hook.mp4").write_bytes(b"grocery fallback")
+    (bill_leak / "hook.mp4").write_bytes(b"bill leak first")
+
+    path, fields = hmr._resolve_local_asset(
+        "hook",
+        {"domain": "bill_leak", "asset_role": "thumb_stop_real_world_context"},
+    )
+
+    assert path == bill_leak / "hook.mp4"
+    assert fields["resolved_asset_type"] == "stock_footage"
+    assert fields["resolved_asset_provider"] == "local_asset"
+    assert fields["asset_resolution_status"] == "resolved"
+
+
+def test_domain_local_asset_lookup_falls_back_to_generic_then_grocery(tmp_path, monkeypatch):
+    monkeypatch.setattr(hmr, "LOCAL_HMR_ASSET_DIR", tmp_path)
+    generic = tmp_path / "generic_money_problem"
+    grocery = tmp_path / "grocery"
+    generic.mkdir()
+    grocery.mkdir()
+    (grocery / "hook.mp4").write_bytes(b"grocery fallback")
+    (generic / "hook.jpg").write_bytes(b"generic first")
+
+    path, fields = hmr._resolve_local_asset(
+        "hook",
+        {"domain": "bill_leak", "asset_role": "thumb_stop_real_world_context"},
+    )
+
+    assert path == generic / "hook.jpg"
+    assert fields["resolved_asset_type"] == "stock_image"
+    assert fields["asset_resolution_status"] == "resolved"
+
+
+def test_domain_local_asset_missing_reports_domain_paths(tmp_path, monkeypatch):
+    monkeypatch.setattr(hmr, "LOCAL_HMR_ASSET_DIR", tmp_path)
+
+    path, fields = hmr._resolve_local_asset(
+        "hook",
+        {"domain": "bill_leak", "asset_role": "thumb_stop_real_world_context"},
+    )
+
+    assert path is None
+    assert fields["resolved_asset_type"] is None
+    assert fields["asset_resolution_status"] == "local_asset_missing"
+    assert fields["fallback_used"] is True
+    assert any("bill_leak/hook.mp4" in item.replace("\\", "/") for item in fields["missing_config"])
+
+
+def test_hmr_asset_readiness_accepts_domain_without_breaking_default(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    bill_leak = repo / "assets" / "hmr_local" / "bill_leak"
+    bill_leak.mkdir(parents=True)
+    (bill_leak / "hook.jpg").write_bytes(b"fake image placeholder")
+    (bill_leak / "reveal.mp4").write_bytes(b"fake video placeholder")
+    monkeypatch.setattr("utils.check_hmr_asset_readiness.repo_root", lambda: repo)
+    monkeypatch.delenv("PEXELS_API_KEY", raising=False)
+    monkeypatch.delenv("PIXABAY_API_KEY", raising=False)
+
+    default_report = check_hmr_asset_readiness(load_env=False)
+    bill_report = check_hmr_asset_readiness(load_env=False, domain="bill_leak")
+
+    assert default_report["status"] == "BLOCKED"
+    assert default_report["domain"] == "grocery_savings"
+    assert bill_report["status"] == "PASS"
+    assert bill_report["domain"] == "bill_leak"
+    assert bill_report["local_hook_reveal_ready"] is True
+    assert str(bill_leak) in bill_report["asset_dirs_checked"][0]
+
+
 def test_captions_stay_under_max_words():
     events = split_caption_events("one two three four five six seven eight nine", duration=3.0, max_words=4)
     assert events

@@ -195,6 +195,14 @@ _DOMAIN_PACKS: dict[str, dict[str, object]] = {
     },
 }
 
+_DOMAIN_LOCAL_ASSET_FOLDERS: dict[str, list[str]] = {
+    "grocery_savings": ["grocery", "grocery_savings"],
+    "coffee_savings": ["coffee_savings"],
+    "bill_leak": ["bill_leak"],
+    "generic_money_problem": ["generic_money_problem"],
+    "creator_tools": ["creator_tools"],
+}
+
 _TEMPLATE_MEDIUM_HINTS = {
     "ai_prompt_mock": "playwright_capture",
     "grocery_ai_comparison": "playwright_capture",
@@ -261,6 +269,29 @@ def _detect_domain(blob: str) -> str:
     if not best_domain and any(token in blob for token in ("ai", "prompt", "chatgpt")):
         return "creator_tools"
     return best_domain
+
+
+def detect_hmr_asset_domain_from_text(text: Any) -> str:
+    """Return the HMR asset domain for free-form scene/topic text."""
+    return _detect_domain(_clean_text(text).lower())
+
+
+def local_asset_domain_folders(domain: str | None = None) -> list[str]:
+    """Return local asset folder names in lookup order for an HMR domain."""
+    normalized = _clean_text(domain or "").lower()
+    if not normalized:
+        return ["grocery", "generic_money_problem"]
+    folders = list(_DOMAIN_LOCAL_ASSET_FOLDERS.get(normalized) or [])
+    if normalized and normalized not in _DOMAIN_LOCAL_ASSET_FOLDERS:
+        folders.append(normalized)
+    if normalized != "generic_money_problem":
+        folders.append("generic_money_problem")
+    folders.append("grocery")
+    deduped: list[str] = []
+    for folder in folders:
+        if folder and folder not in deduped:
+            deduped.append(folder)
+    return deduped
 
 
 def _scene_stage(scene: Any, idx: int, blob: str) -> str:
@@ -363,6 +394,20 @@ def _asset_role(stage: str, medium: str) -> str:
     return "story_context_visual"
 
 
+def _dominant_domain(scenes: list[dict]) -> str:
+    scores: dict[str, int] = {}
+    for scene in scenes or []:
+        domain = _detect_domain(_scene_blob(scene))
+        if domain:
+            scores[domain] = scores.get(domain, 0) + 1
+    strong_scores = {domain: score for domain, score in scores.items() if domain != "generic_money_problem"}
+    if strong_scores:
+        return max(strong_scores.items(), key=lambda item: item[1])[0]
+    if scores:
+        return max(scores.items(), key=lambda item: item[1])[0]
+    return ""
+
+
 def _fallback_order(medium: str) -> list[str]:
     if medium == "playwright_capture":
         return ["playwright_capture", "local_asset", "stock_image", "motion_template"]
@@ -381,10 +426,13 @@ def plan_hmr_scene_assets(scenes: list[dict]) -> list[dict]:
     The planner is pure and performs no network, filesystem, or provider calls.
     """
     plans: list[dict] = []
+    dominant_domain = _dominant_domain(scenes)
     for idx, scene in enumerate(scenes or []):
         blob = _scene_blob(scene)
         stage = _scene_stage(scene, idx, blob)
         domain = _detect_domain(blob)
+        if dominant_domain and domain in {"", "generic_money_problem"}:
+            domain = dominant_domain
         medium = _visual_medium(scene, stage, blob)
         template = _scene_template(scene)
         capture_hint = _PLAYWRIGHT_HINTS.get(template) if medium == "playwright_capture" else None
@@ -392,6 +440,7 @@ def plan_hmr_scene_assets(scenes: list[dict]) -> list[dict]:
         plans.append(
             {
                 "scene_id": _scene_id(scene, idx),
+                "domain": domain or "",
                 "visual_medium": medium if medium in VISUAL_MEDIUMS else "motion_template",
                 "asset_role": _asset_role(stage, medium),
                 "query_candidates": query_candidates,

@@ -22,11 +22,11 @@ import numpy as np
 
 try:
     from .hybrid_scene_templates import draw_caption_band, get_template
-    from .hmr_scene_asset_strategy import plan_hmr_scene_assets
+    from .hmr_scene_asset_strategy import detect_hmr_asset_domain_from_text, local_asset_domain_folders, plan_hmr_scene_assets
     from .hmr_resolved_scene_spec import build_resolved_scene_spec, resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
 except ImportError:  # pragma: no cover - direct script execution fallback
     from hybrid_scene_templates import draw_caption_band, get_template
-    from hmr_scene_asset_strategy import plan_hmr_scene_assets
+    from hmr_scene_asset_strategy import detect_hmr_asset_domain_from_text, local_asset_domain_folders, plan_hmr_scene_assets
     from hmr_resolved_scene_spec import build_resolved_scene_spec, resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
 
 
@@ -405,22 +405,73 @@ def _select_stock_background(scene: Any, template: str, used_ids: set[str], warn
     return _select_stock_asset([_scene_query(scene, template)], ["stock_footage"], used_ids, warnings)
 
 
-def _local_asset_candidates(scene_id: Any, asset_strategy: dict[str, Any]) -> list[Path]:
+def _local_asset_domain(asset_strategy: dict[str, Any]) -> str:
+    explicit = str(
+        asset_strategy.get("local_asset_domain")
+        or asset_strategy.get("domain")
+        or asset_strategy.get("topic")
+        or ""
+    ).strip()
+    if explicit:
+        return explicit
+    text = " ".join(
+        str(part or "")
+        for part in [
+            asset_strategy.get("reason"),
+            asset_strategy.get("template_hint"),
+            asset_strategy.get("asset_role"),
+            " ".join(str(query) for query in (asset_strategy.get("query_candidates") or [])),
+        ]
+    )
+    return detect_hmr_asset_domain_from_text(text)
+
+
+def _local_asset_roots(asset_strategy: dict[str, Any]) -> list[Path]:
+    roots = [LOCAL_HMR_ASSET_DIR / folder for folder in local_asset_domain_folders(_local_asset_domain(asset_strategy))]
+    roots.append(LOCAL_HMR_ASSET_DIR)
+    deduped: list[Path] = []
+    for root in roots:
+        if root not in deduped:
+            deduped.append(root)
+    return deduped
+
+
+def _local_asset_names(scene_id: Any, asset_strategy: dict[str, Any]) -> list[str]:
     scene_key = str(scene_id or "").lower().strip()
     role = str(asset_strategy.get("asset_role") or "").lower().strip()
-    roots = [LOCAL_HMR_ASSET_DIR / "grocery", LOCAL_HMR_ASSET_DIR]
     names = [scene_key]
     if "hook" in scene_key or "hook" in role:
         names.extend(["hook", "grocery_hook", "receipt_hook"])
     if "reveal" in scene_key or "context" in role:
-        names.extend(["reveal", "grocery_reveal", "receipt_reveal"])
+        names.extend(["reveal", "context", "grocery_reveal", "receipt_reveal"])
+    if "payoff" in scene_key or "result" in role:
+        names.extend(["payoff", "result"])
+    if "cta" in scene_key or "comment" in role:
+        names.append("cta")
+    return [name for idx, name in enumerate(names) if name and name not in names[:idx]]
+
+
+def _local_asset_candidate_paths(scene_id: Any, asset_strategy: dict[str, Any]) -> list[Path]:
+    roots = _local_asset_roots(asset_strategy)
+    names = _local_asset_names(scene_id, asset_strategy)
     out: list[Path] = []
     for root in roots:
         for name in names:
             for ext in [*VIDEO_EXTENSIONS, *IMAGE_EXTENSIONS]:
                 out.append(root / f"{name}{ext}")
             out.extend(sorted((root / name).glob("*")) if (root / name).exists() else [])
-    return [path for path in out if path.exists() and path.is_file()]
+    return out
+
+
+def _local_asset_candidates(scene_id: Any, asset_strategy: dict[str, Any]) -> list[Path]:
+    return [path for path in _local_asset_candidate_paths(scene_id, asset_strategy) if path.exists() and path.is_file()]
+
+
+def _display_local_asset_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(REPO_ROOT)).replace("\\", "/")
+    except ValueError:
+        return str(path).replace("\\", "/")
 
 
 def _resolve_local_asset(scene_id: Any, asset_strategy: dict[str, Any]) -> tuple[Path | None, dict[str, Any]]:
@@ -454,7 +505,10 @@ def _resolve_local_asset(scene_id: Any, asset_strategy: dict[str, Any]) -> tuple
         "queries_attempted": [],
         "provider_available": False,
         "missing_config": [
-            "Add files such as assets/hmr_local/grocery/hook.mp4 or reveal.jpg",
+            "Add local HMR assets such as "
+            + " or ".join(
+                _display_local_asset_path(path) for path in _local_asset_candidate_paths(scene_id, asset_strategy)[:4]
+            ),
         ],
     }
 
