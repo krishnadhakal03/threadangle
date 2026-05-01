@@ -72,6 +72,7 @@ def build_manifest(
     human_posting_gate: str | None = None,
     frozen: bool = False,
     paid_providers_used: dict[str, bool] | None = None,
+    hook_lab: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a lightweight manifest for a newly generated HMR review package."""
     render_report = render_report or {}
@@ -101,6 +102,7 @@ def build_manifest(
         "average_score": postability.get("average_score"),
         "human_posting_gate": gate,
         "media_mix": render_report.get("media_mix") or {},
+        "hook_lab": hook_lab or render_report.get("hook_lab") or {},
         "resolved_real_assets": resolved_real_assets,
         "paid_providers_used": paid_providers_used
         or {
