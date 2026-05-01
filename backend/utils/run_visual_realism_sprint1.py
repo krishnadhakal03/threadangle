@@ -23,6 +23,7 @@ if __package__ is None or __package__ == "":
 
 from utils.create_hmr_review_package import create_review_package
 from utils.check_hmr_asset_readiness import check_hmr_asset_readiness
+from utils.hmr_artifact_manifest import assert_not_frozen_output
 from utils.hybrid_motion_qa import run_hybrid_motion_qa
 from utils.hybrid_motion_renderer import render_hybrid_video, save_render_report
 
@@ -252,6 +253,8 @@ def _human_review_notes(qa: dict[str, Any], render_result: dict[str, Any]) -> di
 def _copy_flat_package(package: dict[str, str], output_dir: Path) -> dict[str, str]:
     review_dir = Path(package["review_dir"])
     flat_dir = output_dir / "review_package"
+    assert_not_frozen_output(output_dir)
+    assert_not_frozen_output(flat_dir)
     if flat_dir.exists():
         shutil.rmtree(flat_dir)
     shutil.copytree(review_dir, flat_dir)
@@ -262,6 +265,7 @@ def _copy_flat_package(package: dict[str, str], output_dir: Path) -> dict[str, s
         "render_report": str(flat_dir / "render_report.json"),
         "qa_report": str(flat_dir / "qa_report.json"),
         "summary": str(flat_dir / "review_summary.md"),
+        "manifest": str(flat_dir / "manifest.json"),
     }
 
 

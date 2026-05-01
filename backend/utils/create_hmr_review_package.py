@@ -10,6 +10,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+try:
+    from .hmr_artifact_manifest import assert_not_frozen_output, build_manifest, write_manifest
+except ImportError:  # pragma: no cover - direct script execution fallback
+    from hmr_artifact_manifest import assert_not_frozen_output, build_manifest, write_manifest
+
 
 def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
@@ -220,6 +225,7 @@ Top templates:
 
 def create_review_package(output_dir: str, video: str | None = None, review_root: str | None = None) -> dict[str, str]:
     source_dir = Path(output_dir).expanduser().resolve()
+    assert_not_frozen_output(source_dir)
     render_report_path = source_dir / "render_report.json"
     qa_report_path = source_dir / "qa_report.json"
     if not render_report_path.exists():
@@ -230,7 +236,9 @@ def create_review_package(output_dir: str, video: str | None = None, review_root
     video_path = _find_video(source_dir, video)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     root = Path(review_root).expanduser().resolve() if review_root else source_dir / "review_packages"
+    assert_not_frozen_output(root)
     review_dir = root / f"{video_path.stem}_{stamp}"
+    assert_not_frozen_output(review_dir)
     review_dir.mkdir(parents=True, exist_ok=True)
 
     copied_render = review_dir / "render_report.json"
@@ -242,12 +250,29 @@ def create_review_package(output_dir: str, video: str | None = None, review_root
 
     contact_sheet = review_dir / "contact_sheet.jpg"
     _run_ffmpeg_contact_sheet(copied_video, contact_sheet)
+    render_report = _load_json(copied_render)
+    qa_report = _load_json(copied_qa)
     summary = _write_summary(
         review_dir,
         copied_video,
         contact_sheet,
-        _load_json(copied_render),
-        _load_json(copied_qa),
+        render_report,
+        qa_report,
+    )
+    scenes = render_report.get("scene_reports") or []
+    first_scene = scenes[0] if scenes else {}
+    manifest = write_manifest(
+        review_dir,
+        build_manifest(
+            topic=str(render_report.get("topic") or source_dir.name),
+            hook=str(first_scene.get("headline") or first_scene.get("caption_text") or ""),
+            video_path=copied_video,
+            review_package_path=review_dir,
+            render_report=render_report,
+            qa_report=qa_report,
+            human_posting_gate=str(qa_report.get("human_posting_gate") or "READY_FOR_HUMAN_POST_REVIEW"),
+            frozen=False,
+        ),
     )
 
     return {
@@ -257,6 +282,7 @@ def create_review_package(output_dir: str, video: str | None = None, review_root
         "render_report": str(copied_render),
         "qa_report": str(copied_qa),
         "summary": str(summary),
+        "manifest": str(manifest),
     }
 
 

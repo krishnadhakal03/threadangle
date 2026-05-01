@@ -1,6 +1,6 @@
 # Post-Ready Artifact Convention
 
-Date: 2026-04-30
+Date: 2026-05-01
 
 ## Purpose
 
@@ -87,6 +87,16 @@ contains a post-ready package. A package should be treated as frozen if it has:
 If the existing package is frozen, create a new output folder instead of
 rewriting it.
 
+Code guard:
+
+- `backend/utils/hmr_artifact_manifest.py` defines `assert_not_frozen_output(...)`.
+- Review package creation and flat `review_package/` replacement must call the
+  guard before writing, deleting, or copying package files.
+- A missing manifest does not block generation, which keeps older working
+  folders compatible.
+- `force=True` is an explicit maintenance-only escape hatch. Use it only when a
+  task names the frozen package and says to update it.
+
 ## Safe Daily Output Flow
 
 1. Pick a new production slug before rendering.
@@ -102,39 +112,42 @@ Use this lightweight schema for `manifest.json`:
 
 ```json
 {
-  "title": "Day 9 Bill Leak Money-Saving Short",
+  "schema_version": 1,
   "topic": "Bill leak / money-saving",
-  "date": "2026-04-30",
+  "hook": "I found a $27/month leak hiding in one bill.",
+  "created_at": "2026-05-01T18:30:00+00:00",
   "video_path": "backend/generated_videos/storyboard_review/day9_bill_leak/review_package/day9_bill_leak_full.mp4",
   "review_package_path": "backend/generated_videos/storyboard_review/day9_bill_leak/review_package/",
-  "script": {
-    "hook": "I found a $27/month leak hiding in one bill.",
-    "cta": "Comment bill and I will send the prompt."
-  },
   "technical_status": "PASS",
   "postability_status": "STRONG_PASS",
   "average_score": 8.43,
+  "human_posting_gate": "READY_FOR_HUMAN_POST_REVIEW",
   "media_mix": {
     "REAL_STOCK": 2,
     "LOCAL_CAPTURE": 2,
     "ANIMATED_FALLBACK": 1
   },
-  "resolved_assets_count": 4,
+  "resolved_real_assets": [
+    {
+      "scene_id": "hook",
+      "type": "stock_footage",
+      "provider": "local_asset",
+      "path": "backend/generated_videos/storyboard_review/day9_bill_leak/review_package/hook.mp4"
+    }
+  ],
   "paid_providers_used": {
     "elevenlabs": false,
     "runwayml": false,
     "paid_llm": false
   },
-  "final_human_decision": "POST REVIEW CANDIDATE",
+  "frozen": false,
   "posted_platforms": [],
-  "analytics": {
+  "analytics_placeholders": {
     "youtube_shorts": null,
     "tiktok": null,
     "instagram_reels": null,
     "facebook_reels": null
-  },
-  "analytics_links": [],
-  "notes": ""
+  }
 }
 ```
 
