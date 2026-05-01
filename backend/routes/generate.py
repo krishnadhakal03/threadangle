@@ -368,6 +368,7 @@ class GenerateVideoRequest(BaseModel):
     voice_id: str = "pNInz6obpgDQGcFmaJgB"  # ElevenLabs "Adam" voice ID; ignored when tts_provider="free"
     # Image options
     image_provider: str = "pollinations"  # "pollinations" (free) | "gemini" (paid, requires billing)
+    hmr_async: bool = False  # Future worker-safe HMR path; current route behavior stays direct.
 
 
 def build_hmr_ui_generation_smoke_plan(
@@ -383,12 +384,18 @@ def build_hmr_ui_generation_smoke_plan(
     smoke_run_id = run_id or f"hmr_ui_smoke_{new_run_id()}"
     output_path = output_root / f"{smoke_run_id}.mp4"
     assert_not_frozen_output(output_path)
+    from utils.hmr_render_jobs import create_hmr_render_job_state
     from utils.hmr_ui_productization import build_hmr_ui_productization_metadata
 
     productization = build_hmr_ui_productization_metadata(
         generated_root=output_root,
         run_id=smoke_run_id,
         video_path=output_path,
+    )
+    hmr_job = create_hmr_render_job_state(
+        run_id=smoke_run_id,
+        generation_id=None,
+        artifact_paths=productization["artifact_paths"],
     )
     hmr_mode_selected = selected_mode == "hybrid_motion"
     hmr_renderer_enabled = is_hybrid_motion_renderer_enabled()
@@ -412,6 +419,8 @@ def build_hmr_ui_generation_smoke_plan(
         "review_package_available_after_render": True,
         "platform_export_integration_ready": True,
         "productization": productization,
+        "non_blocking_hmr_requested": bool(request.hmr_async),
+        "hmr_render_job": hmr_job.to_dict(),
         "render_invoked": False,
     }
 

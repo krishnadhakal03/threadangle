@@ -930,6 +930,14 @@ class TestHMRUISmokePreflight:
         assert productization["artifact_paths"]["manifest"].endswith("review_package\\manifest.json") or productization["artifact_paths"]["manifest"].endswith("review_package/manifest.json")
         assert set(productization["platform_exports"]) == {"instagram_reels", "tiktok", "youtube_shorts"}
         assert all(row["generated"] is False for row in productization["platform_exports"].values())
+        job = plan["hmr_render_job"]
+        assert plan["non_blocking_hmr_requested"] is False
+        assert job["run_id"] == "hmr_smoke_test"
+        assert job["generation_id"] is None
+        assert job["status"] == "queued"
+        assert job["percent"] == 2
+        assert job["render_invoked"] is False
+        assert job["artifact_paths"]["review_package"].endswith("review_package")
 
     def test_hmr_ui_smoke_plan_respects_frozen_manifest(self, monkeypatch, tmp_path):
         from routes.generate import GenerateVideoRequest, build_hmr_ui_generation_smoke_plan
@@ -983,6 +991,76 @@ class TestHMRUISmokePreflight:
             assert row["command"][0] == "ffmpeg"
             assert "-movflags" in row["command"]
             assert row["generated"] is False
+
+    def test_hmr_render_job_state_transitions_and_progress(self):
+        from utils.hmr_render_jobs import (
+            create_hmr_render_job_state,
+            seed_hmr_render_progress,
+            transition_hmr_render_job_state,
+        )
+
+        job = create_hmr_render_job_state(
+            run_id="run-123",
+            generation_id=42,
+            artifact_paths={"review_package": "review_package"},
+        )
+        progress_store = {}
+
+        queued = seed_hmr_render_progress(progress_store, job)
+        assert queued["percent"] == 2
+        assert queued["step"] == "queued"
+        assert progress_store[42]["hmr_render_job"]["status"] == "queued"
+
+        processing = transition_hmr_render_job_state(
+            job,
+            status="processing",
+            percent=33,
+            render_invoked=True,
+        )
+        assert processing.status == "processing"
+        assert processing.percent == 33
+        assert processing.step == "rendering"
+        assert processing.render_invoked is True
+
+        success = transition_hmr_render_job_state(processing, status="success")
+        assert success.status == "success"
+        assert success.percent == 100
+        assert success.step == "done"
+        assert success.render_invoked is True
+
+        failed = transition_hmr_render_job_state(
+            processing,
+            status="failed",
+            error_message="Renderer exited before writing video.",
+        )
+        assert failed.to_progress()["message"] == "Renderer exited before writing video."
+        assert failed.percent == 0
+
+        with pytest.raises(ValueError, match="Invalid HMR render job status"):
+            transition_hmr_render_job_state(job, status="unknown")
+
+    def test_hmr_ui_smoke_plan_exposes_non_blocking_request_flag(self, monkeypatch, tmp_path):
+        from routes.generate import GenerateVideoRequest, build_hmr_ui_generation_smoke_plan
+
+        monkeypatch.setenv("ENABLE_HYBRID_MOTION_RENDERER", "1")
+        request = GenerateVideoRequest(
+            script="A billing surprise becomes obvious in the first three seconds.",
+            scene_mode="hybrid_motion",
+            dry_run=True,
+            hmr_async=True,
+        )
+
+        plan = build_hmr_ui_generation_smoke_plan(
+            request,
+            generated_root=tmp_path,
+            run_id="async-smoke",
+        )
+
+        assert plan["non_blocking_hmr_requested"] is True
+        assert plan["hmr_render_job"]["status"] == "queued"
+        assert plan["hmr_render_job"]["run_id"] == "async-smoke"
+        assert plan["hmr_render_job"]["render_invoked"] is False
+        assert plan["render_invoked"] is False
 
 
 # ===========================================================================
