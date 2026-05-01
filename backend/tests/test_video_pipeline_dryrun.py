@@ -920,6 +920,16 @@ class TestHMRUISmokePreflight:
         assert str(tmp_path) in plan["output_folder"]
         assert plan["frozen_guard_checked"] is True
         assert plan["platform_export_integration_ready"] is True
+        productization = plan["productization"]
+        assert productization["review_package_status"] == "planned"
+        assert productization["platform_export_status"] == "planned"
+        assert productization["full_render_required"] is False
+        assert productization["artifact_paths"]["render_report"].endswith("render_report.json")
+        assert productization["artifact_paths"]["qa_report"].endswith("qa_report.json")
+        assert productization["artifact_paths"]["review_package"].endswith("review_package")
+        assert productization["artifact_paths"]["manifest"].endswith("review_package\\manifest.json") or productization["artifact_paths"]["manifest"].endswith("review_package/manifest.json")
+        assert set(productization["platform_exports"]) == {"instagram_reels", "tiktok", "youtube_shorts"}
+        assert all(row["generated"] is False for row in productization["platform_exports"].values())
 
     def test_hmr_ui_smoke_plan_respects_frozen_manifest(self, monkeypatch, tmp_path):
         from routes.generate import GenerateVideoRequest, build_hmr_ui_generation_smoke_plan
@@ -945,6 +955,34 @@ class TestHMRUISmokePreflight:
 
         with pytest.raises(FrozenArtifactError):
             build_hmr_ui_generation_smoke_plan(request, generated_root=generated_root, run_id="blocked")
+
+    def test_hmr_ui_productization_metadata_builds_review_and_export_paths(self, tmp_path):
+        from utils.hmr_ui_productization import build_hmr_ui_productization_metadata
+
+        video = tmp_path / "generated_videos" / "run-123.mp4"
+        metadata = build_hmr_ui_productization_metadata(
+            generated_root=tmp_path / "generated_videos",
+            run_id="run-123",
+            video_path=video,
+        )
+
+        paths = metadata["artifact_paths"]
+        assert paths["run_dir"].endswith("hmr_ui_runs\\run-123") or paths["run_dir"].endswith("hmr_ui_runs/run-123")
+        assert paths["video"] == str(video.resolve())
+        assert paths["render_report"].endswith("render_report.json")
+        assert paths["qa_report"].endswith("qa_report.json")
+        assert paths["story_candidate"].endswith("story_candidate.json")
+        assert paths["review_package"].endswith("review_package")
+        assert paths["manifest"].endswith("manifest.json")
+        assert paths["platform_export_dir"].endswith("platform_exports")
+        assert metadata["review_package_status"] == "planned"
+        assert metadata["platform_export_status"] == "planned"
+        for preset, row in metadata["platform_exports"].items():
+            assert preset in {"instagram_reels", "tiktok", "youtube_shorts"}
+            assert row["output"].endswith(".mp4")
+            assert row["command"][0] == "ffmpeg"
+            assert "-movflags" in row["command"]
+            assert row["generated"] is False
 
 
 # ===========================================================================

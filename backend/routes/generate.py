@@ -383,6 +383,13 @@ def build_hmr_ui_generation_smoke_plan(
     smoke_run_id = run_id or f"hmr_ui_smoke_{new_run_id()}"
     output_path = output_root / f"{smoke_run_id}.mp4"
     assert_not_frozen_output(output_path)
+    from utils.hmr_ui_productization import build_hmr_ui_productization_metadata
+
+    productization = build_hmr_ui_productization_metadata(
+        generated_root=output_root,
+        run_id=smoke_run_id,
+        video_path=output_path,
+    )
     hmr_mode_selected = selected_mode == "hybrid_motion"
     hmr_renderer_enabled = is_hybrid_motion_renderer_enabled()
     use_free_tts = hmr_mode_selected or str(getattr(request, "tts_provider", "elevenlabs")).lower() == "free"
@@ -402,8 +409,9 @@ def build_hmr_ui_generation_smoke_plan(
             "paid_llm": False,
         },
         "free_tts_for_hmr": use_free_tts,
-        "review_package_available_after_render": False,
+        "review_package_available_after_render": True,
         "platform_export_integration_ready": True,
+        "productization": productization,
         "render_invoked": False,
     }
 
@@ -1011,6 +1019,7 @@ async def generate_free_video(
             )
         if hybrid_motion_requested:
             from utils.hybrid_motion_renderer import render_hybrid_video
+            from utils.hmr_ui_productization import materialize_hmr_ui_review_workflow
 
             generated_root = Path(__file__).resolve().parents[1] / "generated_videos"
             hybrid_output_path = generated_root / f"{run_id}.mp4"
@@ -1026,12 +1035,21 @@ async def generate_free_video(
                 use_free_tts=True,
                 style_preset="documentary_money_short",
             )
+            hmr_productization = materialize_hmr_ui_review_workflow(
+                generated_root=generated_root,
+                run_id=run_id,
+                video_path=hybrid_result["video_path"],
+                render_result=hybrid_result,
+                script_text=script_text,
+                scenes=make_scene_response(scenes),
+            )
             render_result = {
                 "video_path": hybrid_result["video_path"],
                 "subtitle_path": None,
                 "thumbnail_path": None,
                 "ffmpeg_error": None,
                 "hybrid_motion": hybrid_result,
+                "hmr_productization": hmr_productization,
             }
         else:
             # Accept scene_mode from request, fallback to env default
@@ -1210,6 +1228,7 @@ async def generate_free_video(
             for s in scenes
         ],
         "hybrid_motion": render_result.get("hybrid_motion") if hybrid_motion_requested else None,
+        "hmr_productization": render_result.get("hmr_productization") if hybrid_motion_requested else None,
         "warning": "Rendered without burned subtitles because ffmpeg subtitle step failed."
         if ffmpeg_warning else None,
     }
