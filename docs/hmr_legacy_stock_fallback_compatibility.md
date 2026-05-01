@@ -1,6 +1,6 @@
 # HMR Legacy Stock Fallback Compatibility
 
-Date: 2026-04-30
+Date: 2026-05-01
 
 ## Question
 
@@ -15,8 +15,8 @@ Can the remaining direct `hook_footage_overlay` stock fallback branch in
 
 ## Finding
 
-Updated after Slice 5: the legacy branch is retained, but strategy-planned
-stock/image scenes now use the stock/local adapter path regardless of scene ID.
+Updated after Slice 6: the legacy branch has been removed. Strategy-planned
+stock/image scenes use the stock/local adapter path regardless of scene ID.
 
 Before Slice 5, the stock/local adapter path only ran when:
 
@@ -27,14 +27,14 @@ After Slice 5, the adapter path runs when:
 
 - the planned visual medium is `stock_footage` or `stock_image`.
 
-The legacy direct branch is still present and can still run only if a scene is
-not planned as stock/image by `scene_asset_strategy` while also meeting all of
-these conditions:
+The previous direct branch could run when a scene was not planned as stock/image
+by `scene_asset_strategy`, had template `hook_footage_overlay`, and stock
+backgrounds/providers were enabled. That path could make an unplanned scene look
+like a successful stock resolution.
 
-- `use_stock_backgrounds` is true,
-- the template is `hook_footage_overlay`,
-- a stock provider is configured,
-- and the scene ID is not exactly `hook` or `reveal`.
+After Slice 6, unplanned scenes do not call the stock selector directly. They
+fall back through the normal animated/motion template path with no resolved stock
+asset and `asset_resolution_status=not_attempted`.
 
 ## Callers And Scene Builders
 
@@ -67,26 +67,23 @@ Known `hook_footage_overlay` usage:
 - `test_generalized_stock_adapter_covers_generic_non_hook_stock_scene`
   - proves a generic non-hook stock scene ID with `visual_medium=stock_image`
     now uses the adapter path.
+- `test_unplanned_hook_overlay_does_not_fake_stock_success`
+  - proves an unplanned `hook_footage_overlay` scene does not call the adapter
+    or the removed direct stock branch, and reports no resolved stock asset.
 
 ## Removal Risk
 
-Removing the legacy branch is lower risk after Slice 5, but it should still be
-done in a tiny follow-up. The remaining risk is an unplanned/non-strategy caller
-with `hook_footage_overlay` that depends on the direct branch even though
-`scene_asset_strategy` does not map it to stock/image.
+The main risk after removal is an older unplanned caller that expected
+`hook_footage_overlay` alone to trigger provider lookup. That caller now needs a
+real `scene_asset_strategy` stock/image plan to resolve stock. This is
+intentional: unplanned scenes should not fake stock success or hide missing
+planning.
 
 ## Recommendation
 
-Retain the legacy branch for Slice 5.
-
-Next migration slice:
-
-1. Remove the direct legacy `hook_footage_overlay` stock fallback branch in a
-   tiny commit.
-2. Keep the current provider order and report fields.
-3. Keep the Slice 5 tests as compatibility proof.
-4. Add one negative test showing unplanned `hook_footage_overlay` scenes fall
-   back truthfully instead of faking stock success.
+The legacy branch is removed. Keep future stock/local work on the
+`scene_asset_strategy` plus `resolve_stock_or_local_scene_asset(...)` path so
+all report fields come from the normalized `ResolvedSceneSpec` asset contract.
 
 ## Frozen Package Status
 

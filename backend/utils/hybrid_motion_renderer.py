@@ -667,25 +667,6 @@ def render_hybrid_video(
                 stock_status["reason"] = asset_resolution.get("asset_resolution_status") or "asset_unresolved_for_scene"
             if asset_resolution.get("fallback_used"):
                 warnings.append(f"asset_resolution_fallback:{scene_id}:{asset_resolution.get('asset_resolution_status')}")
-        elif use_stock_backgrounds and template_name == "hook_footage_overlay" and _provider_available():
-            bg_path, stock_meta = _select_stock_background(scene, template_name, used_stock_ids, warnings)
-            if bg_path:
-                stock_status["used"] = True
-                asset_resolution = {
-                    "resolved_asset_type": "stock_footage",
-                    "resolved_asset_path": str(bg_path),
-                    "resolved_asset_provider": str((stock_meta.get("chosen") or {}).get("provider") or "stock_provider"),
-                    "asset_resolution_status": "resolved",
-                    "fallback_used": False,
-                    "query_used": stock_meta.get("query_used") or stock_meta.get("query"),
-                    "queries_attempted": stock_meta.get("queries_attempted") or [stock_meta.get("query")],
-                    "provider_available": True,
-                    "missing_config": [],
-                }
-            elif not stock_status["reason"]:
-                stock_status["reason"] = stock_meta.get("reason") or "stock_unavailable_for_scene"
-        elif use_stock_backgrounds and template_name == "hook_footage_overlay" and not _provider_available():
-            stock_status["reason"] = "pexels_pixabay_keys_not_configured"
         asset_lookup_sec += time.perf_counter() - lookup_start
         spec = build_resolved_scene_spec(
             scene_id=scene_id,

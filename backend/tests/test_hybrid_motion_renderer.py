@@ -597,6 +597,54 @@ def test_generalized_stock_adapter_covers_generic_non_hook_stock_scene(tmp_path,
     assert row["media_classification"] == "REAL_STOCK"
 
 
+def test_unplanned_hook_overlay_does_not_fake_stock_success(tmp_path, monkeypatch):
+    def empty_plan(scenes):
+        return []
+
+    def fail_adapter(*args, **kwargs):
+        raise AssertionError("adapter should not run without a scene asset strategy")
+
+    def fail_legacy(*args, **kwargs):
+        raise AssertionError("legacy direct stock branch should not run for unplanned hook overlay")
+
+    monkeypatch.setattr(hmr, "plan_hmr_scene_assets", empty_plan)
+    monkeypatch.setattr(hmr, "resolve_stock_or_local_scene_asset", fail_adapter)
+    monkeypatch.setattr(hmr, "_select_stock_background", fail_legacy)
+    monkeypatch.setattr(hmr, "_provider_available", lambda: True)
+    result = render_hybrid_video(
+        [
+            {
+                "id": "manual_hook",
+                "template": "hook_footage_overlay",
+                "duration": 1.0,
+                "headline": "Manual hook",
+                "caption_text": "Manual hook",
+                "visual_description": "person holding a receipt",
+            }
+        ],
+        "Manual hook.",
+        tmp_path / "manual_hook.mp4",
+        fps=6,
+        width=270,
+        height=480,
+        use_stock_backgrounds=True,
+        use_free_tts=False,
+    )
+    row = result["scene_reports"][0]
+    assert row["scene_asset_strategy"] == {}
+    assert row["resolved_asset_type"] is None
+    assert row["resolved_asset_path"] is None
+    assert row["resolved_asset_provider"] is None
+    assert row["asset_resolution_status"] == "not_attempted"
+    assert row["fallback_used"] is True
+    assert row["query_used"] is None
+    assert row["queries_attempted"] == []
+    assert row["provider_available"] is None
+    assert row["missing_config"] == []
+    assert row["media_classification"] == "ANIMATED_FALLBACK"
+    assert row["provider_usage"] == {"provider": None, "reason": "not_attempted"}
+
+
 def test_hmr_asset_readiness_blocks_without_keys_or_local_assets(tmp_path, monkeypatch):
     monkeypatch.delenv("PEXELS_API_KEY", raising=False)
     monkeypatch.delenv("PIXABAY_API_KEY", raising=False)
