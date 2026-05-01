@@ -387,11 +387,22 @@ def build_hmr_ui_generation_smoke_plan(
     from utils.first_three_seconds import build_first_3_seconds_plan
     from utils.hmr_render_jobs import create_hmr_render_job_state
     from utils.hmr_ui_productization import build_hmr_ui_productization_metadata
+    from utils.pattern_interrupts import build_pattern_interrupt_plan
 
     selected_hook = request.hook or parse_script(request.full_script or request.script or "").hook
     first_3_seconds = build_first_3_seconds_plan(
         selected_hook=selected_hook or request.script,
         topic=request.niche or selected_hook,
+    )
+    pattern_interrupt_plan = build_pattern_interrupt_plan(
+        [
+            {
+                "id": "hook",
+                "template": "hook",
+                "duration": 3.0,
+                "caption_text": selected_hook or request.script,
+            }
+        ]
     )
     productization = build_hmr_ui_productization_metadata(
         generated_root=output_root,
@@ -428,6 +439,7 @@ def build_hmr_ui_generation_smoke_plan(
         "non_blocking_hmr_requested": bool(request.hmr_async),
         "hmr_render_job": hmr_job.to_dict(),
         "first_3_seconds": first_3_seconds,
+        "pattern_interrupt_plan": pattern_interrupt_plan,
         "render_invoked": False,
     }
 
@@ -1037,6 +1049,7 @@ async def generate_free_video(
             from utils.first_three_seconds import attach_first_3_seconds_to_report, build_first_3_seconds_plan
             from utils.hybrid_motion_renderer import render_hybrid_video
             from utils.hmr_ui_productization import materialize_hmr_ui_review_workflow
+            from utils.pattern_interrupts import attach_pattern_interrupts_to_report, build_pattern_interrupt_plan
 
             generated_root = Path(__file__).resolve().parents[1] / "generated_videos"
             hybrid_output_path = generated_root / f"{run_id}.mp4"
@@ -1044,8 +1057,10 @@ async def generate_free_video(
                 selected_hook=parts.hook or script_text,
                 topic=request.niche,
             )
+            scene_response = make_scene_response(scenes)
+            pattern_interrupt_plan = build_pattern_interrupt_plan(scene_response)
             hybrid_result = render_hybrid_video(
-                scenes=make_scene_response(scenes),
+                scenes=scene_response,
                 script_text=script_text,
                 output_path=hybrid_output_path,
                 audio_path=audio_path,
@@ -1057,6 +1072,7 @@ async def generate_free_video(
                 style_preset="documentary_money_short",
             )
             hybrid_result = attach_first_3_seconds_to_report(hybrid_result, first_3_seconds_plan)
+            hybrid_result = attach_pattern_interrupts_to_report(hybrid_result, pattern_interrupt_plan)
             hybrid_result["first_3_seconds"] = first_3_seconds_plan
             hmr_productization = materialize_hmr_ui_review_workflow(
                 generated_root=generated_root,

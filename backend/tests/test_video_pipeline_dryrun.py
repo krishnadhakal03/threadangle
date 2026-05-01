@@ -943,6 +943,10 @@ class TestHMRUISmokePreflight:
         assert first_3["no_slow_intro"] is True
         assert first_3["pattern_interrupt"]["time_seconds"] < 2
         assert first_3["caption_text_preserved"]
+        interrupts = plan["pattern_interrupt_plan"]
+        assert interrupts["debug"]["render_required"] is False
+        assert interrupts["scenes"][0]["scene_role"] == "hook"
+        assert interrupts["interrupts"][0]["type"] == "punch_zoom"
 
     def test_hmr_ui_smoke_plan_respects_frozen_manifest(self, monkeypatch, tmp_path):
         from routes.generate import GenerateVideoRequest, build_hmr_ui_generation_smoke_plan

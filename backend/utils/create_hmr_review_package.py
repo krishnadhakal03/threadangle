@@ -139,6 +139,13 @@ def _write_summary(
         for row in strategy_rows
     ) or "- No scene asset strategy attached"
     scene_reports = render_report.get("scene_reports") or []
+    pattern_plan = render_report.get("pattern_interrupt_plan") or {}
+    pattern_debug = pattern_plan.get("debug") or {}
+    pattern_lines = (
+        f"- Planned interrupts: `{pattern_debug.get('interrupt_count', 0)}` across `{pattern_debug.get('scene_count', 0)}` scenes"
+        if pattern_plan
+        else "- No pattern interrupt plan attached"
+    )
     resolution_lines = "\n".join(
         "- `{scene_id}`: `{asset_type}` via `{provider}`; status: `{status}`; fallback: `{fallback}`; query: `{query}`; path: `{path}`; motion: `{motion}`; steps: {steps}; visible interaction: `{visible}`".format(
             scene_id=row.get("scene_id"),
@@ -187,6 +194,10 @@ Generated: {datetime.now().isoformat(timespec="seconds")}
 ## Visual Strategy
 
 {strategy_lines}
+
+## Pattern Interrupts
+
+{pattern_lines}
 
 ## Asset Resolution
 
