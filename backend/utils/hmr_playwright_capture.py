@@ -12,8 +12,9 @@ import hashlib
 import html
 import json
 import re
+import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 
 def _clean_text(value: Any) -> str:
@@ -515,6 +516,32 @@ async def _capture_html_to_png(html_text: str, output_path: Path, width: int, he
         await browser.close()
 
 
+def _run_capture_coroutine(coro_factory: Callable[[], Awaitable[None]]) -> None:
+    """Run Playwright capture from sync CLI code or from an active UI event loop."""
+    try:
+        running_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        running_loop = None
+
+    if running_loop is None or not running_loop.is_running():
+        asyncio.run(coro_factory())
+        return
+
+    error: list[BaseException] = []
+
+    def _thread_main() -> None:
+        try:
+            asyncio.run(coro_factory())
+        except BaseException as exc:
+            error.append(exc)
+
+    thread = threading.Thread(target=_thread_main, name="hmr-playwright-capture", daemon=True)
+    thread.start()
+    thread.join()
+    if error:
+        raise error[0]
+
+
 def _capture_receipt_audit_sequence(
     scene: dict[str, Any],
     output_root: Path,
@@ -532,7 +559,7 @@ def _capture_receipt_audit_sequence(
         png_path = output_root / f"hmr_receipt_audit_motion_{digest}_{idx:02d}_{state['name']}.png"
         html_path.write_text(html_text, encoding="utf-8")
         try:
-            asyncio.run(_capture_html_to_png(html_text, png_path, width, height))
+            _run_capture_coroutine(lambda: _capture_html_to_png(html_text, png_path, width, height))
         except ImportError as exc:
             return {
                 "resolved_asset_type": None,
@@ -630,7 +657,7 @@ def resolve_hmr_playwright_capture(
     html_path.write_text(html_text, encoding="utf-8")
 
     try:
-        asyncio.run(_capture_html_to_png(html_text, png_path, width, height))
+        _run_capture_coroutine(lambda: _capture_html_to_png(html_text, png_path, width, height))
     except ImportError as exc:
         return {
             "resolved_asset_type": None,
