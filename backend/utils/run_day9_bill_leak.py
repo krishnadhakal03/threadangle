@@ -24,6 +24,7 @@ from utils.check_hmr_asset_readiness import check_hmr_asset_readiness
 from utils.create_hmr_review_package import create_review_package
 from utils.hybrid_motion_qa import run_hybrid_motion_qa
 from utils.hybrid_motion_renderer import render_hybrid_video, save_render_report
+from utils.hmr_posting_gate import compute_human_posting_gate
 from utils.run_visual_realism_sprint1 import PRESETS, _copy_flat_package, _free_audio, _repo_root
 
 
@@ -276,6 +277,7 @@ def main() -> int:
     }
     qa = run_hybrid_motion_qa(result)
     human_review = _human_review_notes(qa, result)
+    human_posting_gate = compute_human_posting_gate(render_report=result, qa_report=qa, human_review=human_review)
     result["sprint"] = {
         "issue": args.issue,
         "name": args.sprint_name,
@@ -283,11 +285,13 @@ def main() -> int:
         "hook": "I found a $27/month leak hiding in one bill.",
     }
     result["human_review"] = human_review
+    result["human_posting_gate"] = human_posting_gate
     result["qa"] = qa
     result["technical_status"] = qa["technical_status"]
     result["postability_status"] = qa["postability_status"]
     result["postability_score"] = qa["postability_score"]
     qa["human_review"] = human_review
+    qa["human_posting_gate"] = human_posting_gate
 
     save_render_report(result, output_dir / "render_report.json")
     (output_dir / "qa_report.json").write_text(json.dumps(qa, indent=2), encoding="utf-8")
@@ -311,6 +315,7 @@ def main() -> int:
         "technical_status": qa["technical_status"],
         "postability_status": qa["postability_status"],
         "postability_score": qa["postability_score"],
+        "human_posting_gate": human_posting_gate,
         "human_review": human_review,
         "files": flat_package,
         "warnings": result.get("warnings", []),

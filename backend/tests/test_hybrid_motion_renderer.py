@@ -15,6 +15,13 @@ from utils.hmr_resolved_scene_spec import (
     resolve_playwright_scene_asset,
     resolve_stock_or_local_scene_asset,
 )
+from utils.hmr_posting_gate import (
+    BLOCKED_ASSET_MISSING,
+    BLOCKED_PLATFORM_EXPORT,
+    READY_FOR_HUMAN_POST_REVIEW,
+    UNKNOWN,
+    compute_human_posting_gate,
+)
 from utils.hybrid_scene_templates import ai_prompt_mock, money_shock_math, payoff_number_reveal
 from utils.run_day9_bill_leak import build_bill_leak_scenes
 from utils.run_hybrid_motion_poc import build_day8_scenes
@@ -906,6 +913,77 @@ def test_qa_marks_all_good_high_average_as_strong_pass():
     assert qa["postability_status"] == "STRONG_PASS"
     assert qa["postability_score"]["average_score"] >= 8
     assert not qa["postability_score"]["recommendations"]
+
+
+def test_human_posting_gate_blocks_strong_pass_with_unresolved_real_assets():
+    render_report = {
+        "media_mix": {"REAL_STOCK": 1, "ANIMATED_FALLBACK": 1},
+        "visual_realism_human_gate": {"planned_real_sources": 2, "resolved_real_assets": 1},
+        "scene_reports": [
+            {
+                "scene_id": "hook",
+                "duration": 2.4,
+                "media_classification": "REAL_STOCK",
+                "motion_score": 0.95,
+                "scene_asset_strategy": {"visual_medium": "stock_footage"},
+                "resolved_asset_type": "stock_footage",
+                "fallback_used": False,
+            },
+            {
+                "scene_id": "reveal",
+                "duration": 2.4,
+                "media_classification": "ANIMATED_FALLBACK",
+                "motion_score": 0.9,
+                "scene_asset_strategy": {"visual_medium": "stock_footage"},
+                "resolved_asset_type": None,
+                "fallback_used": True,
+            },
+        ],
+    }
+    qa_report = {"technical_status": "PASS", "postability_status": "STRONG_PASS"}
+
+    assert compute_human_posting_gate(render_report=render_report, qa_report=qa_report) == BLOCKED_ASSET_MISSING
+
+
+def test_human_posting_gate_ready_when_human_review_says_candidate():
+    render_report = {
+        "media_mix": {"REAL_STOCK": 2},
+        "visual_realism_human_gate": {"planned_real_sources": 2, "resolved_real_assets": 2},
+        "scene_reports": [
+            {
+                "scene_id": "hook",
+                "scene_asset_strategy": {"visual_medium": "stock_footage"},
+                "resolved_asset_type": "stock_footage",
+                "fallback_used": False,
+            }
+        ],
+    }
+    qa_report = {"technical_status": "PASS", "postability_status": "STRONG_PASS"}
+    human_review = {"post_no_post_recommendation": "POST REVIEW CANDIDATE"}
+
+    assert (
+        compute_human_posting_gate(
+            render_report=render_report,
+            qa_report=qa_report,
+            human_review=human_review,
+        )
+        == READY_FOR_HUMAN_POST_REVIEW
+    )
+
+
+def test_human_posting_gate_blocks_platform_export_failure():
+    assert (
+        compute_human_posting_gate(
+            render_report={"platform_export_status": "failed"},
+            qa_report={"technical_status": "PASS", "postability_status": "STRONG_PASS"},
+            human_review={"post_no_post_recommendation": "POST REVIEW CANDIDATE"},
+        )
+        == BLOCKED_PLATFORM_EXPORT
+    )
+
+
+def test_human_posting_gate_unknown_when_metadata_missing():
+    assert compute_human_posting_gate(render_report={}, qa_report={}) == UNKNOWN
 
 
 def test_payoff_scene_renders_number_reveal_config():

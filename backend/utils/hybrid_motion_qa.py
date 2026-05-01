@@ -5,6 +5,11 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+try:
+    from .hmr_posting_gate import compute_human_posting_gate
+except ImportError:  # pragma: no cover - direct script execution fallback
+    from hmr_posting_gate import compute_human_posting_gate
+
 
 POSTABILITY_RECOMMENDATIONS = {
     "hook_visual_strength": "Strengthen the first two seconds with real footage, a more specific visual object, or a clearer thumb-stopping hook.",
@@ -272,7 +277,7 @@ def run_hybrid_motion_qa(render_result: dict[str, Any]) -> dict[str, Any]:
     technical_status = "FAIL" if any(i.get("severity") == "fail" for i in issues) else "PASS"
     postability_score = _score_postability(render_result, issues, technical_status)
     postability_status = postability_score["status"]
-    return {
+    qa_report = {
         "status": technical_status,
         "technical_status": technical_status,
         "postability_status": postability_status,
@@ -281,3 +286,5 @@ def run_hybrid_motion_qa(render_result: dict[str, Any]) -> dict[str, Any]:
         "scene_ids": sorted({sid for issue in issues for sid in issue.get("scene_ids", []) if sid is not None}),
         "recommendations": recommendations,
     }
+    qa_report["human_posting_gate"] = compute_human_posting_gate(render_report=render_result, qa_report=qa_report)
+    return qa_report

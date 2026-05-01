@@ -7,6 +7,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    from .hmr_posting_gate import compute_human_posting_gate
+except ImportError:  # pragma: no cover - direct script execution fallback
+    from hmr_posting_gate import compute_human_posting_gate
+
 
 MANIFEST_FILENAME = "manifest.json"
 SCHEMA_VERSION = 1
@@ -64,7 +69,7 @@ def build_manifest(
     review_package_path: str | Path,
     render_report: dict[str, Any] | None = None,
     qa_report: dict[str, Any] | None = None,
-    human_posting_gate: str = "READY_FOR_HUMAN_POST_REVIEW",
+    human_posting_gate: str | None = None,
     frozen: bool = False,
     paid_providers_used: dict[str, bool] | None = None,
 ) -> dict[str, Any]:
@@ -72,6 +77,7 @@ def build_manifest(
     render_report = render_report or {}
     qa_report = qa_report or {}
     postability = qa_report.get("postability_score") or {}
+    gate = human_posting_gate or compute_human_posting_gate(render_report=render_report, qa_report=qa_report)
     scene_reports = render_report.get("scene_reports") or []
     resolved_real_assets = [
         {
@@ -93,7 +99,7 @@ def build_manifest(
         "technical_status": qa_report.get("technical_status"),
         "postability_status": qa_report.get("postability_status"),
         "average_score": postability.get("average_score"),
-        "human_posting_gate": human_posting_gate,
+        "human_posting_gate": gate,
         "media_mix": render_report.get("media_mix") or {},
         "resolved_real_assets": resolved_real_assets,
         "paid_providers_used": paid_providers_used

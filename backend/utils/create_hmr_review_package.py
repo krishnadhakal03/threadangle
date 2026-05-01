@@ -12,8 +12,10 @@ from typing import Any
 
 try:
     from .hmr_artifact_manifest import assert_not_frozen_output, build_manifest, write_manifest
+    from .hmr_posting_gate import compute_human_posting_gate
 except ImportError:  # pragma: no cover - direct script execution fallback
     from hmr_artifact_manifest import assert_not_frozen_output, build_manifest, write_manifest
+    from hmr_posting_gate import compute_human_posting_gate
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -77,6 +79,11 @@ def _write_summary(
     recommendations = postability.get("recommendations") or []
     recommendation_lines = "\n".join(f"- {item}" for item in recommendations) if recommendations else "- None"
     human_review = render_report.get("human_review") or qa_report.get("human_review") or render_report.get("visual_realism_human_gate") or {}
+    human_posting_gate = compute_human_posting_gate(
+        render_report=render_report,
+        qa_report=qa_report,
+        human_review=human_review,
+    )
     final_recommendation = human_review.get("post_no_post_recommendation") or (
         "Post" if qa_report.get("postability_status") in {"PASS", "STRONG_PASS"} else "Manual review before posting"
     )
@@ -161,6 +168,7 @@ Generated: {datetime.now().isoformat(timespec="seconds")}
 
 - Technical status: `{qa_report.get("technical_status")}`
 - Postability status: `{qa_report.get("postability_status")}`
+- Human posting gate: `{human_posting_gate}`
 - Average score: `{postability.get("average_score")}`
 - Preset: `{benchmark.get("preset")}`
 - Resolution/FPS: `{benchmark.get("width")}x{benchmark.get("height")} @ {benchmark.get("fps")}fps`
@@ -270,7 +278,7 @@ def create_review_package(output_dir: str, video: str | None = None, review_root
             review_package_path=review_dir,
             render_report=render_report,
             qa_report=qa_report,
-            human_posting_gate=str(qa_report.get("human_posting_gate") or "READY_FOR_HUMAN_POST_REVIEW"),
+            human_posting_gate=compute_human_posting_gate(render_report=render_report, qa_report=qa_report),
             frozen=False,
         ),
     )
