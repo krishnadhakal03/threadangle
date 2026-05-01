@@ -27,6 +27,7 @@ from utils.voice_learning import analyze_user_voice, build_voice_prompt, should_
 from utils.hook_generator import generate_all_hook_variations
 from utils.site_settings import get_plan_limit
 from utils.character_manager import CharacterManager
+from utils.hmr_artifact_manifest import assert_not_frozen_output
 from utils.runwayml_client import RunwayMLClient
 from utils.video_pipeline import (
     parse_script,
@@ -367,6 +368,44 @@ class GenerateVideoRequest(BaseModel):
     voice_id: str = "pNInz6obpgDQGcFmaJgB"  # ElevenLabs "Adam" voice ID; ignored when tts_provider="free"
     # Image options
     image_provider: str = "pollinations"  # "pollinations" (free) | "gemini" (paid, requires billing)
+
+
+def build_hmr_ui_generation_smoke_plan(
+    request: GenerateVideoRequest,
+    *,
+    generated_root: str | Path | None = None,
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    """Validate HMR UI generation routing without invoking render work."""
+    selected_mode = str(request.scene_mode or "").lower().strip()
+    dry_run = request.dry_run if request.dry_run is not None else is_video_dry_run_enabled()
+    output_root = Path(generated_root).expanduser().resolve() if generated_root else Path(__file__).resolve().parents[1] / "generated_videos"
+    smoke_run_id = run_id or f"hmr_ui_smoke_{new_run_id()}"
+    output_path = output_root / f"{smoke_run_id}.mp4"
+    assert_not_frozen_output(output_path)
+    hmr_mode_selected = selected_mode == "hybrid_motion"
+    hmr_renderer_enabled = is_hybrid_motion_renderer_enabled()
+    use_free_tts = hmr_mode_selected or str(getattr(request, "tts_provider", "elevenlabs")).lower() == "free"
+    return {
+        "route_entry_point": "/api/generate/video/free",
+        "request_schema": "GenerateVideoRequest",
+        "hmr_mode_selected": hmr_mode_selected,
+        "hmr_renderer_enabled": hmr_renderer_enabled,
+        "would_enter_hmr_render_branch": hmr_mode_selected and hmr_renderer_enabled,
+        "dry_run": dry_run,
+        "output_path": str(output_path),
+        "output_folder": str(output_root),
+        "frozen_guard_checked": True,
+        "paid_providers_selected": {
+            "elevenlabs": not (dry_run or use_free_tts),
+            "runwayml": False if hmr_mode_selected else not dry_run and selected_mode in {"ai", "auto", "hybrid"},
+            "paid_llm": False,
+        },
+        "free_tts_for_hmr": use_free_tts,
+        "review_package_available_after_render": False,
+        "platform_export_integration_ready": True,
+        "render_invoked": False,
+    }
 
 
 class GenerateVideoPlanRequest(BaseModel):

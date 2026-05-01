@@ -835,6 +835,7 @@ class TestCreditLeakageGuard:
             "Without it, the server worker can hang indefinitely."
         )
 
+
     def test_path_rename_not_used_in_ai_video(self):
         """Path.rename() must not be used in ai_video.py — use shutil.move for cross-device safety."""
         ai_video_path = BACKEND_DIR / "utils" / "ai_video.py"
@@ -877,6 +878,73 @@ class TestCreditLeakageGuard:
             "HIGH: audio_clip (AudioFileClip) is not closed in the finally block of assemble_video. "
             "This causes a file handle leak on every video render."
         )
+
+
+# ===========================================================================
+# 17. HMR UI smoke preflight — no render invocation
+# ===========================================================================
+
+class TestHMRUISmokePreflight:
+    def test_hmr_ui_smoke_plan_selects_safe_free_defaults(self, monkeypatch, tmp_path):
+        from routes.generate import GenerateVideoRequest, build_hmr_ui_generation_smoke_plan
+
+        monkeypatch.setenv("ENABLE_HYBRID_MOTION_RENDERER", "1")
+        monkeypatch.setenv("VIDEO_GENERATION_DRY_RUN", "1")
+        request = GenerateVideoRequest(
+            script="I found a $27/month leak hiding in one bill. Compare it and keep the savings.",
+            scene_mode="hybrid_motion",
+            dry_run=True,
+            tts_provider="elevenlabs",
+        )
+
+        plan = build_hmr_ui_generation_smoke_plan(
+            request,
+            generated_root=tmp_path,
+            run_id="hmr_smoke_test",
+        )
+
+        assert plan["route_entry_point"] == "/api/generate/video/free"
+        assert plan["request_schema"] == "GenerateVideoRequest"
+        assert plan["hmr_mode_selected"] is True
+        assert plan["hmr_renderer_enabled"] is True
+        assert plan["would_enter_hmr_render_branch"] is True
+        assert plan["dry_run"] is True
+        assert plan["render_invoked"] is False
+        assert plan["free_tts_for_hmr"] is True
+        assert plan["paid_providers_selected"] == {
+            "elevenlabs": False,
+            "runwayml": False,
+            "paid_llm": False,
+        }
+        assert plan["output_path"].endswith("hmr_smoke_test.mp4")
+        assert str(tmp_path) in plan["output_folder"]
+        assert plan["frozen_guard_checked"] is True
+        assert plan["platform_export_integration_ready"] is True
+
+    def test_hmr_ui_smoke_plan_respects_frozen_manifest(self, monkeypatch, tmp_path):
+        from routes.generate import GenerateVideoRequest, build_hmr_ui_generation_smoke_plan
+        from utils.hmr_artifact_manifest import FrozenArtifactError, build_manifest, write_manifest
+
+        monkeypatch.setenv("ENABLE_HYBRID_MOTION_RENDERER", "1")
+        generated_root = tmp_path / "generated_videos"
+        manifest = build_manifest(
+            topic="Frozen smoke root",
+            hook="Do not overwrite",
+            video_path=generated_root / "final.mp4",
+            review_package_path=generated_root,
+            frozen=True,
+            human_posting_gate="READY_FOR_HUMAN_POST_REVIEW",
+        )
+        write_manifest(generated_root, manifest)
+
+        request = GenerateVideoRequest(
+            script="I found a $27/month leak hiding in one bill. Compare it and keep the savings.",
+            scene_mode="hybrid_motion",
+            dry_run=True,
+        )
+
+        with pytest.raises(FrozenArtifactError):
+            build_hmr_ui_generation_smoke_plan(request, generated_root=generated_root, run_id="blocked")
 
 
 # ===========================================================================
