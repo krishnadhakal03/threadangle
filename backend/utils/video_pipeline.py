@@ -12,11 +12,11 @@ from pathlib import Path
 from typing import List, Optional, Dict, Tuple
 
 import httpx
-from moviepy.editor import VideoFileClip, concatenate_videoclips, vfx
+from moviepy.editor import VideoFileClip, concatenate_videoclips, vfx, ImageClip
 from dotenv import load_dotenv
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageDraw, ImageFont
     if not hasattr(Image, "ANTIALIAS") and hasattr(Image, "Resampling"):
         Image.ANTIALIAS = Image.Resampling.LANCZOS
 except Exception:
@@ -5857,11 +5857,101 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
             )
         detail_text = "; ".join(missing_details)
         print(f"[FETCH] Explicit stock search failure: {detail_text}")
-        if len(missing) == len(scenes):
-            raise RuntimeError("No matching stock clips found for any scene. Try broader wording or stronger visuals.")
-        raise RuntimeError("Failed to find relevant stock clip(s): " + ", ".join(str(scene.idx) for scene in missing))
+        print(f"[FETCH] Missing stock clips; using local fallback cards instead: {', '.join(str(scene.idx) for scene in missing)}")
+        _apply_missing_stock_fallbacks(missing, run_id)
 
     return scenes
+
+
+def _apply_missing_stock_fallbacks(missing_scenes: List["ScenePlan"], run_id: str) -> None:
+    import traceback
+
+    for scene in missing_scenes:
+        out_path = RAW_DIR / f"stock_missing_fallback_{run_id}_scene_{scene.idx}.mp4"
+        scene.clip_url = None
+        scene.use_runway = False
+        scene.credits_cost = 0.0
+        scene.allocation_reason = "local fallback: stock unavailable"
+
+        try:
+            _write_stock_missing_fallback_clip(scene, out_path, duration=(scene.end - scene.start if getattr(scene, "end", None) is not None and getattr(scene, "start", None) is not None else None))
+            scene.clip_path = str(out_path)
+            print(f"[FETCH] Local fallback created for scene {scene.idx}: {out_path}")
+        except Exception as e:
+            print(f"[FETCH] Failed to create local fallback for scene {scene.idx}: {e}")
+            traceback.print_exc()
+
+
+def _write_stock_missing_fallback_clip(scene: "ScenePlan", out_path: Path, duration: float | None = None) -> None:
+    try:
+        from PIL import ImageDraw, ImageFont
+    except Exception as e:
+        raise RuntimeError("PIL is required to write local fallback clips") from e
+
+    import textwrap
+
+    duration = float(duration or max(2.5, (getattr(scene, "end", 0) - getattr(scene, "start", 0)) or 3.0))
+    duration = max(2.5, duration)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    width, height = FAST_TARGET_W, FAST_TARGET_H
+    bg_color = (18, 20, 30)
+    accent_color = (80, 175, 230)
+    primary_color = (244, 244, 248)
+    secondary_color = (172, 186, 204)
+    accent_bar_height = 18
+
+    image = Image.new("RGB", (width, height), bg_color)
+    draw = ImageDraw.Draw(image)
+
+    try:
+        font_large = ImageFont.truetype("DejaVuSans-Bold.ttf", 64)
+        font_medium = ImageFont.truetype("DejaVuSans.ttf", 36)
+        font_small = ImageFont.truetype("DejaVuSans.ttf", 28)
+    except Exception:
+        font_large = ImageFont.load_default()
+        font_medium = ImageFont.load_default()
+        font_small = ImageFont.load_default()
+
+    label_text = (scene.part or "BODY").upper().strip()
+    if label_text not in {"HOOK", "BODY", "CTA"}:
+        label_text = "BODY"
+    title = f"{label_text} FALLBACK"
+    subtitle_text = scene.subtitle or scene.source_text or "Stock footage unavailable"
+    description = (scene.visual_description or "").strip()
+    byline = "Generated locally — no paid API"
+
+    draw.rectangle([0, 0, width, accent_bar_height], fill=accent_color)
+    draw.text((40, 40), title, font=font_large, fill=primary_color)
+
+    title_bbox = draw.textbbox((0, 0), title, font=font_large)
+    title_height = title_bbox[3] - title_bbox[1]
+    y = 40 + title_height + 40
+    max_width = width - 80
+
+    lines = []
+    if subtitle_text:
+        lines.extend(textwrap.wrap(subtitle_text, width=28))
+    if description:
+        lines.append("")
+        lines.extend(textwrap.wrap(description, width=28))
+    lines.extend(["", byline])
+
+    for text in lines:
+        if not text:
+            y += 18
+            continue
+        font = font_medium if text != byline else font_small
+        draw.text((40, y), text, font=font, fill=secondary_color if text != byline else primary_color)
+        text_bbox = draw.textbbox((0, 0), text, font=font)
+        y += (text_bbox[3] - text_bbox[1]) + 14
+
+    import numpy as np
+
+    clip = ImageClip(np.array(image)).set_duration(duration)
+    clip.write_videofile(str(out_path), fps=12, codec="libx264", audio=False, verbose=False, logger=None)
+    clip.close()
+    return
 
 
 def _fit_vertical(clip: VideoFileClip, target_w: int = FAST_TARGET_W, target_h: int = FAST_TARGET_H) -> VideoFileClip:

@@ -473,14 +473,22 @@ class TestFetchSceneClipsStock:
 
     @pytest.mark.asyncio
     async def test_all_scenes_get_fallback_when_no_clips_found(self, sample_scenes, tmp_path):
-        """When all searches return None, RuntimeError is raised (not silent failure)."""
+        """When all searches return None, local fallback clips are generated instead of failing."""
         with patch("utils.video_pipeline._search_pexels_video", new_callable=AsyncMock, return_value=None), \
              patch("utils.video_pipeline._search_pixabay_video", new_callable=AsyncMock, return_value=None), \
              patch("utils.video_pipeline._download_file", new_callable=AsyncMock), \
              patch("utils.video_pipeline.RAW_DIR", tmp_path):
 
-            with pytest.raises(RuntimeError, match="No matching"):
-                await fetch_scene_clips(sample_scenes, new_run_id(), mode="stock")
+            result = await fetch_scene_clips(sample_scenes, new_run_id(), mode="stock")
+
+            assert result is not None
+            for scene in result:
+                assert scene.clip_path
+                assert scene.clip_url is None
+                assert scene.use_runway is False
+                assert scene.credits_cost == 0.0
+                assert scene.allocation_reason == "local fallback: stock unavailable"
+                assert Path(scene.clip_path).exists()
 
 
 # ===========================================================================
