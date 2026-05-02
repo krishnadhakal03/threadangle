@@ -23,10 +23,12 @@ import numpy as np
 try:
     from .hybrid_scene_templates import draw_caption_band, get_template
     from .hmr_scene_asset_strategy import detect_hmr_asset_domain_from_text, local_asset_domain_folders, plan_hmr_scene_assets
+    from .hmr_sfx import build_sfx_plan
     from .hmr_resolved_scene_spec import build_resolved_scene_spec, resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
 except ImportError:  # pragma: no cover - direct script execution fallback
     from hybrid_scene_templates import draw_caption_band, get_template
     from hmr_scene_asset_strategy import detect_hmr_asset_domain_from_text, local_asset_domain_folders, plan_hmr_scene_assets
+    from hmr_sfx import build_sfx_plan
     from hmr_resolved_scene_spec import build_resolved_scene_spec, resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
 
 
@@ -796,6 +798,23 @@ def render_hybrid_video(
             ]
             duration_strategy = "scaled_to_audio_duration"
     total_duration = sum(item[2] for item in prepared)
+    scene_timings = []
+    timing_cursor = 0.0
+    for idx, (scene, _template_name, duration, _bg_path, _stock_meta, _asset_resolution, _spec) in enumerate(prepared):
+        scene_id = _scene_value(scene, "id", None) or _scene_value(scene, "scene_id", None) or _scene_value(scene, "scene", None) or _scene_value(scene, "scene_index", idx + 1)
+        scene_timings.append({
+            "scene_id": str(scene_id),
+            "start": round(timing_cursor, 3),
+            "end": round(timing_cursor + duration, 3),
+            "duration": round(duration, 3),
+        })
+        timing_cursor += duration
+    sfx_plan = build_sfx_plan([item[0] for item in prepared], scene_timings=scene_timings)
+    for role in sfx_plan.get("missing_roles", []):
+        warnings.append(f"sfx_missing:{role}")
+    sfx_by_scene_id: dict[str, list[dict[str, Any]]] = {}
+    for cue in sfx_plan.get("cues", []):
+        sfx_by_scene_id.setdefault(str(cue.get("scene_id")), []).append(cue)
     caption_events = split_caption_events(script_text, total_duration, max_words=4)
 
     writer_open_start = time.perf_counter()
@@ -982,6 +1001,7 @@ def render_hybrid_video(
             "motion_score": round(sum(motion_scores) / max(1, len(motion_scores)), 3),
             "number_reveal": template_name == "payoff_number_reveal",
             "postability_signals": postability_signals,
+            "sfx_cues": sfx_by_scene_id.get(str(scene_id), []),
         })
         elapsed += duration
 
@@ -1028,6 +1048,7 @@ def render_hybrid_video(
             "duration_strategy": duration_strategy,
         },
         "scene_reports": scene_reports,
+        "sfx_plan": sfx_plan,
         "scene_asset_strategy": scene_asset_strategy,
         "visual_realism_human_gate": _visual_realism_human_gate(scene_asset_strategy, scene_reports),
         "render_profile": {
