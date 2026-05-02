@@ -13,6 +13,51 @@ const parseResponseBody = async (response) => {
     }
 };
 
+const normalizeVideoSceneMode = (value) => {
+    const raw = String(value || '').trim().toLowerCase();
+    const aliases = {
+        stock: 'stock',
+        stock_footage: 'stock',
+        footage: 'stock',
+        ai: 'ai',
+        hybrid: 'hybrid',
+        auto: 'auto',
+        hybrid_motion: 'hybrid_motion',
+        smart_hmr: 'hybrid_motion',
+        agency_hmr: 'hybrid_motion',
+        agency_mixed_media: 'hybrid_motion',
+        mixed_media: 'hybrid_motion',
+        smart_mixed_media: 'hybrid_motion',
+    };
+    return aliases[raw] || raw || undefined;
+};
+
+const normalizeVideoPayload = (payload = {}) => {
+    const next = { ...payload };
+    const explicitMode =
+        next.scene_mode ||
+        next.sceneMode ||
+        next.video_style ||
+        next.videoStyle ||
+        next.style ||
+        next.confirmed_plan?.scene_mode ||
+        next.confirmed_plan?.sceneMode;
+    const normalizedMode = normalizeVideoSceneMode(explicitMode);
+    if (normalizedMode) {
+        next.scene_mode = normalizedMode;
+    }
+    delete next.sceneMode;
+
+    if (next.scene_mode === 'hybrid_motion') {
+        // HMR should use the free/local voice path unless explicitly overridden.
+        next.tts_provider = next.tts_provider || 'free';
+        // Prefer the durable worker path for the HMR UI flow when backend support is enabled.
+        next.hmr_async = next.hmr_async !== false;
+    }
+
+    return next;
+};
+
 export const setAuthToken = (newToken) => {
     token = newToken;
 };
@@ -71,20 +116,20 @@ export const api = {
     }),
     generateFreeVideo: (payload) => request('/generate/video/free', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(normalizeVideoPayload(payload)),
     }),
     generateVideoPlan: (payload) => request('/generate/video/plan', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(normalizeVideoPayload(payload)),
     }),
     getVideoMode: () => request('/generate/video/mode'),
     generateVideoPreview: (payload) => request('/generate/video/preview', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(normalizeVideoPayload(payload)),
     }),
     generateVideoFromPreview: (payload) => request('/generate/video/generate-from-preview', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(normalizeVideoPayload(payload)),
     }),
     regenerateSceneImage: (payload) => request('/generate/regenerate-scene-image', {
         method: 'POST',
@@ -103,7 +148,7 @@ export const api = {
     getApiCredits: () => request('/generate/video/credits'),
     generateVideoBatch: (payload) => request('/generate/video/batch', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(normalizeVideoPayload(payload)),
     }),
     getVideoBatchStatus: (batchId) => request(`/generate/video/batch/${encodeURIComponent(batchId)}`),
     getVideoHistory: () => request('/generate/video/history'),
