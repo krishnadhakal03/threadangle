@@ -1071,6 +1071,69 @@ class TestHMRUISmokePreflight:
         assert plan["hmr_render_job"]["render_invoked"] is False
         assert plan["render_invoked"] is False
 
+    @pytest.mark.asyncio
+    async def test_hmr_ui_branch_attaches_metadata_and_calls_productization_without_full_render(self, monkeypatch):
+        from routes.generate import GenerateVideoRequest, generate_free_video
+
+        monkeypatch.setenv("ENABLE_HYBRID_MOTION_RENDERER", "1")
+        monkeypatch.setenv("VIDEO_GENERATION_DRY_RUN", "1")
+
+        db = AsyncMock()
+        db.add = MagicMock()
+        db.commit = AsyncMock()
+
+        async def refresh_generation(generation):
+            generation.id = 51
+
+        db.refresh = AsyncMock(side_effect=refresh_generation)
+        current_user = SimpleNamespace(id=7)
+        request = GenerateVideoRequest(
+            script="I found a $27/month leak hiding in one bill. Compare it and keep the savings. Comment BILL for the prompt.",
+            scene_mode="hybrid_motion",
+            dry_run=True,
+            tts_provider="elevenlabs",
+            duration_seconds=15,
+            niche="bill leak",
+        )
+
+        render_result = {
+            "video_path": "backend/generated_videos/hmr_route_mock.mp4",
+            "duration": 12.0,
+            "scene_reports": [{"scene_id": 1, "template": "hook"}],
+            "media_mix": {"MOTION_CARD": 1},
+            "warnings": [],
+        }
+
+        def productization_side_effect(**kwargs):
+            result = kwargs["render_result"]
+            assert result["first_3_seconds"]["no_slow_intro"] is True
+            assert result["first_3_sec_strategy"]["pattern_interrupt"]["time_seconds"] < 2
+            assert result["pattern_interrupt_plan"]["debug"]["render_required"] is False
+            assert "planned_pattern_interrupts" in result["scene_reports"][0]
+            return {
+                "review_package_status": "created",
+                "artifact_paths": {"review_package": "mock_review_package", "manifest": "mock_manifest.json"},
+                "full_render_required": False,
+            }
+
+        with patch("routes.generate.new_run_id", return_value="hmr-route-mock"), \
+             patch("utils.hybrid_motion_renderer.render_hybrid_video", return_value=render_result) as render_mock, \
+             patch("utils.hmr_ui_productization.materialize_hmr_ui_review_workflow", side_effect=productization_side_effect) as productize_mock, \
+             patch("routes.generate.generate_youtube_metadata", new_callable=AsyncMock, return_value={"title": "Mock HMR"}), \
+             patch("routes.generate._organize_run_assets", return_value=("hmr-route-mock.mp4", None)):
+            response = await generate_free_video(request, db=db, current_user=current_user)
+
+        render_mock.assert_called_once()
+        productize_mock.assert_called_once()
+        assert render_mock.call_args.kwargs["use_free_tts"] is True
+        assert response["success"] is True
+        assert response["dry_run"] is True
+        assert response["hybrid_motion"]["first_3_seconds"]["first_frame_style"] == "claim_proof_payoff"
+        assert response["hybrid_motion"]["pattern_interrupt_plan"]["debug"]["render_required"] is False
+        assert response["hmr_productization"]["review_package_status"] == "created"
+        assert response["costs"]["runway_credits_used"] == 0.0
+        assert response["costs"]["elevenlabs_chars_used"] == 0
+
 
 # ===========================================================================
 # Bonus: RunwayML client dry-run / quota detection
