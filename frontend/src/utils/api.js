@@ -20,8 +20,11 @@ const normalizeVideoSceneMode = (value) => {
         stock_footage: 'stock',
         footage: 'stock',
         ai: 'ai',
-        hybrid: 'hybrid',
-        auto: 'auto',
+        // Current Video Studio UI labels "Hybrid (AI + Stock)" with value="auto".
+        // For the HMR manual QA milestone, that option must activate the Smart HMR /
+        // agency mixed-media path instead of silently falling back to old stock/auto logic.
+        hybrid: 'hybrid_motion',
+        auto: 'hybrid_motion',
         hybrid_motion: 'hybrid_motion',
         smart_hmr: 'hybrid_motion',
         agency_hmr: 'hybrid_motion',
@@ -45,6 +48,10 @@ const normalizeVideoPayload = (payload = {}) => {
     const normalizedMode = normalizeVideoSceneMode(explicitMode);
     if (normalizedMode) {
         next.scene_mode = normalizedMode;
+        next.confirmed_plan = {
+            ...(next.confirmed_plan || {}),
+            scene_mode: normalizedMode,
+        };
     }
     delete next.sceneMode;
 
