@@ -219,6 +219,143 @@ async def test_async_hmr_route_creates_durable_job_and_progress_uses_job_state(h
 
 
 @pytest.mark.asyncio
+async def test_hmr_video_history_falls_back_to_hmr_job_artifact_path(hmr_session, tmp_path):
+    from models import Generation, HMRRenderJob, User
+    from routes.generate import get_video_history_item
+
+    user = User(email="fallback@example.com", password_hash="x")
+    hmr_session.add(user)
+    await hmr_session.flush()
+
+    generation = Generation(
+        user_id=user.id,
+        input_type="video",
+        input_content="hmr video fallback",
+        status="success",
+        video_run_id="run-123",
+        video_file=None,
+    )
+    hmr_session.add(generation)
+    await hmr_session.flush()
+
+    video_path = tmp_path / "generated_videos" / "run-123.mp4"
+    video_path.parent.mkdir(parents=True, exist_ok=True)
+    video_path.write_text("dummy")
+
+    job = HMRRenderJob(
+        id="job-123",
+        generation_id=generation.id,
+        user_id=user.id,
+        run_id="run-123",
+        status="success",
+        percent=100,
+        step="done",
+        message="Done",
+        artifact_paths_json={"video": str(video_path.resolve())},
+        result_json={"hybrid_motion": {"video_path": str(video_path.resolve())}},
+    )
+    hmr_session.add(job)
+    await hmr_session.commit()
+
+    history_item = await get_video_history_item(generation.id, current_user=user, db=hmr_session)
+    assert history_item["file"] == "run-123.mp4"
+    assert history_item["video_url"] == "/api/generate/video/download/run-123.mp4"
+    assert history_item["download_url"] == "/api/generate/video/download/run-123.mp4"
+
+
+@pytest.mark.asyncio
+async def test_hmr_video_history_list_falls_back_to_hmr_job_artifact_paths(hmr_session):
+    from models import Generation, HMRRenderJob, User
+    from routes.generate import get_video_history
+
+    user = User(email="list-fallback@example.com", password_hash="x")
+    hmr_session.add(user)
+    await hmr_session.flush()
+
+    generation = Generation(
+        user_id=user.id,
+        input_type="video",
+        input_content="hmr list fallback",
+        status="success",
+        video_run_id="run-456",
+        video_file=None,
+        video_thumbnail=None,
+    )
+    hmr_session.add(generation)
+    await hmr_session.flush()
+
+    job = HMRRenderJob(
+        id="job-456",
+        generation_id=generation.id,
+        user_id=user.id,
+        run_id="run-456",
+        status="success",
+        percent=100,
+        step="done",
+        message="Done",
+        artifact_paths_json={"video": "f:/Threadforge/generated_videos/run-456.mp4"},
+        result_json={},
+    )
+    hmr_session.add(job)
+    await hmr_session.commit()
+
+    history = await get_video_history(current_user=user, db=hmr_session)
+    assert isinstance(history, list)
+    assert len(history) == 1
+    row = history[0]
+    assert row["file"] == "run-456.mp4"
+    assert row["video_url"] == "/api/generate/video/download/run-456.mp4"
+    assert row["download_url"] == "/api/generate/video/download/run-456.mp4"
+    assert row["thumbnail_url"] is None
+
+
+@pytest.mark.asyncio
+async def test_hmr_video_history_list_falls_back_to_hybrid_motion_result_json(hmr_session):
+    from models import Generation, HMRRenderJob, User
+    from routes.generate import get_video_history
+
+    user = User(email="list-result-fallback@example.com", password_hash="x")
+    hmr_session.add(user)
+    await hmr_session.flush()
+
+    generation = Generation(
+        user_id=user.id,
+        input_type="video",
+        input_content="hmr result json fallback",
+        status="success",
+        video_run_id="run-789",
+        video_file=None,
+        video_thumbnail=None,
+    )
+    hmr_session.add(generation)
+    await hmr_session.flush()
+
+    job = HMRRenderJob(
+        id="job-789",
+        generation_id=generation.id,
+        user_id=user.id,
+        run_id="run-789",
+        status="success",
+        percent=100,
+        step="done",
+        message="Done",
+        artifact_paths_json={},
+        result_json={"hybrid_motion": {"video_path": "f:/Threadforge/generated_videos/run-789.mp4"}},
+    )
+    hmr_session.add(job)
+    await hmr_session.commit()
+
+    history = await get_video_history(current_user=user, db=hmr_session)
+    assert isinstance(history, list)
+    assert len(history) == 1
+    row = history[0]
+    assert row["file"] == "run-789.mp4"
+    assert row["video_url"] == "/api/generate/video/download/run-789.mp4"
+    assert row["download_url"] == "/api/generate/video/download/run-789.mp4"
+    assert row["thumbnail_url"] is None
+
+
+@pytest.mark.asyncio
 async def test_hmr_render_jobs_startup_ddl_is_idempotent(hmr_session):
     await hmr_session.execute(
         text(

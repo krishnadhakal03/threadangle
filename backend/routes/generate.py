@@ -2732,7 +2732,16 @@ async def get_video_history(
     history = []
     for g in rows:
         try:
-            history.append(_serialize_video_history_row(g, include_heavy=False))
+            video_file_override = None
+            if not g.video_file:
+                video_file_override = await _find_hmr_video_file_for_generation(g, db)
+            history.append(
+                _serialize_video_history_row(
+                    g,
+                    include_heavy=False,
+                    video_file_override=video_file_override,
+                )
+            )
         except Exception as exc:
             logger.warning(f"[video.history] Failed to serialize row id={getattr(g, 'id', None)}: {exc}")
             history.append(_serialize_video_history_row_fallback(g, warning=str(exc)))
@@ -2752,22 +2761,67 @@ def _safe_json_loads(value: Any, *, expected_type: type | None = None, default: 
     return parsed
 
 
+def _resolve_possible_video_file_name(path_value: Any) -> Optional[str]:
+    if not path_value:
+        return None
+    try:
+        path = Path(str(path_value))
+        if path.suffix.lower() != ".mp4":
+            return None
+        return path.name
+    except Exception:
+        return None
+
+
+def _extract_hmr_job_video_file(job: HMRRenderJob) -> Optional[str]:
+    if job is None:
+        return None
+    candidate = _resolve_possible_video_file_name(job.artifact_paths_json.get("video") if isinstance(job.artifact_paths_json, dict) else None)
+    if candidate:
+        return candidate
+    result = job.result_json or {}
+    hybrid_motion = result.get("hybrid_motion") if isinstance(result, dict) else None
+    candidate = _resolve_possible_video_file_name(hybrid_motion.get("video_path") if isinstance(hybrid_motion, dict) else None)
+    return candidate
+
+
+async def _find_hmr_video_file_for_generation(generation: Generation, db: AsyncSession) -> Optional[str]:
+    if generation.video_file:
+        return str(generation.video_file)
+
+    result = await db.execute(
+        select(HMRRenderJob)
+        .where(
+            and_(
+                HMRRenderJob.generation_id == generation.id,
+                HMRRenderJob.status == "success",
+            )
+        )
+        .order_by(HMRRenderJob.completed_at.desc(), HMRRenderJob.created_at.desc())
+        .limit(1)
+    )
+    job = result.scalar_one_or_none()
+    return _extract_hmr_job_video_file(job)
+
+
 def _serialize_video_history_row(
     g: Generation,
     *,
     include_heavy: bool,
     warning: Optional[str] = None,
+    video_file_override: Optional[str] = None,
 ) -> dict[str, Any]:
     parsed_seo_tags = _safe_json_loads(g.seo_tags, expected_type=list, default=[]) or []
     parsed_seo_hashtags = _safe_json_loads(g.seo_hashtags, expected_type=list, default=[]) or []
+    video_file = video_file_override or g.video_file
 
     payload = {
         "id": g.id,
         "run_id": g.video_run_id,
         "duration_seconds": g.video_duration_seconds,
-        "file": g.video_file,
-        "video_url": f"/api/generate/video/download/{quote(str(g.video_file), safe='/')}" if g.video_file else None,
-        "download_url": f"/api/generate/video/download/{quote(str(g.video_file), safe='/')}" if g.video_file else None,
+        "file": video_file,
+        "video_url": f"/api/generate/video/download/{quote(str(video_file), safe='/')}" if video_file else None,
+        "download_url": f"/api/generate/video/download/{quote(str(video_file), safe='/')}" if video_file else None,
         "thumbnail_url": f"/api/generate/video/thumbnail/{quote(str(_relative_generated_asset_path(g.video_thumbnail) or ''), safe='/')}" if g.video_thumbnail else None,
         "created_at": g.created_at.isoformat() if g.created_at else None,
         "status": g.status,
@@ -2871,7 +2925,14 @@ async def get_video_history_item(
         raise HTTPException(status_code=404, detail="Video history item not found")
 
     try:
-        return _serialize_video_history_row(generation, include_heavy=True)
+        video_file_override = None
+        if not generation.video_file:
+            video_file_override = await _find_hmr_video_file_for_generation(generation, db)
+        return _serialize_video_history_row(
+            generation,
+            include_heavy=True,
+            video_file_override=video_file_override,
+        )
     except Exception as exc:
         logger.warning(f"[video.history.detail] Failed to serialize row id={generation_id}: {exc}")
         return _serialize_video_history_row_fallback(generation, warning=str(exc))
