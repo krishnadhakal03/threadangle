@@ -75,6 +75,7 @@ def build_manifest(
     hook_lab: dict[str, Any] | None = None,
     first_3_seconds: dict[str, Any] | None = None,
     pattern_interrupts: dict[str, Any] | None = None,
+    creative_qa: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a lightweight manifest for a newly generated HMR review package."""
     render_report = render_report or {}
@@ -107,6 +108,7 @@ def build_manifest(
         "hook_lab": hook_lab or render_report.get("hook_lab") or {},
         "first_3_seconds": first_3_seconds or render_report.get("first_3_sec_strategy") or {},
         "pattern_interrupts": pattern_interrupts or render_report.get("pattern_interrupt_plan") or {},
+        "creative_qa": creative_qa or render_report.get("creative_qa") or qa_report.get("creative_qa") or {},
         "resolved_real_assets": resolved_real_assets,
         "paid_providers_used": paid_providers_used
         or {
