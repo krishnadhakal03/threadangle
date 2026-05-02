@@ -8,6 +8,7 @@ export default function FreeHookGenerator() {
   const [topic, setTopic] = useState('');
   const [category, setCategory] = useState('Marketing');
   const [hooks, setHooks] = useState([]);
+  const [hookLab, setHookLab] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [copiedIndex, setCopiedIndex] = useState(null);
@@ -43,14 +44,32 @@ export default function FreeHookGenerator() {
         throw new Error(data?.detail || data?.message || 'Failed to generate hooks. Please try again.');
       }
 
-      const safeHooks = Array.isArray(data?.hooks) ? data.hooks : [];
+      const candidateHooks = Array.isArray(data?.candidates)
+        ? data.candidates.map((candidate) => ({
+            type: candidate.archetype,
+            text: candidate.text,
+            why_it_works: candidate.why_it_works,
+            score: candidate.total_score,
+            rank: candidate.rank,
+            selected: candidate.selected,
+            scores: candidate.scores,
+            id: candidate.id,
+          }))
+        : [];
+      const safeHooks = candidateHooks.length > 0
+        ? candidateHooks
+        : Array.isArray(data?.hooks) ? data.hooks : [];
       if (safeHooks.length === 0) {
         throw new Error('No hooks were returned. Please try a different topic.');
       }
 
+      setHookLab({
+        selectedHook: data?.selected_hook || null,
+      });
       setHooks(safeHooks);
     } catch (err) {
       setHooks([]);
+      setHookLab(null);
       setError(err.message || 'Something went wrong while generating hooks.');
     } finally {
       setLoading(false);
@@ -225,13 +244,30 @@ export default function FreeHookGenerator() {
             <div className="grid grid-cols-1 gap-4">
               {hooks.map((hook, i) => (
                 <div key={i} className="bg-[#111113] border border-[#27272A] hover:border-[#3F3F46] rounded-[8px] p-[24px] flex flex-col relative transition-all group">
-                  <div className="flex justify-between items-start mb-3">
+                  <div className="flex justify-between items-start gap-2 flex-wrap mb-3">
                     <span 
                         className="inline-block text-[10px] font-black uppercase px-3 py-1 rounded-full tracking-widest text-white shadow-sm"
                         style={{ backgroundColor: getTypeColor(hook.type) }}
                     >
                       {hook.type}
                     </span>
+                    <div className="flex items-center gap-2">
+                      {hook.rank && (
+                        <span className="text-[10px] font-bold text-[#A1A1AA] uppercase tracking-widest bg-dark/50 border border-border px-2 py-1 rounded-md">
+                          #{hook.rank}
+                        </span>
+                      )}
+                      {hook.score && (
+                        <span className="text-[10px] font-bold text-[#A1A1AA] uppercase tracking-widest bg-dark/50 border border-border px-2 py-1 rounded-md">
+                          {hook.score}/60
+                        </span>
+                      )}
+                      {hookLab?.selectedHook?.id === hook.id && (
+                        <span className="text-[10px] font-bold text-white uppercase tracking-widest bg-[#10B981]/20 border border-[#10B981]/40 px-2 py-1 rounded-md">
+                          Selected
+                        </span>
+                      )}
+                    </div>
                     <button 
                         onClick={() => copyToClipboard(hook.text, i)}
                         className="text-[11px] font-bold text-gray-400 hover:text-white uppercase tracking-widest bg-dark/50 border border-border px-3 py-1 rounded-md transition-colors"
