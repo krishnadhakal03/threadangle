@@ -1100,6 +1100,11 @@ def _day4_browser_capture_enabled() -> bool:
     return os.getenv("ENABLE_DAY4_BROWSER_CAPTURE", "0") == "1"
 
 
+def _day3_workflow_enabled() -> bool:
+    """Gate Day3 workflow-specific local demo/audio behavior behind an explicit flag."""
+    return os.getenv("ENABLE_DAY3_WORKFLOW", "0") == "1"
+
+
 def _day4_browser_capture_step(scene: "ScenePlan") -> str:
     """Detect which Day4 browser capture scene this is"""
     if not _day4_browser_capture_enabled() or not scene:
