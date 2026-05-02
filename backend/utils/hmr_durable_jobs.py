@@ -32,6 +32,10 @@ def hmr_job_to_progress(job: HMRRenderJob) -> dict[str, Any]:
     state.step = job.step or job.status
     state.message = job.message or state.message
     state.error_message = job.error_message
+    state.execution_mode = job.execution_mode or state.execution_mode
+    state.worker_active = bool(job.worker_active)
+    state.durable_progress = bool(job.durable_progress)
+    state.progress_store = job.progress_store or state.progress_store
     state.render_invoked = bool(job.render_invoked)
     return state.to_progress()
 

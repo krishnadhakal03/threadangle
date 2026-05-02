@@ -2546,6 +2546,14 @@ async def get_video_generation_progress(
     if not generation:
         raise HTTPException(status_code=404, detail="Generation not found")
 
+    hmr_job_row = await db.execute(
+        select(HMRRenderJob).where(HMRRenderJob.generation_id == generation_id)
+    )
+    hmr_job = hmr_job_row.scalar_one_or_none()
+    if hmr_job is not None:
+        progress = hmr_job_to_progress(hmr_job)
+        return {"generation_id": generation_id, "status": hmr_job.status, **progress}
+
     if generation.status == "success":
         _task_progress.pop(generation_id, None)
         return {
@@ -2567,14 +2575,6 @@ async def get_video_generation_progress(
             "step": "error",
             "updated_at": None,
         }
-
-    hmr_job_row = await db.execute(
-        select(HMRRenderJob).where(HMRRenderJob.generation_id == generation_id)
-    )
-    hmr_job = hmr_job_row.scalar_one_or_none()
-    if hmr_job is not None:
-        progress = hmr_job_to_progress(hmr_job)
-        return {"generation_id": generation_id, "status": hmr_job.status, **progress}
 
     # If the server restarted mid-job, in-memory progress is lost and the background task
     # will never finish. Mark stale rows as failed so the UI doesn't stay stuck forever.
