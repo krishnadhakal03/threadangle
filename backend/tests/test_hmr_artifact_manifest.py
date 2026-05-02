@@ -112,3 +112,37 @@ def test_manifest_schema_includes_production_safety_fields(tmp_path):
         "instagram_reels",
         "facebook_reels",
     }
+
+
+def test_manifest_carries_agency_template_and_preset_from_render_report(tmp_path):
+    manifest = build_manifest(
+        topic="Receipt shock",
+        hook="This receipt total shocked me.",
+        video_path=tmp_path / "receipt.mp4",
+        review_package_path=tmp_path,
+        render_report={
+            "agency_template": {"selected_template_id": "receipt_shock"},
+            "agency_preset": {"selected_preset_id": "receipt_shock"},
+        },
+    )
+
+    assert manifest["agency_template"]["selected_template_id"] == "receipt_shock"
+    assert manifest["agency_preset"]["selected_preset_id"] == "receipt_shock"
+
+
+def test_manifest_allows_explicit_agency_template_and_preset_override(tmp_path):
+    manifest = build_manifest(
+        topic="Bill leak",
+        hook="I found a hidden fee.",
+        video_path=tmp_path / "bill.mp4",
+        review_package_path=tmp_path,
+        render_report={
+            "agency_template": {"selected_template_id": "receipt_shock"},
+            "agency_preset": {"selected_preset_id": "receipt_shock"},
+        },
+        agency_template={"selected_template_id": "bill_leak_expose"},
+        agency_preset={"selected_preset_id": "bill_leak_expose"},
+    )
+
+    assert manifest["agency_template"]["selected_template_id"] == "bill_leak_expose"
+    assert manifest["agency_preset"]["selected_preset_id"] == "bill_leak_expose"
