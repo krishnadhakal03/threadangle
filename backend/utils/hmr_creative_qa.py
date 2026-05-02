@@ -41,13 +41,15 @@ def _score(value: Any, field: str) -> int:
 
 
 def derive_creative_status(scorecard: dict[str, Any]) -> str:
-    scores = [_score(scorecard[field], field) for field in SCORE_FIELDS]
+    normalized = {field: _score(scorecard[field], field) for field in SCORE_FIELDS}
+    scores = list(normalized.values())
+    post_worthiness = normalized["post_worthiness"]
     average = sum(scores) / len(scores)
-    if scorecard["post_worthiness"] <= 4 or min(scores) <= 3:
+    if post_worthiness <= 4 or min(scores) <= 3:
         return STATUS_BLOCKED
     if min(scores) <= 5:
         return STATUS_REVIEW
-    if average >= 7.0 and scorecard["post_worthiness"] >= 7:
+    if average >= 7.0 and post_worthiness >= 7:
         return STATUS_PASS
     return STATUS_REVIEW
 

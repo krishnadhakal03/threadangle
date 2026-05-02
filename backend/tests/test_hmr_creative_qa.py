@@ -42,6 +42,22 @@ def test_creative_qa_record_derives_pass_status():
     assert record["separate_from"] == ["technical_status", "postability_status", "human_posting_gate"]
 
 
+def test_creative_qa_accepts_numeric_string_scores():
+    from utils.hmr_creative_qa import STATUS_PASS, build_creative_qa_record, derive_creative_status
+
+    string_scorecard = {field: str(value) for field, value in _scorecard(post_worthiness=7).items()}
+    record = build_creative_qa_record(
+        review_id="run-string-scores",
+        reviewer="Krishna",
+        scorecard=string_scorecard,
+    )
+
+    assert derive_creative_status(string_scorecard) == STATUS_PASS
+    assert record["creative_status"] == STATUS_PASS
+    assert all(isinstance(value, int) for value in record["scorecard"].values())
+    assert record["scorecard"]["post_worthiness"] == 7
+
+
 def test_creative_qa_record_blocks_low_post_worthiness():
     from utils.hmr_creative_qa import STATUS_BLOCKED, build_creative_qa_record
 
