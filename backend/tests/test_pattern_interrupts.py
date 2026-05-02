@@ -36,6 +36,8 @@ def test_pattern_interrupt_plan_includes_required_primitives():
     }
     assert plan["debug"]["scene_count"] == 1
     assert plan["debug"]["render_required"] is False
+    assert plan["visual_execution_status"] == "planned_only"
+    assert plan["primitive_implementation_status"]["punch_zoom"] == "metadata_only"
     assert plan["interrupts"][0]["type"] == "punch_zoom"
     assert plan["interrupts"][0]["local_time"] < 2
 
@@ -84,6 +86,7 @@ def test_attach_pattern_interrupts_to_report_adds_scene_debug():
     )
 
     assert report["pattern_interrupt_plan"]["debug"]["interrupt_count"] >= 1
+    assert report["pattern_interrupt_plan"]["visual_execution_status"] == "planned_only"
     assert report["scene_reports"][0]["planned_pattern_interrupts"][0]["type"] == "punch_zoom"
 
 

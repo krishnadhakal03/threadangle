@@ -7,6 +7,7 @@ from typing import Any
 
 
 FIRST_3_SECONDS_SCHEMA_VERSION = 1
+FIRST_3_SECONDS_VISUAL_EXECUTION_STATUS = "planned_only"
 
 
 def _clean_text(value: str) -> str:
@@ -94,6 +95,8 @@ def build_first_3_seconds_plan(
             "requires_render": False,
             "preserve_existing_script_flow": True,
             "avoid": ["slow_intro", "logo_intro", "empty_establishing_shot"],
+            "visual_execution_status": FIRST_3_SECONDS_VISUAL_EXECUTION_STATUS,
+            "truthfulness_note": "This plan is metadata for review/planning; renderer templates do not yet consume it as a guaranteed visual treatment.",
         },
     }
 
@@ -103,6 +106,7 @@ def first_3_seconds_report_fields(plan: dict[str, Any]) -> dict[str, Any]:
     return {
         "first_frame_style": plan["first_frame_style"],
         "first_3_sec_strategy": {
+            "visual_execution_status": FIRST_3_SECONDS_VISUAL_EXECUTION_STATUS,
             "big_claim_text": plan["big_claim_text"],
             "proof_object": plan["proof_object"],
             "number_payoff_preview": plan["number_payoff_preview"],
@@ -110,6 +114,12 @@ def first_3_seconds_report_fields(plan: dict[str, Any]) -> dict[str, Any]:
             "no_slow_intro": plan["no_slow_intro"],
             "pattern_interrupt": plan["pattern_interrupt"],
             "timing_hints": plan["timing_hints"],
+            "implementation_status": {
+                "big_claim_text": "planned_only",
+                "proof_object": "planned_only",
+                "pattern_interrupt": "planned_only",
+                "number_payoff_preview": "planned_only",
+            },
         },
     }
 

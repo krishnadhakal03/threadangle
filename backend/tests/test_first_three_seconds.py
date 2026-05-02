@@ -40,6 +40,7 @@ def test_first_3_seconds_plan_interrupts_before_second_two():
     assert plan["urgency_warning_label"] == "CHECK THIS FIRST"
     assert plan["proof_object"] == "receipt or grocery total"
     assert "slow_intro" in plan["render_notes"]["avoid"]
+    assert plan["render_notes"]["visual_execution_status"] == "planned_only"
 
 
 def test_first_3_seconds_report_fields_attach_without_rendering():
@@ -51,6 +52,8 @@ def test_first_3_seconds_report_fields_attach_without_rendering():
     assert report["video_path"] == "demo.mp4"
     assert report["first_frame_style"] == "claim_proof_payoff"
     assert report["first_3_sec_strategy"]["no_slow_intro"] is True
+    assert report["first_3_sec_strategy"]["visual_execution_status"] == "planned_only"
+    assert report["first_3_sec_strategy"]["implementation_status"]["pattern_interrupt"] == "planned_only"
     assert report["human_review"]["first_frame_style"] == "claim_proof_payoff"
     assert report["human_review"]["first_three_seconds_strategy"]["pattern_interrupt"]["time_seconds"] == 1.2
 
@@ -71,3 +74,4 @@ def test_manifest_can_store_first_3_seconds_strategy(tmp_path):
 
     assert manifest["first_3_seconds"]["big_claim_text"] == "Before you pay that bill, compare this number."
     assert manifest["first_3_seconds"]["pattern_interrupt"]["time_seconds"] < 2
+    assert manifest["first_3_seconds"]["visual_execution_status"] == "planned_only"

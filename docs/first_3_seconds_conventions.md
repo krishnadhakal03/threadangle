@@ -37,6 +37,29 @@ reports, human review fields, and manifests:
 - `human_review.first_three_seconds_strategy`
 - `manifest.first_3_seconds`
 
+## Visual Execution Status
+
+Current status: `planned_only`.
+
+The fields below are planning/review metadata today. They do not guarantee that
+renderer templates visually execute the treatment:
+
+- `big_claim_text`: metadata-only.
+- `proof_object`: metadata-only.
+- `pattern_interrupt`: metadata-only.
+- `number_payoff_preview`: metadata-only.
+
+Future renderer work should move individual items to `partially_executed` or
+`fully_executed` only after pixel-visible behavior is implemented and tested.
+
+## Renderer Checklist
+
+- Render big claim text as a first-frame layer.
+- Prefer or crop a real proof object during `0.45-1.20`.
+- Execute the planned snap zoom or hard cut before second 2.
+- Reveal the payoff/number preview before second 3.
+- Add screenshot/pixel tests that prove each executed behavior is visible.
+
 ## Guardrails
 
 - Preserve existing script and caption text.

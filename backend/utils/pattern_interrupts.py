@@ -16,6 +16,18 @@ PATTERN_INTERRUPT_PRIMITIVES = (
     "warning_label",
     "payoff_meter",
 )
+PATTERN_INTERRUPT_VISUAL_EXECUTION_STATUS = "planned_only"
+PATTERN_INTERRUPT_IMPLEMENTATION_STATUS = {
+    "punch_zoom": "metadata_only",
+    "number_flip": "metadata_only",
+    "red_circle": "metadata_only",
+    "highlight": "metadata_only",
+    "swipe_transition": "metadata_only",
+    "checklist_tick": "metadata_only",
+    "split_screen_before_after": "metadata_only",
+    "warning_label": "metadata_only",
+    "payoff_meter": "metadata_only",
+}
 
 
 def _scene_value(scene: Any, key: str, default: Any = None) -> Any:
@@ -162,6 +174,9 @@ def build_pattern_interrupt_plan(
     return {
         "schema_version": 1,
         "primitives": list(PATTERN_INTERRUPT_PRIMITIVES),
+        "visual_execution_status": PATTERN_INTERRUPT_VISUAL_EXECUTION_STATUS,
+        "primitive_implementation_status": dict(PATTERN_INTERRUPT_IMPLEMENTATION_STATUS),
+        "truthfulness_note": "Pattern interrupts are planned metadata; renderer templates do not yet visually execute every primitive.",
         "cadence_seconds": cadence_seconds,
         "clutter_guard": {
             "avoid_caption_overlap": True,
