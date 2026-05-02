@@ -56,10 +56,31 @@ const normalizeVideoPayload = (payload = {}) => {
     delete next.sceneMode;
 
     if (next.scene_mode === 'hybrid_motion') {
-        // HMR should use the free/local voice path unless explicitly overridden.
-        next.tts_provider = next.tts_provider || 'free';
-        // Prefer the durable worker path for the HMR UI flow when backend support is enabled.
+        // Emergency no-spend guard for Krishna's manual QA retest.
+        // The prior UI path lost credits. Hybrid/HMR QA must force free/local providers.
+        next.tts_provider = 'free';
+        next.voice_id = next.voice_id || 'free';
+        next.image_provider = 'pollinations';
+        next.dry_run = next.dry_run === false ? false : true;
+        next.max_scenes = 0;
         next.hmr_async = next.hmr_async !== false;
+        next.no_paid_providers = true;
+        next.spend_guard = {
+            ...(next.spend_guard || {}),
+            elevenlabs: false,
+            runwayml: false,
+            gemini: false,
+            openai: false,
+            anthropic: false,
+        };
+        next.confirmed_plan = {
+            ...(next.confirmed_plan || {}),
+            scene_mode: 'hybrid_motion',
+            tts_provider: 'free',
+            image_provider: 'pollinations',
+            max_scenes: 0,
+            no_paid_providers: true,
+        };
     }
 
     return next;
