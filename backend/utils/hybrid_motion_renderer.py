@@ -24,11 +24,13 @@ try:
     from .hybrid_scene_templates import draw_caption_band, get_template
     from .hmr_scene_asset_strategy import detect_hmr_asset_domain_from_text, local_asset_domain_folders, plan_hmr_scene_assets
     from .hmr_sfx import build_sfx_plan
+    from .hmr_proof_assets import build_proof_asset_plan, proof_asset_for_scene, proof_asset_resolution_fields
     from .hmr_resolved_scene_spec import build_resolved_scene_spec, resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
 except ImportError:  # pragma: no cover - direct script execution fallback
     from hybrid_scene_templates import draw_caption_band, get_template
     from hmr_scene_asset_strategy import detect_hmr_asset_domain_from_text, local_asset_domain_folders, plan_hmr_scene_assets
     from hmr_sfx import build_sfx_plan
+    from hmr_proof_assets import build_proof_asset_plan, proof_asset_for_scene, proof_asset_resolution_fields
     from hmr_resolved_scene_spec import build_resolved_scene_spec, resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
 
 
@@ -648,6 +650,7 @@ def render_hybrid_video(
     use_stock_backgrounds: bool = True,
     use_free_tts: bool = True,
     style_preset: str = "documentary_money_short",
+    proof_assets: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     start_time = time.time()
     profile_start = time.perf_counter()
@@ -667,6 +670,12 @@ def render_hybrid_video(
     }
     scene_asset_strategy = plan_hmr_scene_assets(scenes)
     strategy_by_scene_id = {str(row.get("scene_id")): row for row in scene_asset_strategy}
+    proof_asset_plan = build_proof_asset_plan(scenes, proof_assets)
+    for row in proof_asset_plan.get("missing_assets", []):
+        proof_asset = row.get("proof_asset") or {}
+        warnings.append(f"proof_asset_missing:{row.get('scene_id')}:{proof_asset.get('candidate_path')}")
+    for row in proof_asset_plan.get("unresolved_targets", []):
+        warnings.append(f"proof_asset_target_missing:{row.get('scene_id') or row.get('scene_role')}")
 
     prepared = []
     asset_lookup_sec = 0.0
@@ -686,10 +695,20 @@ def render_hybrid_video(
             "provider_available": None,
             "missing_config": [],
         }
-        scene_id = _scene_value(scene, "id", None) or _scene_value(scene, "scene", None) or _scene_value(scene, "scene_index", idx + 1)
+        scene_id = _scene_value(scene, "id", None) or _scene_value(scene, "scene_id", None) or _scene_value(scene, "scene", None) or _scene_value(scene, "scene_index", idx + 1)
         asset_strategy = strategy_by_scene_id.get(str(scene_id), {})
         lookup_start = time.perf_counter()
-        if asset_strategy.get("visual_medium") == "playwright_capture":
+        proof_row = proof_asset_for_scene(proof_asset_plan, scene_id)
+        if proof_row:
+            proof_asset = proof_row.get("proof_asset") or {}
+            bg_path = Path(str(proof_asset.get("resolved_path")))
+            asset_resolution = proof_asset_resolution_fields(proof_row)
+            stock_meta = {
+                "provider": "user_proof_asset",
+                "reason": "proof_asset_override",
+                "proof_asset": proof_asset,
+            }
+        elif asset_strategy.get("visual_medium") == "playwright_capture":
             asset_resolution = resolve_playwright_scene_asset(
                 scene if isinstance(scene, dict) else {},
                 asset_strategy,
@@ -1002,6 +1021,8 @@ def render_hybrid_video(
             "number_reveal": template_name == "payoff_number_reveal",
             "postability_signals": postability_signals,
             "sfx_cues": sfx_by_scene_id.get(str(scene_id), []),
+            "proof_asset": (spec.resolved_asset.metadata or {}).get("proof_asset"),
+            "proof_asset_used": asset_fields.get("resolved_asset_provider") == "user_proof_asset",
         })
         elapsed += duration
 
@@ -1048,6 +1069,7 @@ def render_hybrid_video(
             "duration_strategy": duration_strategy,
         },
         "scene_reports": scene_reports,
+        "proof_asset_plan": proof_asset_plan,
         "sfx_plan": sfx_plan,
         "scene_asset_strategy": scene_asset_strategy,
         "visual_realism_human_gate": _visual_realism_human_gate(scene_asset_strategy, scene_reports),
