@@ -27,6 +27,7 @@ try:
     from .hmr_audio_timeline import attach_audio_timeline_to_report, build_audio_binding_timeline
     from .hmr_caption_style import attach_caption_style_to_report, build_caption_style_plan, caption_animation_state, get_caption_style_profile
     from .hmr_editing_rhythm import attach_quick_cut_schedule_to_report, build_quick_cut_schedule
+    from .hmr_montage import attach_montage_plan_to_report, build_montage_plan
     from .hmr_proof_assets import build_proof_asset_plan, proof_asset_for_scene, proof_asset_resolution_fields
     from .hmr_scene_iteration import apply_scene_locks_and_overrides
     from .hmr_agency_templates import select_agency_template_for_scenes
@@ -39,6 +40,7 @@ except ImportError:  # pragma: no cover - direct script execution fallback
     from hmr_audio_timeline import attach_audio_timeline_to_report, build_audio_binding_timeline
     from hmr_caption_style import attach_caption_style_to_report, build_caption_style_plan, caption_animation_state, get_caption_style_profile
     from hmr_editing_rhythm import attach_quick_cut_schedule_to_report, build_quick_cut_schedule
+    from hmr_montage import attach_montage_plan_to_report, build_montage_plan
     from hmr_proof_assets import build_proof_asset_plan, proof_asset_for_scene, proof_asset_resolution_fields
     from hmr_scene_iteration import apply_scene_locks_and_overrides
     from hmr_agency_templates import select_agency_template_for_scenes
@@ -1179,7 +1181,15 @@ def render_hybrid_video(
     }
     report = attach_quick_cut_schedule_to_report(report, schedule=editing_rhythm_plan)
     report = attach_audio_timeline_to_report(report, audio_binding_timeline)
-    return attach_caption_style_to_report(report, caption_style_plan)
+    report = attach_caption_style_to_report(report, caption_style_plan)
+    montage_plan = build_montage_plan(
+        scene_reports=scene_reports,
+        scene_timings=scene_timings,
+        editing_rhythm_plan=editing_rhythm_plan,
+        audio_timeline=audio_binding_timeline,
+        profile_id="smooth_high_energy_shorts",
+    )
+    return attach_montage_plan_to_report(report, montage_plan)
 
 
 def save_render_report(result: dict[str, Any], path: str | Path) -> None:
