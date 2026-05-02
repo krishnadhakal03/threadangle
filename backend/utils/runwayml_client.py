@@ -10,6 +10,8 @@ import httpx
 import requests
 from PIL import Image
 
+from utils.paid_provider_guard import assert_paid_provider_allowed
+
 try:
     import cv2  # type: ignore[reportMissingImports]
 except Exception:
@@ -28,6 +30,7 @@ class RunwayMLQuotaError(Exception):
 
 class RunwayMLClient:
     def __init__(self, api_key=None, model=None):
+        assert_paid_provider_allowed("runwayml")
         self.api_key = api_key or RUNWAYML_API_KEY
         self.model = model or RUNWAYML_MODEL
         if not self.api_key:
@@ -35,6 +38,7 @@ class RunwayMLClient:
 
     @property
     def _headers(self):
+        assert_paid_provider_allowed("runwayml")
         return {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -42,6 +46,7 @@ class RunwayMLClient:
         }
 
     def generate_video(self, prompt, num_frames=24, seed=None, motion="cinematic", max_retries=2):
+        assert_paid_provider_allowed("runwayml")
         duration_seconds = max(2, int(round(float(num_frames) / 12.0)))
         duration_bucket = 5 if duration_seconds <= 6 else 10
         data = {
@@ -50,7 +55,6 @@ class RunwayMLClient:
             "duration": duration_bucket,
             "ratio": "720:1280",
         }
-        # Keep backward-compatible fields; ignored by newer endpoints.
         data["prompt"] = prompt
         data["num_frames"] = num_frames
         data["motion"] = motion
@@ -59,17 +63,16 @@ class RunwayMLClient:
 
         headers = self._headers
         for attempt in range(max_retries):
+            assert_paid_provider_allowed("runwayml")
             response = requests.post(RUNWAYML_API_URL, json=data, headers=headers)
             if response.status_code in (200, 201):
                 ctype = (response.headers.get("content-type") or "").lower()
-                # Legacy/direct binary response
                 if "video" in ctype or "application/octet-stream" in ctype:
                     out_path = f"runwayml_{int(time.time())}.mp4"
                     with open(out_path, "wb") as f:
                         f.write(response.content)
                     return out_path
 
-                # Current API returns async task JSON
                 task_payload = response.json() if response.text else {}
                 task_id = task_payload.get("id") or task_payload.get("taskId")
                 if not task_id:
@@ -77,12 +80,10 @@ class RunwayMLClient:
 
                 return self._poll_and_download_task(task_id, headers=headers)
             elif response.status_code == 402:
-                # Payment required / quota exceeded
                 raise RunwayMLQuotaError("RunwayML quota exceeded or payment required.")
             elif response.status_code == 400 and "enough credits" in (response.text or "").lower():
                 raise RunwayMLQuotaError("RunwayML credits are insufficient for this task.")
             elif response.status_code == 429:
-                # Rate limit, back off and retry
                 time.sleep(2 ** attempt)
                 continue
             elif response.status_code == 400 and "X-Runway-Version header" in (response.text or ""):
@@ -101,9 +102,11 @@ class RunwayMLClient:
         raise Exception("RunwayML API failed after retries.")
 
     async def image_to_video(self, image: Image.Image, prompt: str, duration: int = 5, model: str = "gen4.5", ratio: str = "720:1280"):
+        assert_paid_provider_allowed("runwayml")
         img_base64 = self._image_to_base64(image)
 
         async with httpx.AsyncClient(timeout=90.0) as client:
+            assert_paid_provider_allowed("runwayml")
             response = await client.post(
                 RUNWAYML_IMAGE_TO_VIDEO_URL,
                 headers=self._headers,
@@ -136,6 +139,7 @@ class RunwayMLClient:
         }
 
     async def extend_video(self, previous_video_url: str, prompt: str, duration: int = 5, model: str = "gen4.5", ratio: str = "720:1280"):
+        assert_paid_provider_allowed("runwayml")
         if cv2 is None:
             raise RuntimeError("opencv-python is required for extend_video.")
 
@@ -151,6 +155,7 @@ class RunwayMLClient:
         last_frame_b64 = self._extract_last_frame(temp_path)
 
         async with httpx.AsyncClient(timeout=90.0) as client:
+            assert_paid_provider_allowed("runwayml")
             response = await client.post(
                 RUNWAYML_IMAGE_TO_VIDEO_URL,
                 headers=self._headers,
@@ -183,10 +188,12 @@ class RunwayMLClient:
         }
 
     def _poll_and_download_task(self, task_id: str, headers: dict, timeout_seconds: int = 600) -> str:
+        assert_paid_provider_allowed("runwayml")
         task_url = RUNWAYML_TASK_URL.format(task_id=task_id)
         start = time.time()
 
         while time.time() - start < timeout_seconds:
+            assert_paid_provider_allowed("runwayml")
             resp = requests.get(task_url, headers=headers)
             if resp.status_code != 200:
                 raise Exception(f"RunwayML task poll error: {resp.status_code} {resp.text}")
@@ -227,10 +234,12 @@ class RunwayMLClient:
         return payload.get("url") or payload.get("videoUrl")
 
     async def _poll_task_url(self, task_id: str, timeout_seconds: int = 600) -> str:
+        assert_paid_provider_allowed("runwayml")
         task_url = RUNWAYML_TASK_URL.format(task_id=task_id)
         start = time.time()
         async with httpx.AsyncClient(timeout=60.0) as client:
             while time.time() - start < timeout_seconds:
+                assert_paid_provider_allowed("runwayml")
                 resp = await client.get(task_url, headers=self._headers)
                 if resp.status_code != 200:
                     raise Exception(f"RunwayML task poll error: {resp.status_code} {resp.text}")
@@ -268,12 +277,8 @@ class RunwayMLClient:
         return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
     def _calculate_credits(self, duration: int, model: str, method: str):
-        # Official API pricing: https://docs.dev.runwayml.com/guides/pricing
-        # gen4.5: 12 credits/sec, gen4_turbo: 5 credits/sec, gen4_aleph: 15/sec
         credits_per_second = {"gen4.5": 12, "gen4_turbo": 5, "gen4_aleph": 15}
         return duration * credits_per_second.get(model, 12)
 
     def check_quota(self):
-        # RunwayML does not have a public quota endpoint, so we can only infer from errors
-        # Optionally, implement a test call with a minimal prompt to check quota
         pass
