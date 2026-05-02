@@ -25,12 +25,14 @@ try:
     from .hmr_scene_asset_strategy import detect_hmr_asset_domain_from_text, local_asset_domain_folders, plan_hmr_scene_assets
     from .hmr_sfx import build_sfx_plan
     from .hmr_proof_assets import build_proof_asset_plan, proof_asset_for_scene, proof_asset_resolution_fields
+    from .hmr_scene_iteration import apply_scene_locks_and_overrides
     from .hmr_resolved_scene_spec import build_resolved_scene_spec, resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
 except ImportError:  # pragma: no cover - direct script execution fallback
     from hybrid_scene_templates import draw_caption_band, get_template
     from hmr_scene_asset_strategy import detect_hmr_asset_domain_from_text, local_asset_domain_folders, plan_hmr_scene_assets
     from hmr_sfx import build_sfx_plan
     from hmr_proof_assets import build_proof_asset_plan, proof_asset_for_scene, proof_asset_resolution_fields
+    from hmr_scene_iteration import apply_scene_locks_and_overrides
     from hmr_resolved_scene_spec import build_resolved_scene_spec, resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
 
 
@@ -651,9 +653,16 @@ def render_hybrid_video(
     use_free_tts: bool = True,
     style_preset: str = "documentary_money_short",
     proof_assets: list[dict[str, Any]] | None = None,
+    scene_locks: list[dict[str, Any]] | None = None,
+    scene_overrides: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     start_time = time.time()
     profile_start = time.perf_counter()
+    scenes, scene_iteration_report = apply_scene_locks_and_overrides(
+        scenes,
+        scene_locks=scene_locks,
+        scene_overrides=scene_overrides,
+    )
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     warnings: list[str] = []
@@ -671,6 +680,10 @@ def render_hybrid_video(
     scene_asset_strategy = plan_hmr_scene_assets(scenes)
     strategy_by_scene_id = {str(row.get("scene_id")): row for row in scene_asset_strategy}
     proof_asset_plan = build_proof_asset_plan(scenes, proof_assets)
+    for row in scene_iteration_report.get("rejected_overrides", []):
+        warnings.append(f"scene_override_rejected:{row.get('scene_id')}")
+    for row in scene_iteration_report.get("missing_override_targets", []):
+        warnings.append(f"scene_override_target_missing:{row.get('scene_id')}")
     for row in proof_asset_plan.get("missing_assets", []):
         proof_asset = row.get("proof_asset") or {}
         warnings.append(f"proof_asset_missing:{row.get('scene_id')}:{proof_asset.get('candidate_path')}")
@@ -1069,6 +1082,7 @@ def render_hybrid_video(
             "duration_strategy": duration_strategy,
         },
         "scene_reports": scene_reports,
+        "scene_iteration": scene_iteration_report,
         "proof_asset_plan": proof_asset_plan,
         "sfx_plan": sfx_plan,
         "scene_asset_strategy": scene_asset_strategy,
