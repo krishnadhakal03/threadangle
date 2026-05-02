@@ -27,6 +27,7 @@ try:
     from .hmr_proof_assets import build_proof_asset_plan, proof_asset_for_scene, proof_asset_resolution_fields
     from .hmr_scene_iteration import apply_scene_locks_and_overrides
     from .hmr_agency_templates import select_agency_template_for_scenes
+    from .hmr_agency_presets import select_agency_preset_for_scenes
     from .hmr_resolved_scene_spec import build_resolved_scene_spec, resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
 except ImportError:  # pragma: no cover - direct script execution fallback
     from hybrid_scene_templates import draw_caption_band, get_template
@@ -35,6 +36,7 @@ except ImportError:  # pragma: no cover - direct script execution fallback
     from hmr_proof_assets import build_proof_asset_plan, proof_asset_for_scene, proof_asset_resolution_fields
     from hmr_scene_iteration import apply_scene_locks_and_overrides
     from hmr_agency_templates import select_agency_template_for_scenes
+    from hmr_agency_presets import select_agency_preset_for_scenes
     from hmr_resolved_scene_spec import build_resolved_scene_spec, resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
 
 
@@ -657,6 +659,7 @@ def render_hybrid_video(
     proof_assets: list[dict[str, Any]] | None = None,
     scene_locks: list[dict[str, Any]] | None = None,
     scene_overrides: list[dict[str, Any]] | None = None,
+    agency_preset_id: str | None = None,
 ) -> dict[str, Any]:
     start_time = time.time()
     profile_start = time.perf_counter()
@@ -682,6 +685,12 @@ def render_hybrid_video(
     scene_asset_strategy = plan_hmr_scene_assets(scenes)
     strategy_by_scene_id = {str(row.get("scene_id")): row for row in scene_asset_strategy}
     agency_template = select_agency_template_for_scenes(scenes, script_text)
+    agency_preset = select_agency_preset_for_scenes(
+        scenes,
+        script_text,
+        agency_template=agency_template,
+        preset_id=agency_preset_id,
+    )
     proof_asset_plan = build_proof_asset_plan(scenes, proof_assets)
     for row in scene_iteration_report.get("rejected_overrides", []):
         warnings.append(f"scene_override_rejected:{row.get('scene_id')}")
@@ -1086,6 +1095,7 @@ def render_hybrid_video(
         },
         "scene_reports": scene_reports,
         "agency_template": agency_template,
+        "agency_preset": agency_preset,
         "scene_iteration": scene_iteration_report,
         "proof_asset_plan": proof_asset_plan,
         "sfx_plan": sfx_plan,
