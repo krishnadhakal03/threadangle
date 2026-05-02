@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,25 @@ STANDARD_PLATFORM_EXPORT_PRESETS = ("instagram_reels", "tiktok", "youtube_shorts
 
 def hmr_ui_run_dir(generated_root: str | Path, run_id: str) -> Path:
     return Path(generated_root).expanduser().resolve() / "hmr_ui_runs" / str(run_id)
+
+
+def archive_existing_review_package(review_dir: str | Path) -> Path | None:
+    """Move an existing non-frozen flat review package into the run archive."""
+    review_path = Path(review_dir).expanduser().resolve()
+    if not review_path.exists():
+        return None
+    assert_not_frozen_output(review_path)
+    archive_root = review_path.parent / "_archived_review_packages"
+    assert_not_frozen_output(archive_root)
+    archive_root.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    archive_path = archive_root / f"{review_path.name}_{stamp}"
+    suffix = 1
+    while archive_path.exists():
+        archive_path = archive_root / f"{review_path.name}_{stamp}_{suffix}"
+        suffix += 1
+    shutil.move(str(review_path), str(archive_path))
+    return archive_path
 
 
 def build_hmr_ui_artifact_paths(
@@ -137,8 +157,7 @@ def materialize_hmr_ui_review_workflow(
 
     package = create_review_package(str(run_dir), video=str(video_path), review_root=str(run_dir / "_timestamped_review_packages"))
     source_review_dir = Path(package["review_dir"])
-    if review_dir.exists():
-        shutil.rmtree(review_dir)
+    archived_review_dir = archive_existing_review_package(review_dir)
     shutil.copytree(source_review_dir, review_dir)
     metadata["artifact_paths"].update(
         {
@@ -149,6 +168,8 @@ def materialize_hmr_ui_review_workflow(
         }
     )
     metadata["review_package_status"] = "created"
+    metadata["previous_review_package_status"] = "archived" if archived_review_dir else "none"
+    metadata["previous_review_package_archive"] = str(archived_review_dir) if archived_review_dir else None
     metadata["platform_exports"] = build_hmr_platform_export_plan(
         video_path=video_path,
         export_dir=paths["platform_export_dir"],

@@ -86,6 +86,21 @@ Exports are not transcoded during smoke tests. They can be run later through
 The flow checks `assert_not_frozen_output(...)` before assigning run, review, or
 export paths. This keeps frozen post-ready packages protected.
 
+Retry policy for a reused UI `run_id` is archive-before-replace:
+
+- if `review_package/` already exists and is not frozen, materialization moves
+  it to `_archived_review_packages/review_package_<UTC timestamp>/` before
+  copying the newly created timestamped package into the flat `review_package/`
+  path;
+- if `review_package/manifest.json` or a parent manifest is frozen,
+  materialization raises `FrozenArtifactError` and leaves the existing package in
+  place;
+- unrelated files under `hmr_ui_runs/<run_id>/` are preserved on retry.
+
+Materialization returns `previous_review_package_status` and
+`previous_review_package_archive` so callers can show whether a retry archived a
+prior flat package.
+
 HMR UI mode forces free TTS behavior in the route. The productization metadata
 does not select ElevenLabs, RunwayML, Anthropic, or OpenAI paid APIs.
 
