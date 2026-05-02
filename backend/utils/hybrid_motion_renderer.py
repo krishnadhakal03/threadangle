@@ -24,6 +24,7 @@ try:
     from .hybrid_scene_templates import draw_caption_band, get_template
     from .hmr_scene_asset_strategy import detect_hmr_asset_domain_from_text, local_asset_domain_folders, plan_hmr_scene_assets
     from .hmr_sfx import build_sfx_plan
+    from .hmr_audio_timeline import attach_audio_timeline_to_report, build_audio_binding_timeline
     from .hmr_editing_rhythm import attach_quick_cut_schedule_to_report, build_quick_cut_schedule
     from .hmr_proof_assets import build_proof_asset_plan, proof_asset_for_scene, proof_asset_resolution_fields
     from .hmr_scene_iteration import apply_scene_locks_and_overrides
@@ -34,6 +35,7 @@ except ImportError:  # pragma: no cover - direct script execution fallback
     from hybrid_scene_templates import draw_caption_band, get_template
     from hmr_scene_asset_strategy import detect_hmr_asset_domain_from_text, local_asset_domain_folders, plan_hmr_scene_assets
     from hmr_sfx import build_sfx_plan
+    from hmr_audio_timeline import attach_audio_timeline_to_report, build_audio_binding_timeline
     from hmr_editing_rhythm import attach_quick_cut_schedule_to_report, build_quick_cut_schedule
     from hmr_proof_assets import build_proof_asset_plan, proof_asset_for_scene, proof_asset_resolution_fields
     from hmr_scene_iteration import apply_scene_locks_and_overrides
@@ -868,6 +870,14 @@ def render_hybrid_video(
         caption_events=caption_events,
         profile_id="quick_cut_shorts",
     )
+    audio_binding_timeline = build_audio_binding_timeline(
+        script_text=script_text,
+        scene_timings=scene_timings,
+        caption_events=caption_events,
+        sfx_plan=sfx_plan,
+        editing_rhythm_plan=editing_rhythm_plan,
+        voice_audio_path=audio_path,
+    )
 
     writer_open_start = time.perf_counter()
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -1139,7 +1149,8 @@ def render_hybrid_video(
         },
         "stock_status": stock_status,
     }
-    return attach_quick_cut_schedule_to_report(report, schedule=editing_rhythm_plan)
+    report = attach_quick_cut_schedule_to_report(report, schedule=editing_rhythm_plan)
+    return attach_audio_timeline_to_report(report, audio_binding_timeline)
 
 
 def save_render_report(result: dict[str, Any], path: str | Path) -> None:
