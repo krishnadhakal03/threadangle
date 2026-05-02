@@ -24,6 +24,7 @@ try:
     from .hybrid_scene_templates import draw_caption_band, get_template
     from .hmr_scene_asset_strategy import detect_hmr_asset_domain_from_text, local_asset_domain_folders, plan_hmr_scene_assets
     from .hmr_sfx import build_sfx_plan
+    from .hmr_editing_rhythm import attach_quick_cut_schedule_to_report, build_quick_cut_schedule
     from .hmr_proof_assets import build_proof_asset_plan, proof_asset_for_scene, proof_asset_resolution_fields
     from .hmr_scene_iteration import apply_scene_locks_and_overrides
     from .hmr_agency_templates import select_agency_template_for_scenes
@@ -33,6 +34,7 @@ except ImportError:  # pragma: no cover - direct script execution fallback
     from hybrid_scene_templates import draw_caption_band, get_template
     from hmr_scene_asset_strategy import detect_hmr_asset_domain_from_text, local_asset_domain_folders, plan_hmr_scene_assets
     from hmr_sfx import build_sfx_plan
+    from hmr_editing_rhythm import attach_quick_cut_schedule_to_report, build_quick_cut_schedule
     from hmr_proof_assets import build_proof_asset_plan, proof_asset_for_scene, proof_asset_resolution_fields
     from hmr_scene_iteration import apply_scene_locks_and_overrides
     from hmr_agency_templates import select_agency_template_for_scenes
@@ -860,6 +862,12 @@ def render_hybrid_video(
     for cue in sfx_plan.get("cues", []):
         sfx_by_scene_id.setdefault(str(cue.get("scene_id")), []).append(cue)
     caption_events = split_caption_events(script_text, total_duration, max_words=4)
+    editing_rhythm_plan = build_quick_cut_schedule(
+        script_text=script_text,
+        scene_timings=scene_timings,
+        caption_events=caption_events,
+        profile_id="quick_cut_shorts",
+    )
 
     writer_open_start = time.perf_counter()
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -1081,7 +1089,7 @@ def render_hybrid_video(
         template_totals.append(out)
     total_profile_sec = time.perf_counter() - profile_start
 
-    return {
+    report = {
         "video_path": str(output),
         "duration": round(total_duration, 3),
         "audio_sync_report": {
@@ -1131,6 +1139,7 @@ def render_hybrid_video(
         },
         "stock_status": stock_status,
     }
+    return attach_quick_cut_schedule_to_report(report, schedule=editing_rhythm_plan)
 
 
 def save_render_report(result: dict[str, Any], path: str | Path) -> None:
