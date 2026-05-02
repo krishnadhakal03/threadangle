@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -323,3 +324,134 @@ def build_audio_mix_plan(
         ],
         "input_event_count": len(input_events),
     }
+
+
+def _is_local_existing_file(path: Any) -> bool:
+    if not path:
+        return False
+    text = str(path)
+    if text.startswith(("http://", "https://", "s3://", "gs://")):
+        return False
+    candidate = Path(text).expanduser()
+    return candidate.exists() and candidate.is_file()
+
+
+def _executable_mix_command(
+    *,
+    voice_audio_path: str | Path,
+    output_audio_path: str | Path,
+    events: list[dict[str, Any]],
+    mix_rules: dict[str, Any],
+    audio_bitrate: str,
+) -> list[str]:
+    cmd = ["ffmpeg", "-y", "-i", str(voice_audio_path)]
+    for event in events:
+        cmd.extend(["-i", str(event["path"])])
+    filters = [f"[0:a]volume={float(mix_rules.get('voice_volume', 1.0)):.3f}[voice]"]
+    mix_inputs = ["[voice]"]
+    for idx, event in enumerate(events, start=1):
+        start_ms = max(0, int(round(float(event.get("start", 0.0) or 0.0) * 1000)))
+        label = f"aud{idx}"
+        volume = float(event.get("volume", mix_rules.get("music_bed_volume", 0.16)) or 0.16)
+        if event.get("event_type") != "music_bed":
+            volume = min(float(mix_rules.get("max_sfx_volume", 0.28)), volume)
+        filters.append(f"[{idx}:a]asetpts=PTS-STARTPTS,volume={volume:.3f},adelay={start_ms}|{start_ms}[{label}]")
+        mix_inputs.append(f"[{label}]")
+    filters.append(
+        f"{''.join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=first:dropout_transition=0,"
+        f"alimiter=limit={mix_rules.get('limiter', '0.95')}[mixed]"
+    )
+    return [
+        *cmd,
+        "-filter_complex",
+        ";".join(filters),
+        "-map",
+        "[mixed]",
+        "-c:a",
+        "aac",
+        "-b:a",
+        audio_bitrate,
+        str(output_audio_path),
+    ]
+
+
+def execute_audio_mix_plan(
+    *,
+    voice_audio_path: str | Path | None,
+    output_audio_path: str | Path,
+    audio_timeline: dict[str, Any],
+    enabled: bool = False,
+    audio_bitrate: str = "160k",
+    timeout: int = 90,
+) -> dict[str, Any]:
+    """Execute a local-only audio mix plan when explicitly enabled."""
+    base = {
+        "audio_mix_execution_status": "not_requested" if not enabled else "skipped",
+        "mixed": False,
+        "mixed_audio_path": None,
+        "mixed_event_count": 0,
+        "skipped_event_count": 0,
+        "local_assets_only": True,
+        "skipped_missing_assets": [],
+        "skipped_non_local_assets": [],
+        "command": None,
+    }
+    if not enabled:
+        return base
+    if not voice_audio_path or not _is_local_existing_file(voice_audio_path):
+        base["audio_mix_execution_status"] = "skipped_missing_voice"
+        base["skipped_missing_assets"].append(str(voice_audio_path) if voice_audio_path else "voice_audio_path")
+        return base
+
+    mix_rules = audio_timeline.get("mix_rules", DEFAULT_MIX_RULES)
+    mixable_types = {"sfx_cue", "music_bed", "transition_hit", "payoff_hit"}
+    events = []
+    skipped_missing = []
+    skipped_non_local = []
+    for event in audio_timeline.get("events", []) or []:
+        if event.get("event_type") not in mixable_types:
+            continue
+        path = event.get("path")
+        if path and str(path).startswith(("http://", "https://", "s3://", "gs://")):
+            skipped_non_local.append({"event_id": event.get("id"), "path": str(path)})
+            continue
+        if not _is_local_existing_file(path):
+            skipped_missing.append({"event_id": event.get("id"), "path": str(path) if path else None})
+            continue
+        events.append(event)
+
+    base["skipped_missing_assets"] = skipped_missing
+    base["skipped_non_local_assets"] = skipped_non_local
+    base["skipped_event_count"] = len(skipped_missing) + len(skipped_non_local)
+    if not events:
+        base["audio_mix_execution_status"] = "skipped_missing_assets"
+        return base
+
+    output = Path(output_audio_path).expanduser()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    cmd = _executable_mix_command(
+        voice_audio_path=voice_audio_path,
+        output_audio_path=output,
+        events=events,
+        mix_rules=mix_rules,
+        audio_bitrate=audio_bitrate,
+    )
+    base["command"] = cmd
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout)
+    except Exception as exc:
+        base["audio_mix_execution_status"] = "failed"
+        base["error"] = str(exc)[:160]
+        return base
+
+    base.update(
+        {
+            "audio_mix_execution_status": "mixed",
+            "mixed": True,
+            "mixed_audio_path": str(output),
+            "mixed_event_count": len(events),
+        }
+    )
+    if base["skipped_event_count"]:
+        base["audio_mix_execution_status"] = "mixed_with_skips"
+    return base

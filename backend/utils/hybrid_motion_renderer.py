@@ -24,7 +24,7 @@ try:
     from .hybrid_scene_templates import draw_caption_band, get_template
     from .hmr_scene_asset_strategy import detect_hmr_asset_domain_from_text, local_asset_domain_folders, plan_hmr_scene_assets
     from .hmr_sfx import build_sfx_plan
-    from .hmr_audio_timeline import attach_audio_timeline_to_report, build_audio_binding_timeline
+    from .hmr_audio_timeline import attach_audio_timeline_to_report, build_audio_binding_timeline, execute_audio_mix_plan
     from .hmr_caption_style import attach_caption_style_to_report, build_caption_style_plan, caption_animation_state, get_caption_style_profile
     from .hmr_editing_rhythm import attach_quick_cut_schedule_to_report, build_quick_cut_schedule
     from .hmr_montage import attach_montage_plan_to_report, build_montage_execution_report, build_montage_plan
@@ -37,7 +37,7 @@ except ImportError:  # pragma: no cover - direct script execution fallback
     from hybrid_scene_templates import draw_caption_band, get_template
     from hmr_scene_asset_strategy import detect_hmr_asset_domain_from_text, local_asset_domain_folders, plan_hmr_scene_assets
     from hmr_sfx import build_sfx_plan
-    from hmr_audio_timeline import attach_audio_timeline_to_report, build_audio_binding_timeline
+    from hmr_audio_timeline import attach_audio_timeline_to_report, build_audio_binding_timeline, execute_audio_mix_plan
     from hmr_caption_style import attach_caption_style_to_report, build_caption_style_plan, caption_animation_state, get_caption_style_profile
     from hmr_editing_rhythm import attach_quick_cut_schedule_to_report, build_quick_cut_schedule
     from hmr_montage import attach_montage_plan_to_report, build_montage_execution_report, build_montage_plan
@@ -702,6 +702,8 @@ def render_hybrid_video(
     scene_locks: list[dict[str, Any]] | None = None,
     scene_overrides: list[dict[str, Any]] | None = None,
     agency_preset_id: str | None = None,
+    music_bed_path: str | Path | None = None,
+    execute_audio_mix: bool = False,
 ) -> dict[str, Any]:
     start_time = time.time()
     profile_start = time.perf_counter()
@@ -920,6 +922,8 @@ def render_hybrid_video(
         sfx_plan=sfx_plan,
         editing_rhythm_plan=editing_rhythm_plan,
         voice_audio_path=audio_path,
+        music_bed_path=music_bed_path,
+        music_enabled=music_bed_path is not None,
     )
 
     writer_open_start = time.perf_counter()
@@ -1168,9 +1172,16 @@ def render_hybrid_video(
     writer.release()
     writer_release_sec = time.perf_counter() - writer_release_start
     mux_audio_sec = 0.0
-    if audio_path or use_free_tts:
+    audio_mix_execution = execute_audio_mix_plan(
+        voice_audio_path=audio_path,
+        output_audio_path=output.with_name(output.stem + "_audio_bound.m4a"),
+        audio_timeline=audio_binding_timeline,
+        enabled=execute_audio_mix,
+    )
+    audio_for_mux = audio_mix_execution.get("mixed_audio_path") or audio_path
+    if audio_for_mux or use_free_tts:
         mux_start = time.perf_counter()
-        _mux_audio(output, audio_path, total_duration, warnings)
+        _mux_audio(output, audio_for_mux, total_duration, warnings)
         mux_audio_sec = time.perf_counter() - mux_start
     final_probe_start = time.perf_counter()
     final_video_duration = _probe_media_duration(output)
@@ -1212,6 +1223,11 @@ def render_hybrid_video(
         "scene_iteration": scene_iteration_report,
         "proof_asset_plan": proof_asset_plan,
         "sfx_plan": sfx_plan,
+        "audio_mix_execution": audio_mix_execution,
+        "audio_mix_execution_status": audio_mix_execution["audio_mix_execution_status"],
+        "mixed_event_count": audio_mix_execution["mixed_event_count"],
+        "skipped_event_count": audio_mix_execution["skipped_event_count"],
+        "local_assets_only": audio_mix_execution["local_assets_only"],
         "scene_asset_strategy": scene_asset_strategy,
         "visual_realism_human_gate": _visual_realism_human_gate(scene_asset_strategy, scene_reports),
         "render_profile": {

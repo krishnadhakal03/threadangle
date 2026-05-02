@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import sys
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -120,3 +124,103 @@ def test_audio_mix_plan_is_command_only_and_ducks_music(tmp_path):
     assert "sidechaincompress" in filter_complex
     assert "adelay=800|800" in filter_complex
     assert "alimiter=limit=0.95" in filter_complex
+
+
+def _make_tiny_wav(path: Path, *, frequency: int = 440, duration: float = 0.35) -> None:
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg is required for synthetic audio fixture")
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency={frequency}:duration={duration}:sample_rate=44100",
+            str(path),
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=30,
+    )
+
+
+def test_execute_audio_mix_plan_mixes_local_assets(tmp_path):
+    from utils.hmr_audio_timeline import build_audio_binding_timeline, execute_audio_mix_plan
+
+    voice = tmp_path / "voice.wav"
+    tick = tmp_path / "tick.wav"
+    output = tmp_path / "mixed.m4a"
+    _make_tiny_wav(voice, frequency=220, duration=0.8)
+    _make_tiny_wav(tick, frequency=880, duration=0.2)
+    timeline = build_audio_binding_timeline(
+        script_text="Save $27 today.",
+        scene_timings=[{"scene_id": "hook", "start": 0.0, "end": 0.8}],
+        caption_events=[{"start": 0.0, "end": 0.8, "text": "Save $27 today"}],
+        sfx_plan={
+            "cues": [
+                {
+                    "scene_id": "hook",
+                    "role": "tick",
+                    "timeline_time": 0.2,
+                    "volume": 0.12,
+                    "status": "resolved",
+                    "path": str(tick),
+                }
+            ]
+        },
+    )
+
+    result = execute_audio_mix_plan(
+        voice_audio_path=voice,
+        output_audio_path=output,
+        audio_timeline=timeline,
+        enabled=True,
+    )
+
+    assert result["audio_mix_execution_status"] == "mixed"
+    assert result["mixed"] is True
+    assert result["mixed_event_count"] == 1
+    assert result["skipped_event_count"] == 0
+    assert result["local_assets_only"] is True
+    assert output.exists()
+    assert output.stat().st_size > 100
+
+
+def test_execute_audio_mix_plan_skips_missing_and_nonlocal_assets(tmp_path):
+    from utils.hmr_audio_timeline import build_audio_binding_timeline, execute_audio_mix_plan
+
+    voice = tmp_path / "voice.wav"
+    _make_tiny_wav(voice, duration=0.4)
+    timeline = build_audio_binding_timeline(
+        script_text="Save $27 today.",
+        scene_timings=[{"scene_id": "hook", "start": 0.0, "end": 0.4}],
+        caption_events=[{"start": 0.0, "end": 0.4, "text": "Save $27 today"}],
+        sfx_plan={
+            "cues": [
+                {"scene_id": "hook", "role": "tick", "timeline_time": 0.1, "status": "missing", "path": None},
+                {
+                    "scene_id": "hook",
+                    "role": "whoosh",
+                    "timeline_time": 0.2,
+                    "status": "resolved",
+                    "path": "https://example.com/whoosh.wav",
+                },
+            ]
+        },
+    )
+
+    result = execute_audio_mix_plan(
+        voice_audio_path=voice,
+        output_audio_path=tmp_path / "mixed.m4a",
+        audio_timeline=timeline,
+        enabled=True,
+    )
+
+    assert result["audio_mix_execution_status"] == "skipped_missing_assets"
+    assert result["mixed"] is False
+    assert result["mixed_event_count"] == 0
+    assert result["skipped_event_count"] == 2
+    assert result["skipped_missing_assets"][0]["path"] is None
+    assert result["skipped_non_local_assets"][0]["path"] == "https://example.com/whoosh.wav"
