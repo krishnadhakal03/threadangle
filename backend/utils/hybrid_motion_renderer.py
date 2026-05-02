@@ -26,6 +26,7 @@ try:
     from .hmr_sfx import build_sfx_plan
     from .hmr_proof_assets import build_proof_asset_plan, proof_asset_for_scene, proof_asset_resolution_fields
     from .hmr_scene_iteration import apply_scene_locks_and_overrides
+    from .hmr_agency_templates import select_agency_template_for_scenes
     from .hmr_resolved_scene_spec import build_resolved_scene_spec, resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
 except ImportError:  # pragma: no cover - direct script execution fallback
     from hybrid_scene_templates import draw_caption_band, get_template
@@ -33,6 +34,7 @@ except ImportError:  # pragma: no cover - direct script execution fallback
     from hmr_sfx import build_sfx_plan
     from hmr_proof_assets import build_proof_asset_plan, proof_asset_for_scene, proof_asset_resolution_fields
     from hmr_scene_iteration import apply_scene_locks_and_overrides
+    from hmr_agency_templates import select_agency_template_for_scenes
     from hmr_resolved_scene_spec import build_resolved_scene_spec, resolve_playwright_scene_asset, resolve_stock_or_local_scene_asset
 
 
@@ -679,6 +681,7 @@ def render_hybrid_video(
     }
     scene_asset_strategy = plan_hmr_scene_assets(scenes)
     strategy_by_scene_id = {str(row.get("scene_id")): row for row in scene_asset_strategy}
+    agency_template = select_agency_template_for_scenes(scenes, script_text)
     proof_asset_plan = build_proof_asset_plan(scenes, proof_assets)
     for row in scene_iteration_report.get("rejected_overrides", []):
         warnings.append(f"scene_override_rejected:{row.get('scene_id')}")
@@ -1082,6 +1085,7 @@ def render_hybrid_video(
             "duration_strategy": duration_strategy,
         },
         "scene_reports": scene_reports,
+        "agency_template": agency_template,
         "scene_iteration": scene_iteration_report,
         "proof_asset_plan": proof_asset_plan,
         "sfx_plan": sfx_plan,
