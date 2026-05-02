@@ -2,72 +2,64 @@
 
 ## Current Route Audit
 
-`/api/generate/video/free` still executes the Hybrid Motion Renderer directly when
-`scene_mode="hybrid_motion"` and `ENABLE_HYBRID_MOTION_RENDERER=1`.
-
-The older preview-generation path already uses a queued `Generation` row,
-`BackgroundTasks`, and the in-memory `_task_progress` map. The HMR UI path did
-not yet have an equivalent state contract, which made future non-blocking work
-hard to test without invoking the renderer.
+`/api/generate/video/free` keeps the existing direct HMR path for normal
+requests. When `scene_mode="hybrid_motion"`, `ENABLE_HYBRID_MOTION_RENDERER=1`,
+and `hmr_async=true`, the route now queues a durable HMR background job and
+returns immediately.
 
 ## Current Truthful Execution Model
 
-The current code has a serializable HMR render job state object, but it is a
-scaffold only. It does not start a durable background worker.
+The async HMR path now persists progress in `hmr_render_jobs`:
 
-- `queued`: job accepted, no render invoked.
-- `processing`: render execution has started in the current process.
+- `queued`: durable job accepted, no render invoked yet.
+- `processing`: background worker started and render invocation began.
 - `success`: render and productization artifacts finished.
-- `failed`: renderer or artifact step failed with an explicit message.
+- `failed`: renderer, productization, restart, or worker error was recorded.
 
-The state object can be converted into the existing progress endpoint shape and
-seeded into the `_task_progress` store once a real `Generation.id` exists. The
-UI smoke plan now exposes the planned queued job state and the
-`hmr_async` request flag without invoking render work.
+Truthfulness fields for active async HMR jobs:
 
-Default `/video/free` behavior is intentionally preserved. HMR direct rendering
-continues until the next migration binds this state to a background task or
-external worker.
+- `execution_mode`: `background_task`
+- `worker_active`: `true` while queued/processing, `false` after terminal state
+- `durable_progress`: `true`
+- `progress_store`: `hmr_render_jobs`
+- `non_blocking_hmr_active`: `true`
 
-Truthfulness fields:
+Direct HMR rendering remains available when `hmr_async` is false.
 
-- `execution_mode`: currently `scaffold_only`.
-- `worker_active`: currently `false`.
-- `durable_progress`: currently `false`.
-- `progress_store`: currently `in_memory_task_progress`.
-- `non_blocking_hmr_active`: currently `false` in smoke plans.
+## Worker Behavior
 
-`hmr_async=true` means the caller requested future non-blocking behavior. It does
-not mean a real worker is active today.
+The current worker is an in-process FastAPI `BackgroundTasks` worker. It:
 
-## Worker Migration Boundary
+1. creates a queued `Generation` row;
+2. creates a durable `HMRRenderJob` row;
+3. returns a queued response to the caller;
+4. opens its own `AsyncSessionLocal` session;
+5. transitions `queued -> processing -> success/failed`;
+6. calls `render_hybrid_video(...)`;
+7. calls `materialize_hmr_ui_review_workflow(...)`;
+8. stores result/error metadata on the durable job row.
 
-The production worker step should:
+Progress polling checks `hmr_render_jobs` before falling back to the older
+in-memory `_task_progress` map.
 
-1. Create a `Generation(status="queued")` row before render execution.
-2. Seed `_task_progress[generation.id]` with `seed_hmr_render_progress`.
-3. Transition to `processing` immediately before calling `render_hybrid_video`.
-4. Run `materialize_hmr_ui_review_workflow` after render success.
-5. Mark the row `success` only after the review package and platform export plan
-   are written.
-6. Mark the row `failed` with the renderer/productization error if any step
-   raises.
+## Recovery
 
-## Implementation Slices Needed
+`recover_interrupted_hmr_jobs(...)` marks queued or processing durable jobs as
+failed after restart or worker interruption. This keeps the UI from treating a
+lost in-process worker as endlessly active.
 
-- Add a durable HMR job table or persist job state on `Generation`.
-- Move HMR render execution into `BackgroundTasks`, a queue worker, or an
-  external worker process.
-- Replace `_task_progress` as the source of truth, or add recovery that rebuilds
-  progress from durable state.
-- Make `hmr_async=true` return a queued response without doing direct render work.
-- Add restart/recovery tests for queued and processing jobs.
+## Guardrails
+
+- The async HMR worker owns its DB session instead of using the request-scoped
+  session.
+- The worker uses free/local HMR behavior and does not call ElevenLabs, RunwayML,
+  Anthropic, OpenAI, Gemini, or paid music/SFX providers.
+- Frozen-output checks still run through the HMR productization path.
 
 ## Remaining Risks
 
-- `/api/generate/video/free` HMR render execution is still blocking by default.
-- A true background worker must manage its own database session instead of using
-  the request-scoped session.
-- `_task_progress` is in-memory, so interrupted queued/processing jobs still need
-  durable recovery before production use.
-- No full HMR render or platform export transcoding is exercised by this slice.
+- This is an in-process background task, not an external queue. A process crash
+  can interrupt active work, but durable state now makes that failure recoverable
+  and visible.
+- Full production HMR render coverage still belongs in an explicit manual or CI
+  environment that permits render runtime.

@@ -102,6 +102,33 @@ async def root():
 async def run_migrations():
     """Add new columns to existing DB without dropping data."""
     async with engine.begin() as conn:
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS hmr_render_jobs (
+                id VARCHAR PRIMARY KEY,
+                generation_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                run_id VARCHAR NOT NULL,
+                status VARCHAR DEFAULT 'queued',
+                percent INTEGER DEFAULT 2,
+                step VARCHAR DEFAULT 'queued',
+                message TEXT,
+                error_message TEXT,
+                request_json JSON,
+                artifact_paths_json JSON,
+                result_json JSON,
+                execution_mode VARCHAR DEFAULT 'background_task',
+                worker_active BOOLEAN DEFAULT 1,
+                durable_progress BOOLEAN DEFAULT 1,
+                progress_store VARCHAR DEFAULT 'hmr_render_jobs',
+                render_invoked BOOLEAN DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                started_at DATETIME,
+                completed_at DATETIME,
+                FOREIGN KEY(generation_id) REFERENCES generations(id),
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+        """))
         for sql in [
             "ALTER TABLE generations ADD COLUMN status TEXT DEFAULT 'success'",
             "ALTER TABLE generations ADD COLUMN error_message TEXT",

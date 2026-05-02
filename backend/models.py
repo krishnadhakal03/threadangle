@@ -104,6 +104,34 @@ class Generation(Base):
     batch_id = Column(String, nullable=True, index=True)
     topic = Column(String, nullable=True)
 
+
+class HMRRenderJob(Base):
+    """Durable state for asynchronous Hybrid Motion Renderer jobs."""
+
+    __tablename__ = "hmr_render_jobs"
+
+    id = Column(String, primary_key=True, index=True)
+    generation_id = Column(Integer, ForeignKey("generations.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    run_id = Column(String, nullable=False, index=True)
+    status = Column(String, default="queued", index=True)
+    percent = Column(Integer, default=2)
+    step = Column(String, default="queued")
+    message = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+    request_json = Column(JSON, nullable=True)
+    artifact_paths_json = Column(JSON, nullable=True)
+    result_json = Column(JSON, nullable=True)
+    execution_mode = Column(String, default="background_task")
+    worker_active = Column(Boolean, default=True)
+    durable_progress = Column(Boolean, default=True)
+    progress_store = Column(String, default="hmr_render_jobs")
+    render_invoked = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
 class Subscription(Base):
     __tablename__ = "subscriptions"
     id = Column(Integer, primary_key=True, index=True)

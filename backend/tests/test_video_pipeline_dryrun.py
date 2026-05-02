@@ -36,6 +36,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch, call
 
 import pytest
+from fastapi import BackgroundTasks
 
 # ---------------------------------------------------------------------------
 # Ensure backend/ is on sys.path so direct imports work
@@ -933,7 +934,7 @@ class TestHMRUISmokePreflight:
         job = plan["hmr_render_job"]
         assert plan["non_blocking_hmr_requested"] is False
         assert plan["non_blocking_hmr_active"] is False
-        assert plan["async_execution_status"] == "scaffold_only"
+        assert plan["async_execution_status"] == "direct_or_scaffold"
         assert plan["worker_active"] is False
         assert plan["durable_progress"] is False
         assert plan["progress_store"] == "_task_progress_in_memory_only"
@@ -1044,6 +1045,17 @@ class TestHMRUISmokePreflight:
         assert processing.worker_active is False
         assert processing.durable_progress is False
 
+        active = create_hmr_render_job_state(
+            run_id="active-run",
+            generation_id=43,
+            artifact_paths={"review_package": "review_package"},
+            active_worker=True,
+        )
+        assert active.execution_mode == "background_task"
+        assert active.worker_active is True
+        assert active.durable_progress is True
+        assert active.progress_store == "hmr_render_jobs"
+
         success = transition_hmr_render_job_state(processing, status="success")
         assert success.status == "success"
         assert success.percent == 100
@@ -1079,15 +1091,15 @@ class TestHMRUISmokePreflight:
         )
 
         assert plan["non_blocking_hmr_requested"] is True
-        assert plan["non_blocking_hmr_active"] is False
-        assert plan["async_execution_status"] == "scaffold_only"
-        assert plan["worker_active"] is False
-        assert plan["durable_progress"] is False
+        assert plan["non_blocking_hmr_active"] is True
+        assert plan["async_execution_status"] == "background_task"
+        assert plan["worker_active"] is True
+        assert plan["durable_progress"] is True
         assert plan["hmr_render_job"]["status"] == "queued"
         assert plan["hmr_render_job"]["run_id"] == "async-smoke"
-        assert plan["hmr_render_job"]["execution_mode"] == "scaffold_only"
-        assert plan["hmr_render_job"]["worker_active"] is False
-        assert plan["hmr_render_job"]["durable_progress"] is False
+        assert plan["hmr_render_job"]["execution_mode"] == "background_task"
+        assert plan["hmr_render_job"]["worker_active"] is True
+        assert plan["hmr_render_job"]["durable_progress"] is True
         assert plan["hmr_render_job"]["render_invoked"] is False
         assert plan["render_invoked"] is False
 
@@ -1141,7 +1153,7 @@ class TestHMRUISmokePreflight:
              patch("utils.hmr_ui_productization.materialize_hmr_ui_review_workflow", side_effect=productization_side_effect) as productize_mock, \
              patch("routes.generate.generate_youtube_metadata", new_callable=AsyncMock, return_value={"title": "Mock HMR"}), \
              patch("routes.generate._organize_run_assets", return_value=("hmr-route-mock.mp4", None)):
-            response = await generate_free_video(request, db=db, current_user=current_user)
+            response = await generate_free_video(request, background_tasks=BackgroundTasks(), db=db, current_user=current_user)
 
         render_mock.assert_called_once()
         productize_mock.assert_called_once()

@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 
 from database import get_db, AsyncSessionLocal
-from models import User, Generation
+from models import User, Generation, HMRRenderJob
 from utils.ai import extract_content_from_url, generate_content as ai_generate, build_prompt, parse_response, generate_video_plan, client as anthropic_client
 from utils.youtube import is_youtube_url, get_youtube_transcript, get_video_metadata
 from utils.voice_learning import analyze_user_voice, build_voice_prompt, should_trigger_voice_learning
@@ -28,6 +28,7 @@ from utils.hook_generator import generate_all_hook_variations
 from utils.site_settings import get_plan_limit
 from utils.character_manager import CharacterManager
 from utils.hmr_artifact_manifest import assert_not_frozen_output
+from utils.hmr_durable_jobs import create_hmr_render_job_record, hmr_job_to_progress, update_hmr_render_job_record
 from utils.runwayml_client import RunwayMLClient
 from utils.video_pipeline import (
     parse_script,
@@ -409,13 +410,14 @@ def build_hmr_ui_generation_smoke_plan(
         run_id=smoke_run_id,
         video_path=output_path,
     )
+    hmr_mode_selected = selected_mode == "hybrid_motion"
+    hmr_renderer_enabled = is_hybrid_motion_renderer_enabled()
     hmr_job = create_hmr_render_job_state(
         run_id=smoke_run_id,
         generation_id=None,
         artifact_paths=productization["artifact_paths"],
+        active_worker=bool(request.hmr_async and hmr_mode_selected and hmr_renderer_enabled),
     )
-    hmr_mode_selected = selected_mode == "hybrid_motion"
-    hmr_renderer_enabled = is_hybrid_motion_renderer_enabled()
     use_free_tts = hmr_mode_selected or str(getattr(request, "tts_provider", "elevenlabs")).lower() == "free"
     return {
         "route_entry_point": "/api/generate/video/free",
@@ -437,12 +439,12 @@ def build_hmr_ui_generation_smoke_plan(
         "platform_export_integration_ready": True,
         "productization": productization,
         "non_blocking_hmr_requested": bool(request.hmr_async),
-        "non_blocking_hmr_active": False,
-        "async_execution_status": "scaffold_only",
-        "worker_active": False,
-        "durable_progress": False,
-        "progress_store": "_task_progress_in_memory_only",
-        "truthfulness_note": "hmr_async currently records requested intent only; /video/free still renders through the direct route until a durable worker is implemented.",
+        "non_blocking_hmr_active": bool(request.hmr_async and hmr_mode_selected and hmr_renderer_enabled),
+        "async_execution_status": "background_task" if request.hmr_async and hmr_mode_selected and hmr_renderer_enabled else "direct_or_scaffold",
+        "worker_active": bool(request.hmr_async and hmr_mode_selected and hmr_renderer_enabled),
+        "durable_progress": bool(request.hmr_async and hmr_mode_selected and hmr_renderer_enabled),
+        "progress_store": "hmr_render_jobs" if request.hmr_async and hmr_mode_selected and hmr_renderer_enabled else "_task_progress_in_memory_only",
+        "truthfulness_note": "hmr_async queues a durable HMR background job when hybrid_motion mode and the HMR renderer are enabled.",
         "hmr_render_job": hmr_job.to_dict(),
         "first_3_seconds": first_3_seconds,
         "pattern_interrupt_plan": pattern_interrupt_plan,
@@ -956,9 +958,107 @@ async def schedule_auto_post(
     }
 
 
+async def _run_hmr_render_job_background(job_id: str) -> None:
+    """Durable HMR background worker entry point; owns its own DB session."""
+    async with AsyncSessionLocal() as session:
+        job = await session.get(HMRRenderJob, job_id)
+        if job is None:
+            return
+        generation = await session.get(Generation, job.generation_id)
+        await update_hmr_render_job_record(
+            session,
+            job_id,
+            status="processing",
+            percent=15,
+            step="rendering",
+            message="HMR background render started.",
+            render_invoked=True,
+        )
+        if generation is not None:
+            generation.status = "processing"
+        await session.commit()
+        payload = dict(job.request_json or {})
+        try:
+            from utils.first_three_seconds import attach_first_3_seconds_to_report, build_first_3_seconds_plan
+            from utils.hybrid_motion_renderer import render_hybrid_video
+            from utils.hmr_ui_productization import materialize_hmr_ui_review_workflow
+            from utils.pattern_interrupts import attach_pattern_interrupts_to_report, build_pattern_interrupt_plan
+
+            generated_root = Path(payload["generated_root"])
+            run_id = str(payload["run_id"])
+            script_text = str(payload["script_text"])
+            scenes = list(payload["scenes"])
+            output_path = Path(payload["output_path"])
+            first_3_seconds_plan = build_first_3_seconds_plan(
+                selected_hook=str(payload.get("hook") or script_text),
+                topic=payload.get("niche"),
+            )
+            pattern_interrupt_plan = build_pattern_interrupt_plan(scenes)
+            hybrid_result = render_hybrid_video(
+                scenes=scenes,
+                script_text=script_text,
+                output_path=output_path,
+                audio_path=payload.get("audio_path"),
+                fps=30,
+                width=1080,
+                height=1920,
+                use_stock_backgrounds=False,
+                use_free_tts=True,
+                style_preset="documentary_money_short",
+            )
+            hybrid_result = attach_first_3_seconds_to_report(hybrid_result, first_3_seconds_plan)
+            hybrid_result = attach_pattern_interrupts_to_report(hybrid_result, pattern_interrupt_plan)
+            hybrid_result["first_3_seconds"] = first_3_seconds_plan
+            productization = materialize_hmr_ui_review_workflow(
+                generated_root=generated_root,
+                run_id=run_id,
+                video_path=hybrid_result["video_path"],
+                render_result=hybrid_result,
+                script_text=script_text,
+                scenes=scenes,
+            )
+            result = {"hybrid_motion": hybrid_result, "hmr_productization": productization}
+            generation = await session.get(Generation, job.generation_id)
+            if generation is not None:
+                generation.status = "success"
+                generation.video_run_id = run_id
+                generation.video_file = Path(hybrid_result["video_path"]).name
+                generation.video_duration_seconds = int(float(hybrid_result.get("duration") or payload.get("duration_seconds") or 0))
+                generation.video_scenes_json = json.dumps(scenes)
+                generation.video_plan_json = json.dumps({"hmr_async": True})
+            await update_hmr_render_job_record(
+                session,
+                job_id,
+                status="success",
+                percent=100,
+                step="done",
+                message="HMR background render complete.",
+                result=result,
+                render_invoked=True,
+            )
+            await session.commit()
+        except Exception as exc:
+            generation = await session.get(Generation, job.generation_id)
+            if generation is not None:
+                generation.status = "failed"
+                generation.error_message = str(exc)[:500]
+            await update_hmr_render_job_record(
+                session,
+                job_id,
+                status="failed",
+                percent=0,
+                step="error",
+                message="HMR background render failed.",
+                error_message=str(exc)[:500],
+                render_invoked=True,
+            )
+            await session.commit()
+
+
 @router.post("/video/free")
 async def generate_free_video(
     request: GenerateVideoRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -1005,6 +1105,69 @@ async def generate_free_video(
     script_text = f"{parts.hook} {parts.body} {parts.cta}"
     audio_path = None
     use_free_tts = hybrid_motion_requested or (getattr(request, 'tts_provider', 'elevenlabs') == 'free')
+
+    if hybrid_motion_requested and request.hmr_async:
+        scenes = timeline_scenes or build_scene_plan(parts, duration_seconds=duration_seconds)
+        scene_response = make_scene_response(scenes)
+        generated_root = Path(__file__).resolve().parents[1] / "generated_videos"
+        output_path = generated_root / f"{run_id}.mp4"
+        from utils.hmr_ui_productization import build_hmr_ui_productization_metadata
+
+        productization = build_hmr_ui_productization_metadata(
+            generated_root=generated_root,
+            run_id=run_id,
+            video_path=output_path,
+        )
+        generation = Generation(
+            user_id=current_user.id,
+            input_type="video",
+            input_content=(request.script or authoritative_script or "")[:5000],
+            status="queued",
+            video_run_id=run_id,
+            video_duration_seconds=duration_seconds,
+            video_scenes_json=json.dumps(scene_response),
+            video_plan_json=json.dumps({"hmr_async": True, "scene_mode": "hybrid_motion"}),
+            video_platform_meta_json=json.dumps(platform_meta) if platform_meta else None,
+        )
+        db.add(generation)
+        await db.flush()
+        job = await create_hmr_render_job_record(
+            db,
+            generation_id=generation.id,
+            user_id=current_user.id,
+            run_id=run_id,
+            request_payload={
+                "run_id": run_id,
+                "script_text": script_text,
+                "hook": parts.hook,
+                "niche": request.niche,
+                "duration_seconds": duration_seconds,
+                "scenes": scene_response,
+                "generated_root": str(generated_root),
+                "output_path": str(output_path),
+                "audio_path": None,
+            },
+            artifact_paths=productization["artifact_paths"],
+        )
+        await db.commit()
+        background_tasks.add_task(_run_hmr_render_job_background, job.id)
+        progress = hmr_job_to_progress(job)
+        return {
+            "success": True,
+            "queued": True,
+            "dry_run": dry_run,
+            "generation_id": generation.id,
+            "run_id": run_id,
+            "hmr_async": True,
+            "non_blocking_hmr_active": True,
+            "async_execution_status": "background_task",
+            "worker_active": True,
+            "durable_progress": True,
+            "progress_store": "hmr_render_jobs",
+            "hmr_render_job": progress["hmr_render_job"],
+            "progress": progress,
+            "render_invoked": False,
+        }
 
     if not dry_run:
         quality_issue = _script_quality_issue(script_text)
@@ -2404,6 +2567,14 @@ async def get_video_generation_progress(
             "step": "error",
             "updated_at": None,
         }
+
+    hmr_job_row = await db.execute(
+        select(HMRRenderJob).where(HMRRenderJob.generation_id == generation_id)
+    )
+    hmr_job = hmr_job_row.scalar_one_or_none()
+    if hmr_job is not None:
+        progress = hmr_job_to_progress(hmr_job)
+        return {"generation_id": generation_id, "status": hmr_job.status, **progress}
 
     # If the server restarted mid-job, in-memory progress is lost and the background task
     # will never finish. Mark stale rows as failed so the UI doesn't stay stuck forever.

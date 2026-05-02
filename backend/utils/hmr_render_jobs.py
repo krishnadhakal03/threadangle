@@ -1,8 +1,4 @@
-"""Truthful job-state helpers for the HMR async scaffold.
-
-These helpers describe planned/future worker state. They do not start a durable
-background worker by themselves.
-"""
+"""Truthful job-state helpers for HMR async worker progress."""
 
 from __future__ import annotations
 
@@ -68,7 +64,19 @@ def create_hmr_render_job_state(
     run_id: str,
     generation_id: int | None = None,
     artifact_paths: dict[str, str] | None = None,
+    active_worker: bool = False,
 ) -> HMRRenderJobState:
+    if active_worker:
+        return HMRRenderJobState(
+            run_id=str(run_id),
+            generation_id=generation_id,
+            execution_mode="background_task",
+            worker_active=True,
+            durable_progress=True,
+            progress_store="hmr_render_jobs",
+            message="HMR render job queued for durable background worker.",
+            artifact_paths=dict(artifact_paths or {}),
+        )
     return HMRRenderJobState(
         run_id=str(run_id),
         generation_id=generation_id,
@@ -88,8 +96,8 @@ def transition_hmr_render_job_state(
 ) -> HMRRenderJobState:
     validate_hmr_render_job_status(status)
     defaults = {
-        "queued": (2, "queued", "HMR job metadata scaffold created; no background worker is active."),
-        "processing": (15, "rendering", "HMR render job is running in the current process."),
+        "queued": (2, "queued", "HMR render job queued."),
+        "processing": (15, "rendering", "HMR render job is running in a background worker."),
         "success": (100, "done", "HMR render job complete."),
         "failed": (0, "error", "HMR render job failed."),
     }
