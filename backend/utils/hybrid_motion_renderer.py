@@ -25,6 +25,7 @@ try:
     from .hmr_scene_asset_strategy import detect_hmr_asset_domain_from_text, local_asset_domain_folders, plan_hmr_scene_assets
     from .hmr_sfx import build_sfx_plan
     from .hmr_audio_timeline import attach_audio_timeline_to_report, build_audio_binding_timeline
+    from .hmr_caption_style import attach_caption_style_to_report, build_caption_style_plan, caption_animation_state, get_caption_style_profile
     from .hmr_editing_rhythm import attach_quick_cut_schedule_to_report, build_quick_cut_schedule
     from .hmr_proof_assets import build_proof_asset_plan, proof_asset_for_scene, proof_asset_resolution_fields
     from .hmr_scene_iteration import apply_scene_locks_and_overrides
@@ -36,6 +37,7 @@ except ImportError:  # pragma: no cover - direct script execution fallback
     from hmr_scene_asset_strategy import detect_hmr_asset_domain_from_text, local_asset_domain_folders, plan_hmr_scene_assets
     from hmr_sfx import build_sfx_plan
     from hmr_audio_timeline import attach_audio_timeline_to_report, build_audio_binding_timeline
+    from hmr_caption_style import attach_caption_style_to_report, build_caption_style_plan, caption_animation_state, get_caption_style_profile
     from hmr_editing_rhythm import attach_quick_cut_schedule_to_report, build_quick_cut_schedule
     from hmr_proof_assets import build_proof_asset_plan, proof_asset_for_scene, proof_asset_resolution_fields
     from hmr_scene_iteration import apply_scene_locks_and_overrides
@@ -863,7 +865,12 @@ def render_hybrid_video(
     sfx_by_scene_id: dict[str, list[dict[str, Any]]] = {}
     for cue in sfx_plan.get("cues", []):
         sfx_by_scene_id.setdefault(str(cue.get("scene_id")), []).append(cue)
-    caption_events = split_caption_events(script_text, total_duration, max_words=4)
+    caption_style_profile = get_caption_style_profile("modern_bounce")
+    caption_events = split_caption_events(script_text, total_duration, max_words=caption_style_profile.max_words_per_chunk)
+    caption_style_plan = build_caption_style_plan(
+        caption_events=caption_events,
+        profile_id=caption_style_profile.id,
+    )
     editing_rhythm_plan = build_quick_cut_schedule(
         script_text=script_text,
         scene_timings=scene_timings,
@@ -978,9 +985,26 @@ def render_hybrid_video(
                     postability_signals[key] = value
 
             current_t = elapsed + local_frame / float(fps)
-            active_caption = next((ev["text"] for ev in caption_events if ev["start"] <= current_t < ev["end"]), "")
+            active_caption_event = next((ev for ev in caption_events if ev["start"] <= current_t < ev["end"]), None)
+            active_caption = active_caption_event["text"] if active_caption_event else ""
             caption_start = time.perf_counter()
-            cap_report = draw_caption_band(canvas, active_caption, reserved_boxes=key_boxes)
+            animation = (
+                caption_animation_state(
+                    event_start=active_caption_event["start"],
+                    event_end=active_caption_event["end"],
+                    current_time=current_t,
+                    profile=caption_style_profile,
+                )
+                if active_caption_event
+                else None
+            )
+            cap_report = draw_caption_band(
+                canvas,
+                active_caption,
+                reserved_boxes=key_boxes,
+                caption_style=caption_style_profile.to_dict(),
+                animation_state=animation,
+            )
             caption_elapsed = time.perf_counter() - caption_start
             scene_caption_sec += caption_elapsed
             total_caption_sec += caption_elapsed
@@ -1143,14 +1167,19 @@ def render_hybrid_video(
         "render_time_sec": round(time.time() - start_time, 3),
         "caption_events": caption_events,
         "caption_report": {
-            "max_words": 4,
+            "max_words": caption_style_profile.max_words_per_chunk,
             "event_count": len(caption_events),
-            "violations": [ev for ev in caption_events if len(str(ev.get("text", "")).split()) > 4],
+            "violations": [
+                ev
+                for ev in caption_events
+                if len(str(ev.get("text", "")).split()) > caption_style_profile.max_words_per_chunk
+            ],
         },
         "stock_status": stock_status,
     }
     report = attach_quick_cut_schedule_to_report(report, schedule=editing_rhythm_plan)
-    return attach_audio_timeline_to_report(report, audio_binding_timeline)
+    report = attach_audio_timeline_to_report(report, audio_binding_timeline)
+    return attach_caption_style_to_report(report, caption_style_plan)
 
 
 def save_render_report(result: dict[str, Any], path: str | Path) -> None:

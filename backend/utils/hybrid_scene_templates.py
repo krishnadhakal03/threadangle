@@ -196,16 +196,24 @@ def animated_background(canvas: np.ndarray, progress: float, palette: tuple[Colo
     canvas[:] = cv2.addWeighted(canvas, 0.15, blurred, 0.85, 0)
 
 
-def draw_caption_band(canvas: np.ndarray, caption: str, reserved_boxes: list[tuple[int, int, int, int]] | None = None) -> dict[str, Any]:
+def draw_caption_band(
+    canvas: np.ndarray,
+    caption: str,
+    reserved_boxes: list[tuple[int, int, int, int]] | None = None,
+    caption_style: dict[str, Any] | None = None,
+    animation_state: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     if not caption:
         return {"caption": "", "boxes": [], "word_count": 0, "overlaps_key_number": False, "emphasis_words": []}
     h, w = canvas.shape[:2]
     image = to_pil(canvas)
     draw = ImageDraw.Draw(image)
     area = safe_area(w, h)
-    words = re.findall(r"\S+", caption)[:4]
+    max_words = int((caption_style or {}).get("max_words_per_chunk", 4) or 4)
+    words = re.findall(r"\S+", caption)[:max(1, max_words)]
     text = " ".join(words)
-    font_size = 48
+    scale = float((animation_state or {}).get("scale", 1.0) or 1.0)
+    font_size = int(round(48 * max(0.9, min(1.18, scale))))
     font = pil_font(font_size, bold=True)
     tw, th = text_size(draw, text, font)
     while tw > (area.right - area.left) - 16 and font_size > 30:
@@ -248,20 +256,34 @@ def draw_caption_band(canvas: np.ndarray, caption: str, reserved_boxes: list[tup
     draw_rounded_rect(draw, (x1, y1, x2, y2), 26, (10, 13, 18), (255, 255, 255), 2)
     emphasis_words: list[str] = []
     action_words = {"save", "saved", "compare", "comment", "send", "prompt", "audit", "coffee"}
+    action_words.update(str(word).lower() for word in (caption_style or {}).get("emphasis_keywords", []) or [])
+    highlight_style = str((caption_style or {}).get("highlight_style") or "")
     x = x1 + pad_x
     y = y1 + pad_y - 3
     space_w, _ = text_size(draw, " ", font)
     for word in words:
         clean = re.sub(r"[^A-Za-z0-9$]", "", word).lower()
         emphasized = bool(re.search(r"[$0-9]", word)) or clean in action_words
-        fill = (115, 231, 185) if emphasized else (255, 255, 255)
+        if emphasized and highlight_style == "yellow_pop":
+            fill = (255, 222, 89)
+        else:
+            fill = (115, 231, 185) if emphasized else (255, 255, 255)
         draw.text((x, y), word, font=font, fill=fill)
         if emphasized:
             emphasis_words.append(word)
         ww, _ = text_size(draw, word, font)
         x += ww + space_w
     canvas[:] = to_cv(image)
-    return {"caption": text, "boxes": [(x1, y1, x2, y2)], "word_count": len(words), "overlaps_key_number": overlaps, "emphasis_words": emphasis_words}
+    return {
+        "caption": text,
+        "boxes": [(x1, y1, x2, y2)],
+        "word_count": len(words),
+        "overlaps_key_number": overlaps,
+        "emphasis_words": emphasis_words,
+        "caption_style": (caption_style or {}).get("id"),
+        "bounce_phase": (animation_state or {}).get("phase"),
+        "animation_scale": (animation_state or {}).get("scale", 1.0),
+    }
 
 
 def _scene_text(scene_config: dict[str, Any], *keys: str, default: str = "") -> str:
