@@ -1,4 +1,8 @@
-"""Job-state helpers for non-blocking HMR render execution."""
+"""Truthful job-state helpers for the HMR async scaffold.
+
+These helpers describe planned/future worker state. They do not start a durable
+background worker by themselves.
+"""
 
 from __future__ import annotations
 
@@ -24,10 +28,14 @@ class HMRRenderJobState:
 
     run_id: str
     generation_id: int | None = None
+    execution_mode: str = "scaffold_only"
+    worker_active: bool = False
+    durable_progress: bool = False
+    progress_store: str = "in_memory_task_progress"
     status: str = "queued"
     percent: int = 2
     step: str = "queued"
-    message: str = "Queued for HMR rendering."
+    message: str = "HMR job metadata scaffold created; no background worker is active."
     render_invoked: bool = False
     artifact_paths: dict[str, str] = field(default_factory=dict)
     error_message: str | None = None
@@ -80,8 +88,8 @@ def transition_hmr_render_job_state(
 ) -> HMRRenderJobState:
     validate_hmr_render_job_status(status)
     defaults = {
-        "queued": (2, "queued", "Queued for HMR rendering."),
-        "processing": (15, "rendering", "HMR render job is running."),
+        "queued": (2, "queued", "HMR job metadata scaffold created; no background worker is active."),
+        "processing": (15, "rendering", "HMR render job is running in the current process."),
         "success": (100, "done", "HMR render job complete."),
         "failed": (0, "error", "HMR render job failed."),
     }
@@ -89,6 +97,10 @@ def transition_hmr_render_job_state(
     return HMRRenderJobState(
         run_id=state.run_id,
         generation_id=state.generation_id,
+        execution_mode=state.execution_mode,
+        worker_active=state.worker_active,
+        durable_progress=state.durable_progress,
+        progress_store=state.progress_store,
         status=status,
         percent=_clamp_percent(default_percent if percent is None else percent),
         step=default_step if step is None else step,

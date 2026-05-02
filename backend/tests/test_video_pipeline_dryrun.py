@@ -932,9 +932,18 @@ class TestHMRUISmokePreflight:
         assert all(row["generated"] is False for row in productization["platform_exports"].values())
         job = plan["hmr_render_job"]
         assert plan["non_blocking_hmr_requested"] is False
+        assert plan["non_blocking_hmr_active"] is False
+        assert plan["async_execution_status"] == "scaffold_only"
+        assert plan["worker_active"] is False
+        assert plan["durable_progress"] is False
+        assert plan["progress_store"] == "_task_progress_in_memory_only"
         assert job["run_id"] == "hmr_smoke_test"
         assert job["generation_id"] is None
         assert job["status"] == "queued"
+        assert job["execution_mode"] == "scaffold_only"
+        assert job["worker_active"] is False
+        assert job["durable_progress"] is False
+        assert job["progress_store"] == "in_memory_task_progress"
         assert job["percent"] == 2
         assert job["render_invoked"] is False
         assert job["artifact_paths"]["review_package"].endswith("review_package")
@@ -1018,6 +1027,8 @@ class TestHMRUISmokePreflight:
         queued = seed_hmr_render_progress(progress_store, job)
         assert queued["percent"] == 2
         assert queued["step"] == "queued"
+        assert queued["hmr_render_job"]["worker_active"] is False
+        assert queued["hmr_render_job"]["durable_progress"] is False
         assert progress_store[42]["hmr_render_job"]["status"] == "queued"
 
         processing = transition_hmr_render_job_state(
@@ -1030,6 +1041,8 @@ class TestHMRUISmokePreflight:
         assert processing.percent == 33
         assert processing.step == "rendering"
         assert processing.render_invoked is True
+        assert processing.worker_active is False
+        assert processing.durable_progress is False
 
         success = transition_hmr_render_job_state(processing, status="success")
         assert success.status == "success"
@@ -1066,8 +1079,15 @@ class TestHMRUISmokePreflight:
         )
 
         assert plan["non_blocking_hmr_requested"] is True
+        assert plan["non_blocking_hmr_active"] is False
+        assert plan["async_execution_status"] == "scaffold_only"
+        assert plan["worker_active"] is False
+        assert plan["durable_progress"] is False
         assert plan["hmr_render_job"]["status"] == "queued"
         assert plan["hmr_render_job"]["run_id"] == "async-smoke"
+        assert plan["hmr_render_job"]["execution_mode"] == "scaffold_only"
+        assert plan["hmr_render_job"]["worker_active"] is False
+        assert plan["hmr_render_job"]["durable_progress"] is False
         assert plan["hmr_render_job"]["render_invoked"] is False
         assert plan["render_invoked"] is False
 

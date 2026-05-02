@@ -49,6 +49,9 @@ The helper does not render. It validates:
 - frozen manifest guard is checked.
 - HMR defaults to free TTS and no paid Runway/OpenAI/Anthropic providers.
 - platform export integration is available as a post-render step.
+- `hmr_async` is surfaced as requested intent only.
+- async execution is marked `scaffold_only`, with `worker_active=false`.
+- progress is marked non-durable and in-memory only.
 
 ## Manual UI Test Checklist
 
@@ -71,6 +74,10 @@ Run this only after coding queue review:
 - The UI route currently renders directly when HMR is enabled and selected.
   The smoke harness intentionally avoids calling the route to prevent full
   renders during coding work.
+- `hmr_async=true` does not activate a durable worker yet. It only records that
+  non-blocking behavior was requested.
+- `_task_progress` is an in-memory map. It is lost on server restart and should
+  not be described as durable production progress.
 - Automatic review-package creation is not part of the UI route yet.
 - Platform export is available as a separate helper, not automatic UI behavior.
 
