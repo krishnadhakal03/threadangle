@@ -5,12 +5,13 @@ import os
 import tempfile
 import time
 import uuid
+from pathlib import Path
 
 import httpx
 import requests
 from PIL import Image
 
-from utils.paid_provider_guard import assert_paid_provider_allowed
+from utils.paid_provider_guard import PaidProviderBlockedError, assert_paid_provider_allowed
 
 try:
     import cv2  # type: ignore[reportMissingImports]
@@ -28,12 +29,98 @@ class RunwayMLQuotaError(Exception):
     pass
 
 
+def _write_blocked_runway_fallback_video(prompt: str, duration: int = 5, ratio: str = "720:1280") -> str:
+    """Create a local/free fallback clip and return a file path.
+
+    This is intentionally inside the Runway client module so direct image_to_video /
+    extend_video callers also get a no-spend fallback instead of a fatal error.
+    """
+    from PIL import ImageDraw, ImageFont
+    import numpy as np
+    from moviepy.editor import ImageSequenceClip
+
+    width, height = (720, 1280)
+    if str(ratio).replace(" ", "") in {"1280:720", "16:9"}:
+        width, height = (1280, 720)
+
+    out_dir = Path(__file__).resolve().parents[1] / "generated_videos" / "raw"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"runway_blocked_fallback_{int(time.time())}_{uuid.uuid4().hex[:8]}.mp4"
+
+    fps = 24
+    frame_count = max(1, int(max(2, duration) * fps))
+    safe_prompt = " ".join(str(prompt or "AI scene").split())[:140]
+
+    try:
+        title_font = ImageFont.truetype("arialbd.ttf", 48)
+        body_font = ImageFont.truetype("arial.ttf", 30)
+        small_font = ImageFont.truetype("arial.ttf", 24)
+    except Exception:
+        title_font = ImageFont.load_default()
+        body_font = ImageFont.load_default()
+        small_font = ImageFont.load_default()
+
+    def wrap(draw, text, font, max_width):
+        words = text.split()
+        lines = []
+        current = ""
+        for word in words:
+            candidate = f"{current} {word}".strip()
+            bbox = draw.textbbox((0, 0), candidate, font=font)
+            if bbox[2] - bbox[0] <= max_width or not current:
+                current = candidate
+            else:
+                lines.append(current)
+                current = word
+        if current:
+            lines.append(current)
+        return lines[:5]
+
+    frames = []
+    for i in range(frame_count):
+        p = i / max(1, frame_count - 1)
+        img = Image.new("RGB", (width, height), (7, 12, 24))
+        draw = ImageDraw.Draw(img)
+        draw.ellipse([-width * 0.25 + int(80 * p), 80, width * 0.75, height * 0.55], fill=(8, 70, 78))
+        draw.ellipse([width * 0.30, height * 0.35 - int(90 * p), width * 1.25, height * 1.1], fill=(44, 26, 92))
+        pad = int(width * 0.075)
+        draw.rounded_rectangle([pad, int(height * 0.15), width - pad, int(height * 0.85)], radius=34, fill=(13, 20, 35), outline=(90, 235, 210), width=3)
+        draw.text((pad + 26, int(height * 0.22)), "LOCAL FALLBACK", font=title_font, fill=(255, 255, 255))
+        draw.text((pad + 26, int(height * 0.29)), "Runway blocked — no paid credits used", font=small_font, fill=(130, 255, 210))
+        y = int(height * 0.40)
+        for line in wrap(draw, safe_prompt, body_font, width - 2 * pad - 52):
+            draw.text((pad + 26, y), line, font=body_font, fill=(242, 246, 255))
+            y += 45
+        bar_w = int((width - 2 * pad - 52) * (0.2 + 0.8 * p))
+        draw.rounded_rectangle([pad + 26, int(height * 0.75), pad + 26 + bar_w, int(height * 0.77)], radius=10, fill=(90, 160, 255))
+        frames.append(np.array(img))
+
+    clip = ImageSequenceClip(frames, fps=fps)
+    clip.write_videofile(
+        str(out_path),
+        fps=fps,
+        codec="libx264",
+        audio=False,
+        preset="ultrafast",
+        ffmpeg_params=["-pix_fmt", "yuv420p", "-movflags", "+faststart"],
+        logger=None,
+    )
+    clip.close()
+    return str(out_path)
+
+
 class RunwayMLClient:
     def __init__(self, api_key=None, model=None):
-        assert_paid_provider_allowed("runwayml")
+        self._blocked = False
+        self._blocked_reason = None
+        try:
+            assert_paid_provider_allowed("runwayml")
+        except PaidProviderBlockedError as exc:
+            self._blocked = True
+            self._blocked_reason = str(exc)
         self.api_key = api_key or RUNWAYML_API_KEY
         self.model = model or RUNWAYML_MODEL
-        if not self.api_key:
+        if not self._blocked and not self.api_key:
             raise ValueError("RunwayML API key not set.")
 
     @property
@@ -46,6 +133,9 @@ class RunwayMLClient:
         }
 
     def generate_video(self, prompt, num_frames=24, seed=None, motion="cinematic", max_retries=2):
+        if self._blocked:
+            print(f"[RUNWAYML] Blocked by backend safety; using local fallback: {self._blocked_reason}")
+            return _write_blocked_runway_fallback_video(prompt, duration=max(2, int(round(float(num_frames) / 12.0))))
         assert_paid_provider_allowed("runwayml")
         duration_seconds = max(2, int(round(float(num_frames) / 12.0)))
         duration_bucket = 5 if duration_seconds <= 6 else 10
@@ -102,6 +192,18 @@ class RunwayMLClient:
         raise Exception("RunwayML API failed after retries.")
 
     async def image_to_video(self, image: Image.Image, prompt: str, duration: int = 5, model: str = "gen4.5", ratio: str = "720:1280"):
+        if self._blocked:
+            print(f"[RUNWAYML] image_to_video blocked by backend safety; using local fallback: {self._blocked_reason}")
+            local_path = _write_blocked_runway_fallback_video(prompt, duration=duration, ratio=ratio)
+            return {
+                "video_url": local_path,
+                "video_path": local_path,
+                "task_id": None,
+                "credits_used": 0,
+                "duration": duration,
+                "method": "local_fallback_runway_blocked",
+                "paid_provider_blocked": True,
+            }
         assert_paid_provider_allowed("runwayml")
         img_base64 = self._image_to_base64(image)
 
@@ -139,6 +241,18 @@ class RunwayMLClient:
         }
 
     async def extend_video(self, previous_video_url: str, prompt: str, duration: int = 5, model: str = "gen4.5", ratio: str = "720:1280"):
+        if self._blocked:
+            print(f"[RUNWAYML] extend_video blocked by backend safety; using local fallback: {self._blocked_reason}")
+            local_path = _write_blocked_runway_fallback_video(prompt, duration=duration, ratio=ratio)
+            return {
+                "video_url": local_path,
+                "video_path": local_path,
+                "task_id": None,
+                "credits_used": 0,
+                "duration": duration,
+                "method": "local_fallback_runway_blocked",
+                "paid_provider_blocked": True,
+            }
         assert_paid_provider_allowed("runwayml")
         if cv2 is None:
             raise RuntimeError("opencv-python is required for extend_video.")
