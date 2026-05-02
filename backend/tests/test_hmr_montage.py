@@ -107,3 +107,26 @@ def test_attach_montage_plan_to_report_adds_scene_debug():
     assert updated["montage_plan"]["profile"]["id"] == "smooth_high_energy_shorts"
     assert updated["scene_reports"][0]["montage_clip_count"] == 1
     assert updated["scene_reports"][0]["montage_clips"][0]["clip_id"] == "hook_01"
+
+
+def test_montage_execution_report_truthfully_marks_supported_subset():
+    from utils.hmr_montage import build_montage_execution_report
+
+    report = build_montage_execution_report(
+        {
+            "clips": [
+                {"clip_id": "a", "transition_in": "hard_cut"},
+                {"clip_id": "b", "transition_in": "zoom_blend"},
+                {"clip_id": "c", "transition_in": "whip_cut"},
+            ]
+        }
+    )
+
+    assert report["montage_execution_status"] == "partially_executed"
+    assert report["executed_transition_types"] == ["hard_cut", "zoom_blend"]
+    assert report["planned_only_transition_types"] == ["whip_cut"]
+    assert report["planned_vs_executed_clip_count"] == {
+        "planned": 3,
+        "executed": 2,
+        "planned_only": 1,
+    }

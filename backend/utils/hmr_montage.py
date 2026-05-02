@@ -15,6 +15,7 @@ MONTAGE_TRANSITIONS = (
     "match_motion_cut",
     "zoom_blend",
 )
+EXECUTED_MONTAGE_TRANSITIONS = ("hard_cut", "zoom_blend")
 
 
 @dataclass(frozen=True)
@@ -250,3 +251,44 @@ def attach_montage_plan_to_report(report: dict[str, Any], montage_plan: dict[str
         row["montage_clips"] = clips_by_scene.get(str(row.get("scene_id")), [])
         row["montage_clip_count"] = len(row["montage_clips"])
     return report
+
+
+def build_montage_execution_report(montage_plan: dict[str, Any]) -> dict[str, Any]:
+    """Summarize which planned montage transitions are currently executed."""
+    clips = list(montage_plan.get("clips", []) or [])
+    supported = set(EXECUTED_MONTAGE_TRANSITIONS)
+    executed_clips = [
+        clip
+        for clip in clips
+        if clip.get("transition_in") in supported
+    ]
+    planned_only = [
+        clip
+        for clip in clips
+        if clip.get("transition_in") not in supported
+    ]
+    executed_transition_types = sorted({str(clip.get("transition_in")) for clip in executed_clips if clip.get("transition_in")})
+    planned_only_transition_types = sorted({str(clip.get("transition_in")) for clip in planned_only if clip.get("transition_in")})
+    if not clips:
+        status = "not_applicable"
+    elif executed_clips and not planned_only:
+        status = "executed"
+    elif executed_clips:
+        status = "partially_executed"
+    else:
+        status = "planned_only"
+    return {
+        "montage_execution_status": status,
+        "executed_transition_types": executed_transition_types,
+        "planned_only_transition_types": planned_only_transition_types,
+        "planned_vs_executed_clip_count": {
+            "planned": len(clips),
+            "executed": len(executed_clips),
+            "planned_only": len(planned_only),
+        },
+        "execution_notes": [
+            "hard_cut is executed by resetting local template/background progress at planned micro-cut boundaries",
+            "zoom_blend is executed as a short in-frame zoom pulse on payoff cuts",
+            "other transitions remain truthful planning metadata for future renderer passes",
+        ],
+    }

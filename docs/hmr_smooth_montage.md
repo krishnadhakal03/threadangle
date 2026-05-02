@@ -84,6 +84,11 @@ Transition choice is deterministic:
 - `montage_plan.transitions_supported`
 - `montage_plan.clips`
 - `montage_plan.debug`
+- `montage_execution_status`
+- `executed_transition_types`
+- `planned_only_transition_types`
+- `planned_vs_executed_clip_count`
+- `montage_renderer_execution`
 
 Each scene report also receives:
 
@@ -101,5 +106,19 @@ Each scene report also receives:
 
 ## Current Limit
 
-The current implementation plans montage sequencing and transitions. Actual
-transition rendering should consume this plan in a later renderer pass.
+The renderer now consumes the quick-cut portion of the montage/rhythm plan for a
+minimal execution slice:
+
+- `hard_cut` is executed by resetting local template/background progress at
+  planned micro-cut boundaries;
+- `zoom_blend` is executed as a short in-frame zoom pulse on payoff cuts.
+
+The remaining transition types are still planned-only metadata:
+
+- `whip_cut`
+- `speed_ramp`
+- `crossfade_short`
+- `match_motion_cut`
+
+Those transitions should consume `montage_plan.clips` in a later renderer pass
+once the frame compositor supports them directly.

@@ -27,7 +27,7 @@ try:
     from .hmr_audio_timeline import attach_audio_timeline_to_report, build_audio_binding_timeline
     from .hmr_caption_style import attach_caption_style_to_report, build_caption_style_plan, caption_animation_state, get_caption_style_profile
     from .hmr_editing_rhythm import attach_quick_cut_schedule_to_report, build_quick_cut_schedule
-    from .hmr_montage import attach_montage_plan_to_report, build_montage_plan
+    from .hmr_montage import attach_montage_plan_to_report, build_montage_execution_report, build_montage_plan
     from .hmr_proof_assets import build_proof_asset_plan, proof_asset_for_scene, proof_asset_resolution_fields
     from .hmr_scene_iteration import apply_scene_locks_and_overrides
     from .hmr_agency_templates import select_agency_template_for_scenes
@@ -40,7 +40,7 @@ except ImportError:  # pragma: no cover - direct script execution fallback
     from hmr_audio_timeline import attach_audio_timeline_to_report, build_audio_binding_timeline
     from hmr_caption_style import attach_caption_style_to_report, build_caption_style_plan, caption_animation_state, get_caption_style_profile
     from hmr_editing_rhythm import attach_quick_cut_schedule_to_report, build_quick_cut_schedule
-    from hmr_montage import attach_montage_plan_to_report, build_montage_plan
+    from hmr_montage import attach_montage_plan_to_report, build_montage_execution_report, build_montage_plan
     from hmr_proof_assets import build_proof_asset_plan, proof_asset_for_scene, proof_asset_resolution_fields
     from hmr_scene_iteration import apply_scene_locks_and_overrides
     from hmr_agency_templates import select_agency_template_for_scenes
@@ -584,6 +584,40 @@ def _fit_background_frame(frame: np.ndarray, width: int, height: int, progress: 
     return cropped
 
 
+def _zoom_canvas(canvas: np.ndarray, scale: float) -> np.ndarray:
+    if scale <= 1.001:
+        return canvas
+    h, w = canvas.shape[:2]
+    crop_w = max(1, int(w / scale))
+    crop_h = max(1, int(h / scale))
+    x = max(0, (w - crop_w) // 2)
+    y = max(0, (h - crop_h) // 2)
+    cropped = canvas[y:y + crop_h, x:x + crop_w]
+    return cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LINEAR)
+
+
+def _scene_quick_cuts(editing_rhythm_plan: dict[str, Any], scene_id: str, scene_start: float, scene_end: float) -> list[dict[str, Any]]:
+    cuts = [
+        cut
+        for cut in editing_rhythm_plan.get("cut_schedule", []) or []
+        if str(cut.get("scene_id")) == str(scene_id)
+    ]
+    return cuts or [{"scene_id": scene_id, "start": scene_start, "end": scene_end, "cue": "scene_hold", "transition": "hard_cut"}]
+
+
+def _active_quick_cut(cuts: list[dict[str, Any]], timestamp: float) -> dict[str, Any]:
+    for cut in cuts:
+        start = float(cut.get("start", 0.0) or 0.0)
+        end = float(cut.get("end", start) or start)
+        if start <= timestamp < end or abs(timestamp - end) < 0.001:
+            return cut
+    return cuts[-1] if cuts else {"start": timestamp, "end": timestamp, "cue": "scene_hold"}
+
+
+def _transition_for_quick_cut(cut: dict[str, Any]) -> str:
+    return "zoom_blend" if cut.get("cue") == "payoff_hit" else "hard_cut"
+
+
 def _read_bg_frame(capture: cv2.VideoCapture | None, width: int, height: int, progress: float) -> np.ndarray | None:
     if capture is None:
         return None
@@ -901,10 +935,18 @@ def render_hybrid_video(
     total_template_sec = 0.0
     total_caption_sec = 0.0
     total_writer_write_sec = 0.0
+    executed_montage_transition_types: set[str] = set()
+    executed_montage_clip_count = 0
+    scene_montage_execution: dict[str, dict[str, Any]] = {}
     for scene_idx, (scene, template_name, duration, bg_path, stock_meta, asset_resolution, spec) in enumerate(prepared):
         scene_profile_start = time.perf_counter()
         template = get_template(template_name)
         frame_count = max(1, int(round(duration * fps)))
+        scene_id = _scene_value(scene, "id", None) or _scene_value(scene, "scene", None) or _scene_value(scene, "scene_index", scene_idx + 1)
+        scene_start_time = elapsed
+        scene_end_time = elapsed + duration
+        quick_cuts = _scene_quick_cuts(editing_rhythm_plan, str(scene_id), scene_start_time, scene_end_time)
+        scene_executed_clip_ids: set[str] = set()
         asset_fields = spec.resolved_asset.to_report_fields()
         resolved_type = str(asset_fields.get("resolved_asset_type") or "")
         bg_suffix = bg_path.suffix.lower() if bg_path else ""
@@ -940,7 +982,16 @@ def render_hybrid_video(
         scene_caption_sec = 0.0
         scene_writer_write_sec = 0.0
         for local_frame in range(frame_count):
-            progress = local_frame / max(1, frame_count - 1)
+            current_t = elapsed + local_frame / float(fps)
+            active_cut = _active_quick_cut(quick_cuts, current_t)
+            cut_start = float(active_cut.get("start", scene_start_time) or scene_start_time)
+            cut_end = float(active_cut.get("end", scene_end_time) or scene_end_time)
+            cut_duration = max(0.001, cut_end - cut_start)
+            cut_local = max(0.0, min(cut_duration, current_t - cut_start))
+            progress = cut_local / max(0.001, cut_duration)
+            cut_transition = _transition_for_quick_cut(active_cut)
+            executed_montage_transition_types.add(cut_transition)
+            scene_executed_clip_ids.add(f"{scene_id}:{round(cut_start, 3)}")
             bg_start = time.perf_counter()
             if image_background is not None:
                 canvas = image_background.copy()
@@ -986,7 +1037,6 @@ def render_hybrid_video(
                 if key not in postability_signals:
                     postability_signals[key] = value
 
-            current_t = elapsed + local_frame / float(fps)
             active_caption_event = next((ev for ev in caption_events if ev["start"] <= current_t < ev["end"]), None)
             active_caption = active_caption_event["text"] if active_caption_event else ""
             caption_start = time.perf_counter()
@@ -1007,6 +1057,10 @@ def render_hybrid_video(
                 caption_style=caption_style_profile.to_dict(),
                 animation_state=animation,
             )
+            if cut_transition == "zoom_blend":
+                pulse = max(0.0, 1.0 - min(1.0, cut_local / 0.22))
+                if pulse > 0:
+                    canvas[:] = _zoom_canvas(canvas, 1.0 + 0.085 * pulse)
             caption_elapsed = time.perf_counter() - caption_start
             scene_caption_sec += caption_elapsed
             total_caption_sec += caption_elapsed
@@ -1021,6 +1075,20 @@ def render_hybrid_video(
 
         if capture is not None:
             capture.release()
+        executed_montage_clip_count += len(scene_executed_clip_ids)
+        scene_montage_execution[str(scene_id)] = {
+            "executed_clip_count": len(scene_executed_clip_ids),
+            "executed_transition_types": sorted(executed_montage_transition_types),
+            "quick_cut_boundaries_consumed": [
+                {
+                    "start": round(float(cut.get("start", scene_start_time) or scene_start_time), 3),
+                    "end": round(float(cut.get("end", scene_end_time) or scene_end_time), 3),
+                    "transition": _transition_for_quick_cut(cut),
+                    "cue": cut.get("cue"),
+                }
+                for cut in quick_cuts
+            ],
+        }
         scene_total_sec = time.perf_counter() - scene_profile_start
         profile_scene_reports.append({
             "scene_id": _scene_value(scene, "id", None) or _scene_value(scene, "scene", None) or _scene_value(scene, "scene_index", scene_idx + 1),
@@ -1089,6 +1157,7 @@ def render_hybrid_video(
             "motion_score": round(sum(motion_scores) / max(1, len(motion_scores)), 3),
             "number_reveal": template_name == "payoff_number_reveal",
             "postability_signals": postability_signals,
+            "montage_execution": scene_montage_execution.get(str(scene_id), {}),
             "sfx_cues": sfx_by_scene_id.get(str(scene_id), []),
             "proof_asset": (spec.resolved_asset.metadata or {}).get("proof_asset"),
             "proof_asset_used": asset_fields.get("resolved_asset_provider") == "user_proof_asset",
@@ -1189,6 +1258,14 @@ def render_hybrid_video(
         audio_timeline=audio_binding_timeline,
         profile_id="smooth_high_energy_shorts",
     )
+    report.update(build_montage_execution_report(montage_plan))
+    report["montage_renderer_execution"] = {
+        "execution_approach": "in_renderer_quick_cut_progress_reset",
+        "consumed_quick_cut_clip_count": executed_montage_clip_count,
+        "executed_transition_types": sorted(executed_montage_transition_types),
+        "scene_execution": scene_montage_execution,
+        "unsupported_transition_policy": "left_as_planned_only_metadata",
+    }
     return attach_montage_plan_to_report(report, montage_plan)
 
 

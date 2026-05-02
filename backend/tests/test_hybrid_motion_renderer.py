@@ -105,6 +105,13 @@ def test_scene_reports_include_media_classification(tmp_path, monkeypatch):
     assert all("query_used" in row for row in result["scene_reports"])
     assert result["visual_realism_human_gate"]["planned_real_sources"] >= 1
     assert result["visual_realism_human_gate"]["scene_asset_strategy_used"] is True
+    assert result["montage_execution_status"] in {"executed", "partially_executed"}
+    assert "hard_cut" in result["executed_transition_types"]
+    assert "zoom_blend" in result["executed_transition_types"]
+    assert result["planned_vs_executed_clip_count"]["planned"] >= result["planned_vs_executed_clip_count"]["executed"]
+    assert result["montage_renderer_execution"]["execution_approach"] == "in_renderer_quick_cut_progress_reset"
+    assert result["montage_renderer_execution"]["consumed_quick_cut_clip_count"] > 0
+    assert all("montage_execution" in row for row in result["scene_reports"])
 
 
 def test_hmr_scene_asset_strategy_plans_grocery_visual_sources():
