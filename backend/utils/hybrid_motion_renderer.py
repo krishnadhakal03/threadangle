@@ -67,7 +67,12 @@ HYBRID_METHOD_TO_TEMPLATE = {
 }
 
 
+def _strip_story_labels(text: str) -> str:
+    return re.sub(r"(?i)\b(?:hook|body|cta)\s*:\s*", "", str(text or "")).strip()
+
+
 def _semantic_caption_chunks(script_text: str, max_words: int = 4) -> list[str]:
+    script_text = _strip_story_labels(script_text)
     sentences = [
         sentence.strip()
         for sentence in re.split(r"(?<=[.!?])\s+", script_text or "")
@@ -121,6 +126,115 @@ def _scene_value(scene: Any, key: str, default: Any = None) -> Any:
     if isinstance(scene, dict):
         return scene.get(key, default)
     return getattr(scene, key, default)
+
+
+def _scene_blob(scene: Any) -> str:
+    return " ".join(
+        str(_scene_value(scene, key, "") or "")
+        for key in (
+            "id",
+            "part",
+            "scene_type",
+            "template",
+            "headline",
+            "caption_text",
+            "source_text",
+            "subtitle",
+            "visual_description",
+            "description",
+            "prompt",
+            "response",
+            "subline",
+        )
+    ).lower()
+
+
+def _is_coffee_savings_story(scenes: list[Any], script_text: str) -> bool:
+    blob = f"{script_text or ''} {' '.join(_scene_blob(scene) for scene in scenes or [])}".lower()
+    return "coffee" in blob and any(token in blob for token in ("cost", "costs", "saving", "savings", "dollar", "$", "month", "year", "workday"))
+
+
+def _clean_scene_text(value: Any) -> str:
+    return _strip_story_labels(str(value or "")).strip()
+
+
+def _enrich_coffee_savings_scene(scene: Any, idx: int, total: int) -> Any:
+    base = dict(scene) if isinstance(scene, dict) else {
+        "scene": _scene_value(scene, "scene", idx + 1),
+        "start": _scene_value(scene, "start", None),
+        "end": _scene_value(scene, "end", None),
+        "part": _scene_value(scene, "part", ""),
+        "source_text": _scene_value(scene, "source_text", ""),
+        "subtitle": _scene_value(scene, "subtitle", ""),
+        "visual_description": _scene_value(scene, "visual_description", ""),
+        "on_screen_text": _scene_value(scene, "on_screen_text", ""),
+    }
+    for key in ("caption_text", "source_text", "subtitle", "on_screen_text", "headline"):
+        if key in base:
+            base[key] = _clean_scene_text(base.get(key))
+    text = _clean_scene_text(base.get("caption_text") or base.get("subtitle") or base.get("source_text") or base.get("on_screen_text"))
+    part = str(base.get("part") or base.get("scene_type") or "").lower()
+    is_cta = idx == total - 1 or part == "cta" or "skip" in text.lower() or "try" in text.lower()
+
+    if idx == 0:
+        base.update({
+            "template": "grocery_receipt_hook",
+            "headline": "This coffee habit adds up",
+            "price_text": "$5 -> $1.2K",
+            "hook_number": "$5 -> $1.2K",
+            "receipt_price_text": "$5.00",
+            "store_name": "COFFEE RECEIPT",
+            "subline": "quiet workday spend",
+            "receipt_rows": [("workday coffee", "$5.00"), ("monthly total", "$100"), ("yearly total", "$1,200"), ("tips + snacks", "extra")],
+            "visual_description": "coffee cup receipt bold proof card yearly cost reveal",
+            "caption_text": text or "This coffee habit quietly costs more than you think.",
+            "force_template_background": True,
+        })
+    elif is_cta:
+        base.update({
+            "template": "cta_callback",
+            "eyebrow": "7-DAY CHALLENGE",
+            "headline": "Skip 2 coffees/week",
+            "visual_description": "savings challenge card coffee cup progress bar",
+            "caption_text": text or "Try skipping just two coffees a week.",
+        })
+    elif idx == 1:
+        base.update({
+            "template": "money_shock_math",
+            "number": "$100/mo",
+            "monthly_number": "$100/mo",
+            "formula": "$5 x 20 workdays",
+            "headline": "Workday coffee becomes a bill",
+            "visual_description": "monthly coffee total calculator card",
+            "caption_text": text or "Five dollars every workday becomes about one hundred dollars a month.",
+        })
+    elif idx == 2:
+        base.update({
+            "template": "comparison_split",
+            "comparison_title": "MONTHLY COFFEE",
+            "savings_number": "$40/mo",
+            "headline": "Two skipped coffees moves fast",
+            "visual_description": "coffee shop receipt compared with savings phone",
+            "caption_text": text or "Skip two coffees a week and the savings start showing up.",
+        })
+    else:
+        base.update({
+            "template": "grocery_savings_payoff",
+            "number": "$1,200/year",
+            "payoff_number": "$1,200/year",
+            "subline": "before tips, snacks, delivery",
+            "headline": "That small habit became a yearly number",
+            "visual_description": "yearly savings reveal phone dashboard coffee receipt",
+            "caption_text": text or "That is twelve hundred dollars a year before tips, snacks, or delivery fees.",
+        })
+    return base
+
+
+def _enrich_no_spend_explainer_scenes(scenes: list[Any], script_text: str) -> list[Any]:
+    if not _is_coffee_savings_story(scenes, script_text):
+        return scenes
+    total = len(scenes or [])
+    return [_enrich_coffee_savings_scene(scene, idx, total) for idx, scene in enumerate(scenes or [])]
 
 
 def _scene_duration(scene: Any, fallback: float = 2.6) -> float:
@@ -712,6 +826,7 @@ def render_hybrid_video(
         scene_locks=scene_locks,
         scene_overrides=scene_overrides,
     )
+    scenes = _enrich_no_spend_explainer_scenes(scenes, script_text)
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     warnings: list[str] = []
@@ -971,7 +1086,7 @@ def render_hybrid_video(
             media_class = "ANIMATED_FALLBACK"
         elif template_name == "comparison_split":
             media_class = "MOTION_SCENE"
-        elif template_name in {"money_shock_math", "payoff_number_reveal"}:
+        elif template_name in {"money_shock_math", "payoff_number_reveal", "grocery_receipt_hook", "grocery_reveal_scene", "grocery_ai_comparison", "grocery_savings_payoff"}:
             media_class = "MOTION_CARD"
         media_mix[media_class] = media_mix.get(media_class, 0) + 1
 
@@ -1008,7 +1123,7 @@ def render_hybrid_video(
             total_bg_read_sec += bg_elapsed
             scene_config = {
                 **(scene if isinstance(scene, dict) else {}),
-                "has_real_background": bg_path is not None,
+                "has_real_background": bg_path is not None and not bool(_scene_value(scene, "force_template_background", False)),
                 "style_preset": style_preset,
                 **{
                     key: value
@@ -1159,7 +1274,7 @@ def render_hybrid_video(
             "caption_report": scene_caption_reports[0] if scene_caption_reports else {"caption": "", "word_count": 0},
             "text_cropped": text_cropped,
             "motion_score": round(sum(motion_scores) / max(1, len(motion_scores)), 3),
-            "number_reveal": template_name == "payoff_number_reveal",
+            "number_reveal": template_name in {"payoff_number_reveal", "grocery_savings_payoff", "money_shock_math", "grocery_receipt_hook"},
             "postability_signals": postability_signals,
             "montage_execution": scene_montage_execution.get(str(scene_id), {}),
             "sfx_cues": sfx_by_scene_id.get(str(scene_id), []),

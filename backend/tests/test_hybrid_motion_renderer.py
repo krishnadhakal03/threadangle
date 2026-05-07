@@ -80,6 +80,54 @@ def test_renderer_creates_mp4(tmp_path, monkeypatch):
     assert result["render_profile"]["per_template"]
 
 
+def test_coffee_savings_story_uses_premium_local_cards(tmp_path, monkeypatch):
+    monkeypatch.delenv("PEXELS_API_KEY", raising=False)
+    monkeypatch.delenv("PIXABAY_API_KEY", raising=False)
+    script = (
+        "Hook: This one coffee habit quietly costs more than you think. "
+        "Body: A five-dollar coffee every workday becomes about one hundred dollars a month. "
+        "That is twelve hundred dollars a year before tips, snacks, or delivery fees. "
+        "CTA: Try skipping just two coffees a week and watch how fast the savings show up."
+    )
+    scenes = [
+        {"scene": 1, "start": 0, "end": 2.2, "part": "hook", "subtitle": "Hook: This one coffee habit quietly costs more than you think.", "visual_description": "coffee habit hook"},
+        {"scene": 2, "start": 2.2, "end": 5.2, "part": "body", "subtitle": "A five-dollar coffee every workday becomes about one hundred dollars a month.", "visual_description": "monthly coffee total"},
+        {"scene": 3, "start": 5.2, "end": 8.2, "part": "body", "subtitle": "That is twelve hundred dollars a year before tips snacks or delivery fees.", "visual_description": "yearly coffee cost reveal"},
+        {"scene": 4, "start": 8.2, "end": 11.0, "part": "cta", "subtitle": "CTA: Try skipping just two coffees a week.", "visual_description": "coffee savings challenge"},
+    ]
+
+    out = tmp_path / "coffee_cards.mp4"
+    result = render_hybrid_video(
+        scenes,
+        script,
+        out,
+        fps=8,
+        width=270,
+        height=480,
+        use_stock_backgrounds=False,
+        use_free_tts=False,
+    )
+
+    assert out.exists()
+    assert out.stat().st_size > 1000
+    templates = [row["template"] for row in result["scene_reports"]]
+    assert templates[0] == "grocery_receipt_hook"
+    assert len(set(templates).intersection({
+        "grocery_receipt_hook",
+        "money_shock_math",
+        "comparison_split",
+        "grocery_savings_payoff",
+        "cta_callback",
+    })) >= 4
+    assert result["scene_reports"][0]["postability_signals"]["early_number_snap"] is True
+    assert result["scene_reports"][0]["number_reveal"] is True
+    assert all(row["media_classification"] in {"MOTION_CARD", "MOTION_SCENE", "ANIMATED_FALLBACK"} for row in result["scene_reports"])
+    captions = " ".join(str((row.get("caption_report") or {}).get("caption") or "") for row in result["scene_reports"])
+    assert "Hook:" not in captions
+    assert "Body:" not in captions
+    assert "CTA:" not in captions
+
+
 def test_scene_reports_include_media_classification(tmp_path, monkeypatch):
     monkeypatch.delenv("PEXELS_API_KEY", raising=False)
     monkeypatch.delenv("PIXABAY_API_KEY", raising=False)

@@ -205,6 +205,9 @@ def draw_caption_band(
 ) -> dict[str, Any]:
     if not caption:
         return {"caption": "", "boxes": [], "word_count": 0, "overlaps_key_number": False, "emphasis_words": []}
+    caption = re.sub(r"(?i)\b(?:hook|body|cta)\s*:\s*", "", str(caption or "")).strip()
+    if not caption:
+        return {"caption": "", "boxes": [], "word_count": 0, "overlaps_key_number": False, "emphasis_words": []}
     h, w = canvas.shape[:2]
     image = to_pil(canvas)
     draw = ImageDraw.Draw(image)
@@ -213,10 +216,10 @@ def draw_caption_band(
     words = re.findall(r"\S+", caption)[:max(1, max_words)]
     text = " ".join(words)
     scale = float((animation_state or {}).get("scale", 1.0) or 1.0)
-    font_size = int(round(48 * max(0.9, min(1.18, scale))))
+    font_size = int(round(62 * max(0.9, min(1.18, scale))))
     font = pil_font(font_size, bold=True)
     tw, th = text_size(draw, text, font)
-    while tw > (area.right - area.left) - 16 and font_size > 30:
+    while tw > (area.right - area.left) - 16 and font_size > 38:
         font_size -= 3
         font = pil_font(font_size, bold=True)
         tw, th = text_size(draw, text, font)
