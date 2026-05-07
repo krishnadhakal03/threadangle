@@ -446,6 +446,137 @@ async def test_download_endpoint_returns_generated_mp4_and_blocks_traversal():
 
 
 @pytest.mark.asyncio
+async def test_ui_preview_hybrid_motion_generates_downloadable_local_mp4(hmr_session, monkeypatch, tmp_path):
+    import routes.generate as generate_route
+    from models import Generation, User
+    from routes.generate import (
+        GenerateFromPreviewRequest,
+        download_generated_video,
+        generate_video_from_preview,
+        get_video_history_item,
+    )
+
+    monkeypatch.setenv("ENABLE_HYBRID_MOTION_RENDERER", "1")
+    monkeypatch.setenv("VIDEO_GENERATION_DRY_RUN", "0")
+    monkeypatch.setenv("ALLOW_PAID_PROVIDERS", "0")
+    monkeypatch.setenv("ALLOW_RUNWAYML", "0")
+    monkeypatch.setenv("ALLOW_ELEVENLABS", "0")
+    monkeypatch.setenv("ALLOW_GEMINI", "0")
+    monkeypatch.setenv("ALLOW_OPENAI", "0")
+    monkeypatch.setenv("ALLOW_ANTHROPIC", "0")
+    monkeypatch.setattr(generate_route, "AsyncSessionLocal", lambda: hmr_session)
+    monkeypatch.setattr(
+        generate_route,
+        "generate_voice",
+        lambda request: type("VoiceResult", (), {"audio_file": None})(),
+    )
+
+    render_calls = []
+
+    def fake_render_hybrid_video(**kwargs):
+        render_calls.append(kwargs)
+        output_path = Path(kwargs["output_path"])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(b"fake ui hmr mp4 bytes")
+        return {
+            "video_path": str(output_path),
+            "duration": 30.0,
+            "scene_reports": [{"scene_id": 1, "template": "local_hmr"}],
+            "media_mix": {"LOCAL_FALLBACK": 1},
+            "warnings": [],
+        }
+
+    monkeypatch.setattr(
+        "utils.hybrid_motion_renderer.render_hybrid_video",
+        fake_render_hybrid_video,
+    )
+    monkeypatch.setattr(
+        "utils.hmr_ui_productization.materialize_hmr_ui_review_workflow",
+        lambda **kwargs: {
+            "review_package_status": "created",
+            "artifact_paths": {"video": kwargs["video_path"]},
+            "full_render_required": False,
+        },
+    )
+
+    user = User(email="ui-hmr@example.com", password_hash="x")
+    hmr_session.add(user)
+    await hmr_session.flush()
+
+    request = GenerateFromPreviewRequest(
+        preview_id="ui-preview-1",
+        scene_mode="hybrid_motion",
+        dry_run=False,
+        script=(
+            "Hook: I pasted one script, and AI built the whole Short. "
+            "Body: The app split it into scenes, created visuals, added captions, "
+            "and prepared the video without spending credits. "
+            "CTA: This is the recovery test. If download works, production is back."
+        ),
+        tts_provider="free",
+        approved_scenes=[
+            {
+                "scene_index": 0,
+                "scene_type": "hook",
+                "caption_text": "I pasted one script, and AI built the whole Short.",
+                "description": "Local UI proof card",
+                "duration": 5,
+                "method": "image_to_video",
+            },
+            {
+                "scene_index": 1,
+                "scene_type": "body",
+                "caption_text": "The app split it into scenes and added captions.",
+                "description": "Local editing timeline",
+                "duration": 10,
+                "method": "extend",
+            },
+            {
+                "scene_index": 2,
+                "scene_type": "cta",
+                "caption_text": "If download works, production is back.",
+                "description": "Download button success",
+                "duration": 5,
+                "method": "extend",
+            },
+        ],
+        confirmed_plan={"scene_mode": "hybrid_motion"},
+    )
+
+    background_tasks = BackgroundTasks()
+    queued = await generate_video_from_preview(
+        request,
+        background_tasks=background_tasks,
+        current_user=user,
+        db=hmr_session,
+    )
+    assert queued["status"] == "queued"
+    assert len(background_tasks.tasks) == 1
+
+    await background_tasks.tasks[0]()
+
+    generation = await hmr_session.get(Generation, queued["generation_id"])
+    assert generation.status == "success"
+    assert generation.video_file.endswith(".mp4")
+    assert not generation.video_file.startswith(("[", "{"))
+    assert generate_route._resolve_downloadable_generated_video_file(generation.video_file) == generation.video_file
+    assert generation.runway_credits_used == 0.0
+    assert generation.elevenlabs_credits_used == 0
+    assert generation.total_cost_usd == 0.0
+    assert render_calls
+    assert render_calls[0]["use_free_tts"] is True
+    assert render_calls[0]["output_path"].is_relative_to(generate_route._generated_videos_root())
+
+    history_item = await get_video_history_item(generation.id, current_user=user, db=hmr_session)
+    assert history_item["status"] == "success"
+    assert history_item["download_url"] == f"/api/generate/video/download/{generation.video_file}"
+
+    download = await download_generated_video(generation.video_file)
+    assert download.media_type == "video/mp4"
+    assert Path(download.path).exists()
+
+
+@pytest.mark.asyncio
 async def test_hmr_render_jobs_startup_ddl_is_idempotent(hmr_session):
     await hmr_session.execute(
         text(

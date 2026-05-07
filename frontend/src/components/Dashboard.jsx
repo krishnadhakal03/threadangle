@@ -2386,6 +2386,7 @@ export default function Dashboard({ mode = 'generate' }) {
           body: scriptState.body,
           cta: scriptState.cta,
           niche: videoForm.niche || 'general',
+          scene_mode: videoForm.scene_mode || 'auto',
           tts_provider: videoForm.tts_provider || 'free',
           voice_id: videoForm.voice_id || '21m00Tcm4TlvDq8ikWAM',
           confirmed_plan: videoPlan ? {

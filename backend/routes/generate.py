@@ -98,6 +98,28 @@ def _fallback_no_spend_video_seo(script_text: str, niche: Optional[str] = None) 
     }
 
 
+async def _generate_video_seo_metadata_no_spend_aware(
+    *,
+    script_text: str,
+    niche: Optional[str],
+    duration_seconds: int,
+) -> dict[str, Any]:
+    from utils.paid_provider_guard import get_paid_provider_policy
+
+    if get_paid_provider_policy().allow_anthropic:
+        try:
+            return await generate_youtube_metadata(
+                script=script_text,
+                niche=niche or "general",
+                duration=duration_seconds,
+            )
+        except Exception as seo_exc:
+            print(f"[SEO] Metadata generation failed (non-fatal): {seo_exc}")
+
+    print("[SEO] Anthropic disabled by paid-provider policy; using no-spend metadata fallback.")
+    return _fallback_no_spend_video_seo(script_text, niche)
+
+
 def _log_scene_text_check(scene_idx: int, subtitle: str, on_screen_text: str, visual_description: str) -> None:
     sub_preview = str(subtitle or "")[:220].replace('"', '\\"')
     on_screen_preview = str(on_screen_text or "")[:220].replace('"', '\\"')
@@ -521,6 +543,7 @@ class GenerateFromPreviewRequest(BaseModel):
     body: Optional[str] = None
     cta: Optional[str] = None
     niche: str = "general"
+    scene_mode: str = "auto"
     tts_provider: str = "free"  # "elevenlabs" | "free"
     voice_id: str = "pNInz6obpgDQGcFmaJgB"  # ElevenLabs "Adam"
     confirmed_plan: Optional[dict[str, Any]] = None
@@ -1318,21 +1341,11 @@ async def generate_free_video(
     elevenlabs_cost = (elevenlabs_chars / 1000.0) * 0.30
     total_cost = round(runway_cost + elevenlabs_cost, 4)
 
-    seo_metadata = None
-    from utils.paid_provider_guard import get_paid_provider_policy
-
-    if get_paid_provider_policy().allow_anthropic:
-        try:
-            seo_metadata = await generate_youtube_metadata(
-                script=script_text,
-                niche=request.niche or "general",
-                duration=duration_seconds,
-            )
-        except Exception as seo_exc:
-            print(f"[SEO] Metadata generation failed (non-fatal): {seo_exc}")
-    else:
-        seo_metadata = _fallback_no_spend_video_seo(script_text, request.niche)
-        print("[SEO] Anthropic disabled by paid-provider policy; using no-spend metadata fallback.")
+    seo_metadata = await _generate_video_seo_metadata_no_spend_aware(
+        script_text=script_text,
+        niche=request.niche,
+        duration_seconds=duration_seconds,
+    )
     
     # Rename video file with SEO title for easy social media posting
     if seo_metadata and isinstance(seo_metadata, dict) and seo_metadata.get("title"):
@@ -2120,6 +2133,7 @@ async def generate_video_from_approved_preview(
     dry_run: bool = True,
     script: Optional[str] = None,
     niche: str = "general",
+    scene_mode: str = "auto",
     tts_provider: str = "free",
     voice_id: str = "21m00Tcm4TlvDq8ikWAM",
     confirmed_plan: Optional[dict[str, Any]] = None,
@@ -2154,6 +2168,7 @@ async def generate_video_from_approved_preview(
             "scenes": scenes,
             "dry_run": effective_dry_run,
             "script": script,
+            "scene_mode": scene_mode,
             "confirmed_plan": confirmed_plan,
         })
         await session.commit()
@@ -2166,6 +2181,213 @@ async def generate_video_from_approved_preview(
             generation.error_message = "Dry-run mode active. Set VIDEO_GENERATION_DRY_RUN=0 and disable Dry Run in Video Studio for live generation."
             await session.commit()
             return
+
+        confirmed_scene_mode = ""
+        if isinstance(confirmed_plan, dict):
+            confirmed_scene_mode = str(confirmed_plan.get("scene_mode") or confirmed_plan.get("sceneMode") or "")
+        selected_scene_mode = str(scene_mode or confirmed_scene_mode or "").lower().strip()
+        hmr_preview_requested = selected_scene_mode in {
+            "hybrid_motion",
+            "hybrid",
+            "auto",
+            "smart_hmr",
+            "agency_hmr",
+            "agency_mixed_media",
+            "mixed_media",
+            "smart_mixed_media",
+        } and is_hybrid_motion_renderer_enabled()
+
+        if hmr_preview_requested:
+            try:
+                _upd(18, "Hybrid/HMR mode detected - building local render timeline...", "hmr")
+                from utils.first_three_seconds import attach_first_3_seconds_to_report, build_first_3_seconds_plan
+                from utils.hybrid_motion_renderer import render_hybrid_video
+                from utils.hmr_ui_productization import materialize_hmr_ui_review_workflow
+                from utils.pattern_interrupts import attach_pattern_interrupts_to_report, build_pattern_interrupt_plan
+
+                run_id = new_run_id()
+                generated_root = Path(__file__).resolve().parents[1] / "generated_videos"
+                output_path = generated_root / f"{run_id}.mp4"
+                assert_not_frozen_output(output_path)
+
+                script_text = (script or "").strip() or " ".join(
+                    str(
+                        scene.get("caption_text")
+                        or scene.get("subtitle")
+                        or scene.get("source_text")
+                        or scene.get("description")
+                        or ""
+                    ).strip()
+                    for scene in scenes
+                ).strip()
+                if not script_text:
+                    raise RuntimeError("Hybrid/HMR preview generation requires script text or captioned scenes.")
+
+                audio_path = None
+                try:
+                    _upd(30, "Generating free local voice track...", "tts")
+                    tts_result = generate_voice(
+                        VoiceGenRequest(
+                            text=script_text,
+                            voice_id=voice_id,
+                            force_free=True,
+                        )
+                    )
+                    audio_path = tts_result.audio_file
+                except Exception as tts_exc:
+                    logger.warning(f"[VideoGen] HMR preview free TTS failed, continuing with renderer fallback: {tts_exc}")
+
+                source_durations = [float(_normalize_scene_duration(scene.get("duration", 5), default=5)) for scene in scenes]
+                audio_duration = _get_audio_duration_seconds(audio_path)
+                if audio_duration and audio_duration > 0:
+                    target_total = audio_duration
+                else:
+                    target_total = float(sum(source_durations) or 30.0)
+
+                beats = _segment_script_into_beats(script_text)
+                scene_count = min(8, len(beats)) if beats else max(1, len(scenes))
+                per = max(2.0, target_total / float(max(1, scene_count)))
+                durations = [per] * scene_count
+                drift = target_total - sum(durations)
+                durations[-1] = max(2.0, durations[-1] + drift)
+                captions = _split_script_for_scenes(
+                    script_text=script_text,
+                    scene_count=scene_count,
+                    durations=durations,
+                )
+
+                start_sec = 0.0
+                scene_rows: list[dict[str, Any]] = []
+                for idx, caption in enumerate(captions, start=1):
+                    source_scene = scenes[min(idx - 1, len(scenes) - 1)] if scenes else {}
+                    part = "hook" if idx == 1 else ("cta" if idx == len(captions) else "body")
+                    duration = durations[idx - 1] if idx - 1 < len(durations) else per
+                    end_sec = start_sec + duration
+                    visual_description = str(
+                        source_scene.get("description")
+                        or source_scene.get("visual_description")
+                        or caption
+                        or "Local hybrid motion scene"
+                    ).strip()
+                    display_text = str(source_scene.get("on_screen_text") or caption).strip()
+                    scene_rows.append(
+                        {
+                            "scene": idx,
+                            "start": start_sec,
+                            "end": end_sec,
+                            "part": part,
+                            "source_text": caption,
+                            "subtitle": caption,
+                            "visual_description": visual_description,
+                            "on_screen_text": display_text,
+                            "energy": "curiosity",
+                        }
+                    )
+                    _log_scene_text_check(
+                        scene_idx=idx,
+                        subtitle=caption,
+                        on_screen_text=display_text,
+                        visual_description=visual_description,
+                    )
+                    start_sec = end_sec
+
+                scene_response = make_scene_response(scenes_from_rows(scene_rows))
+                if not scene_response:
+                    raise RuntimeError("Failed to build Hybrid/HMR timeline from approved preview scenes.")
+
+                _upd(55, "Rendering local Hybrid/HMR MP4...", "render")
+                first_3_seconds_plan = build_first_3_seconds_plan(
+                    selected_hook=captions[0] if captions else script_text,
+                    topic=niche or "general",
+                )
+                pattern_interrupt_plan = build_pattern_interrupt_plan(scene_response)
+                hybrid_result = render_hybrid_video(
+                    scenes=scene_response,
+                    script_text=script_text,
+                    output_path=output_path,
+                    audio_path=audio_path,
+                    fps=30,
+                    width=1080,
+                    height=1920,
+                    use_stock_backgrounds=True,
+                    use_free_tts=True,
+                    style_preset="documentary_money_short",
+                )
+                hybrid_result = attach_first_3_seconds_to_report(hybrid_result, first_3_seconds_plan)
+                hybrid_result = attach_pattern_interrupts_to_report(hybrid_result, pattern_interrupt_plan)
+                hybrid_result["first_3_seconds"] = first_3_seconds_plan
+                hmr_productization = materialize_hmr_ui_review_workflow(
+                    generated_root=generated_root,
+                    run_id=run_id,
+                    video_path=hybrid_result["video_path"],
+                    render_result=hybrid_result,
+                    script_text=script_text,
+                    scenes=scene_response,
+                )
+
+                video_path_obj = Path(hybrid_result["video_path"])
+                if not video_path_obj.exists() or not video_path_obj.is_file() or video_path_obj.stat().st_size <= 0:
+                    raise RuntimeError("Hybrid/HMR render completed without a non-empty final MP4.")
+
+                duration_seconds = int(float(hybrid_result.get("duration") or target_total or 0))
+                seo_metadata = await _generate_video_seo_metadata_no_spend_aware(
+                    script_text=script_text,
+                    niche=niche,
+                    duration_seconds=duration_seconds,
+                )
+                stored_video_file, stored_thumb_file = _organize_run_assets(
+                    run_id=run_id,
+                    video_path=video_path_obj,
+                    thumbnail_path=None,
+                    title=_strip_unwanted_year_tokens(
+                        (seo_metadata or {}).get("title") if isinstance(seo_metadata, dict) else None,
+                        script_text=script_text,
+                    ),
+                )
+                if not _resolve_downloadable_generated_video_file(stored_video_file):
+                    raise RuntimeError("Hybrid/HMR final MP4 was not saved under generated_videos.")
+
+                platform_meta = None
+                if isinstance(confirmed_plan, dict):
+                    maybe_meta = confirmed_plan.get("platform_meta")
+                    if isinstance(maybe_meta, dict):
+                        platform_meta = maybe_meta
+
+                generation.status = "success"
+                generation.video_run_id = run_id
+                generation.video_file = stored_video_file
+                generation.video_thumbnail = stored_thumb_file
+                generation.video_duration_seconds = duration_seconds
+                generation.video_scenes_json = json.dumps(scene_response)
+                generation.video_plan_json = json.dumps({
+                    "preview_id": preview_id,
+                    "scene_mode": "hybrid_motion",
+                    "hmr_preview": True,
+                    "hmr_render_invoked": True,
+                    "hmr_productization": hmr_productization,
+                    "confirmed_plan": confirmed_plan,
+                }, default=str)
+                generation.runway_credits_used = 0.0
+                generation.elevenlabs_credits_used = 0
+                generation.total_cost_usd = 0.0
+                generation.video_platform_meta_json = json.dumps(platform_meta) if platform_meta else None
+                generation.seo_title = (seo_metadata or {}).get("title") if isinstance(seo_metadata, dict) else None
+                generation.seo_description = (seo_metadata or {}).get("description") if isinstance(seo_metadata, dict) else None
+                generation.seo_tags = json.dumps((seo_metadata or {}).get("tags", [])) if isinstance(seo_metadata, dict) else None
+                generation.seo_hashtags = json.dumps((seo_metadata or {}).get("hashtags", [])) if isinstance(seo_metadata, dict) else None
+                generation.thumbnail_text = (seo_metadata or {}).get("thumbnail_text") if isinstance(seo_metadata, dict) else None
+                generation.error_message = None
+                await session.commit()
+                _upd(100, "Hybrid/HMR video complete.", "done")
+                _task_progress.pop(generation_id, None)
+                return
+            except Exception as exc:
+                logger.error(f"[VideoGen] hmr preview generation_id={generation_id} failed: {exc}", exc_info=True)
+                _upd(0, f"Failed: {str(exc)[:120]}", "error")
+                generation.status = "failed"
+                generation.error_message = str(exc)[:500]
+                await session.commit()
+                return
 
         all_stock_mode = bool(scenes) and all(str(scene.get("method", "")).lower() == "stock" for scene in scenes)
         if all_stock_mode:
@@ -2318,14 +2540,11 @@ async def generate_video_from_approved_preview(
 
                 seo_metadata = None
                 if script_text:
-                    try:
-                        seo_metadata = await generate_youtube_metadata(
-                            script=script_text,
-                            niche=niche or "general",
-                            duration=int(sum(float(s.get("duration", 5) or 5) for s in scenes)),
-                        )
-                    except Exception as seo_exc:
-                        logger.warning(f"[VideoGen] SEO metadata failed in stock mode: {seo_exc}")
+                    seo_metadata = await _generate_video_seo_metadata_no_spend_aware(
+                        script_text=script_text,
+                        niche=niche,
+                        duration_seconds=int(sum(float(s.get("duration", 5) or 5) for s in scenes)),
+                    )
 
                 video_path_obj = Path(render_result["video_path"])
                 thumb_path = render_result.get("thumbnail_path")
@@ -2534,6 +2753,7 @@ async def generate_video_from_preview(
         dry_run=request.dry_run,
         script=request.script,
         niche=request.niche,
+        scene_mode=request.scene_mode,
         tts_provider=request.tts_provider,
         voice_id=request.voice_id,
         confirmed_plan=request.confirmed_plan,
