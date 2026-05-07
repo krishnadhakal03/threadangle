@@ -130,11 +130,14 @@ def test_coffee_savings_story_uses_premium_local_cards(tmp_path, monkeypatch):
     assert enriched[0]["daily_number"] == "$5/DAY"
     assert enriched[0]["yearly_number"] == "$1,200/YEAR"
     assert enriched[0]["subline"] == "before tips + snacks"
+    assert enriched[0]["caption_text"] == "Tiny habits add up"
     assert enriched[1]["formula"] == "$5 x 20 WORKDAYS"
     assert enriched[1]["monthly_number"] == "$100/MONTH"
+    assert enriched[1]["caption_text"] == "That is $100/month"
     assert enriched[2]["shop_number"] == "$100/mo"
     assert enriched[2]["home_number"] == "$20/mo"
     assert enriched[2]["savings_number"] == "SAVE $80/mo"
+    assert enriched[2]["caption_text"] == "Same habit. Cheaper route."
     assert "AI SWAP" not in json.dumps(enriched)
     assert "$150" not in json.dumps(enriched)
     assert "$130" not in json.dumps(enriched)

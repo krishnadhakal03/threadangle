@@ -395,13 +395,13 @@ def grocery_receipt_hook(frame_idx: int, scene_progress: float, canvas: np.ndarr
     draw = ImageDraw.Draw(image, "RGBA")
     area = safe_area(w, h)
 
-    for i in range(5):
-        alpha = int(34 + 20 * math.sin(scene_progress * math.tau + i))
-        x = int(w * (0.12 + i * 0.18))
-        draw.line((x, int(h * 0.10), x + int(w * 0.18), int(h * 0.90)), fill=(115, 231, 185, max(12, alpha)), width=max(1, int(w * 0.004)))
+    for i in range(3):
+        alpha = int(16 + 10 * math.sin(scene_progress * math.tau + i))
+        x = int(w * (0.20 + i * 0.28))
+        draw.line((x, int(h * 0.14), x + int(w * 0.10), int(h * 0.84)), fill=(115, 231, 185, max(8, alpha)), width=max(1, int(w * 0.003)))
 
     snap = ease_out(min(1.0, scene_progress / 0.34))
-    panel = (area.left + int(w * 0.02), int(h * 0.115), area.right - int(w * 0.02), int(h * 0.655))
+    panel = (area.left, int(h * 0.095), area.right, int(h * 0.675))
     panel_shift = int(h * 0.045 * (1.0 - snap))
     panel = (panel[0], panel[1] + panel_shift, panel[2], panel[3] + panel_shift)
     draw_rounded_rect(draw, (panel[0] + int(w * 0.018), panel[1] + int(h * 0.018), panel[2] + int(w * 0.018), panel[3] + int(h * 0.018)), 34, (0, 0, 0, 82), None, 1)
@@ -416,22 +416,36 @@ def grocery_receipt_hook(frame_idx: int, scene_progress: float, canvas: np.ndarr
 
     daily = _scene_text(scene_config, "daily_number", default="$5/DAY")
     yearly = _scene_text(scene_config, "yearly_number", "hook_number", default="$1,200/YEAR")
+    daily_scale = 1.0 + 0.06 * (1.0 - ease_out(min(1.0, scene_progress / 0.24)))
+    yearly_reveal = ease_out(min(1.0, max(0.0, scene_progress - 0.26) / 0.34))
     daily_font = fit_font(draw, daily, max(60, int(w * 0.19)), panel[2] - panel[0] - int(w * 0.12), min_size=max(42, int(w * 0.12)), bold=True)
-    yearly_font = fit_font(draw, yearly, max(54, int(w * 0.155)), panel[2] - panel[0] - int(w * 0.12), min_size=max(36, int(w * 0.10)), bold=True)
+    yearly_font = fit_font(draw, yearly, max(58, int(w * 0.165)), panel[2] - panel[0] - int(w * 0.12), min_size=max(38, int(w * 0.108)), bold=True)
     dw, dh = text_size(draw, daily, daily_font)
     yw, yh = text_size(draw, yearly, yearly_font)
     daily_y = panel[1] + int(h * 0.16)
     yearly_y = panel[1] + int(h * 0.32)
     daily_box = ((w - dw) // 2, daily_y, (w + dw) // 2, daily_y + dh)
     yearly_box = ((w - yw) // 2, yearly_y, (w + yw) // 2, yearly_y + yh)
-    draw.text((daily_box[0], daily_box[1]), daily, font=daily_font, fill=(16, 24, 39))
+    if daily_scale > 1.002:
+        daily_img = Image.new("RGBA", (max(1, dw), max(1, dh)), (0, 0, 0, 0))
+        daily_draw = ImageDraw.Draw(daily_img)
+        daily_draw.text((0, 0), daily, font=daily_font, fill=(16, 24, 39))
+        scaled = daily_img.resize((int(dw * daily_scale), int(dh * daily_scale)), Image.Resampling.BICUBIC)
+        image.alpha_composite(scaled, ((w - scaled.size[0]) // 2, daily_y - (scaled.size[1] - dh) // 2))
+    else:
+        draw.text((daily_box[0], daily_box[1]), daily, font=daily_font, fill=(16, 24, 39))
     draw.line((panel[0] + int(w * 0.12), panel[1] + int(h * 0.285), panel[2] - int(w * 0.12), panel[1] + int(h * 0.285)), fill=(207, 219, 214), width=max(2, int(w * 0.006)))
-    draw.text((yearly_box[0], yearly_box[1]), yearly, font=yearly_font, fill=(184, 48, 44))
+    year_layer = Image.new("RGBA", (max(1, yw), max(1, yh)), (0, 0, 0, 0))
+    year_draw = ImageDraw.Draw(year_layer)
+    year_draw.text((0, 0), yearly, font=yearly_font, fill=(184, 48, 44, int(255 * yearly_reveal)))
+    year_scale = 0.92 + 0.08 * yearly_reveal
+    year_scaled = year_layer.resize((max(1, int(yw * year_scale)), max(1, int(yh * year_scale))), Image.Resampling.BICUBIC)
+    image.alpha_composite(year_scaled, ((w - year_scaled.size[0]) // 2, yearly_y + int(h * 0.018 * (1.0 - yearly_reveal))))
 
     sub = _scene_text(scene_config, "subline", default="before tips + snacks")
     sub_font = fit_font(draw, sub, max(18, int(w * 0.052)), panel[2] - panel[0] - int(w * 0.14), min_size=max(14, int(w * 0.036)), bold=True)
     sw, sh = text_size(draw, sub, sub_font)
-    sub_box = ((w - sw) // 2 - int(w * 0.035), panel[1] + int(h * 0.465), (w + sw) // 2 + int(w * 0.035), panel[1] + int(h * 0.465) + sh + int(h * 0.022))
+    sub_box = ((w - sw) // 2 - int(w * 0.035), panel[1] + int(h * 0.482), (w + sw) // 2 + int(w * 0.035), panel[1] + int(h * 0.482) + sh + int(h * 0.022))
     draw_rounded_rect(draw, sub_box, max(12, int(w * 0.028)), (224, 247, 237), None, 1)
     draw.text(((w - sw) // 2, sub_box[1] + int(h * 0.010)), sub, font=sub_font, fill=(11, 95, 72))
 
@@ -814,7 +828,13 @@ def money_shock_math(frame_idx: int, scene_progress: float, canvas: np.ndarray, 
     draw = ImageDraw.Draw(image, "RGBA")
     area = safe_area(w, h)
 
-    card = (area.left + int(w * 0.02), int(h * 0.125), area.right - int(w * 0.02), int(h * 0.70))
+    card_scale = 0.985 + 0.015 * ease_out(min(1.0, scene_progress / 0.30))
+    base_card = (area.left + int(w * 0.02), int(h * 0.125), area.right - int(w * 0.02), int(h * 0.70))
+    cx = (base_card[0] + base_card[2]) // 2
+    cy = (base_card[1] + base_card[3]) // 2
+    half_w = int((base_card[2] - base_card[0]) * card_scale / 2)
+    half_h = int((base_card[3] - base_card[1]) * card_scale / 2)
+    card = (cx - half_w, cy - half_h, cx + half_w, cy + half_h)
     draw_rounded_rect(draw, (card[0] + int(w * 0.016), card[1] + int(h * 0.016), card[2] + int(w * 0.016), card[3] + int(h * 0.016)), 34, (0, 0, 0, 80), None, 1)
     draw_rounded_rect(draw, card, 34, (248, 250, 252), (210, 220, 230), max(1, int(w * 0.004)))
 
@@ -836,18 +856,20 @@ def money_shock_math(frame_idx: int, scene_progress: float, canvas: np.ndarray, 
         fill = (17, 148, 111) if active else (213, 222, 230)
         draw.ellipse((x, y, x + dot_size, y + dot_size), fill=fill)
 
+    formula_alpha = int(255 * ease_out(min(1.0, max(0.0, scene_progress - 0.18) / 0.32)))
     formula = _scene_text(scene_config, "formula", default="$5 x 20 WORKDAYS")
     formula_font = fit_font(draw, formula, max(31, int(w * 0.088)), card[2] - card[0] - int(w * 0.12), min_size=max(22, int(w * 0.060)), bold=True)
     fw, fh = text_size(draw, formula, formula_font)
     formula_box = ((w - fw) // 2, card[1] + int(h * 0.275), (w + fw) // 2, card[1] + int(h * 0.275) + fh)
-    draw.text((formula_box[0], formula_box[1]), formula, font=formula_font, fill=(18, 24, 38))
+    draw.text((formula_box[0], formula_box[1]), formula, font=formula_font, fill=(18, 24, 38, formula_alpha))
 
     number = _scene_text(scene_config, "number", "monthly_number", default="$100/MONTH")
     font_num = fit_font(draw, number, max(56, int(w * 0.16)), card[2] - card[0] - int(w * 0.10), min_size=max(36, int(w * 0.10)), bold=True)
     nw, nh = text_size(draw, number, font_num)
     num_y = card[1] + int(h * 0.395)
     num_box = ((w - nw) // 2, num_y, (w + nw) // 2, num_y + nh)
-    draw.text((num_box[0], num_box[1]), number, font=font_num, fill=(184, 48, 44))
+    number_alpha = int(255 * ease_out(min(1.0, max(0.0, scene_progress - 0.34) / 0.36)))
+    draw.text((num_box[0], num_box[1]), number, font=font_num, fill=(184, 48, 44, number_alpha))
 
     explainer = _scene_text(scene_config, "subline", default="every workday coffee run")
     explainer_font = fit_font(draw, explainer, max(16, int(w * 0.044)), card[2] - card[0] - int(w * 0.14), min_size=max(13, int(w * 0.032)), bold=True)

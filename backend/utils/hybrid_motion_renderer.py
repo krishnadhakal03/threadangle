@@ -189,7 +189,7 @@ def _enrich_coffee_savings_scene(scene: Any, idx: int, total: int) -> Any:
             "subline": "before tips + snacks",
             "receipt_rows": [("workday coffee", "$5.00"), ("monthly total", "$100"), ("yearly total", "$1,200")],
             "visual_description": "clean bold finance hook card five dollars a day twelve hundred a year",
-            "caption_text": "This coffee habit quietly adds up.",
+            "caption_text": "Tiny habits add up",
             "force_template_background": True,
         })
     elif is_cta:
@@ -198,7 +198,8 @@ def _enrich_coffee_savings_scene(scene: Any, idx: int, total: int) -> Any:
             "eyebrow": "7-DAY CHALLENGE",
             "headline": "Skip 2 coffees/week",
             "visual_description": "savings challenge card coffee cup progress bar",
-            "caption_text": text or "Try skipping just two coffees a week.",
+            "caption_text": "Skip two this week",
+            "force_template_background": True,
         })
     elif idx == 1:
         base.update({
@@ -210,7 +211,8 @@ def _enrich_coffee_savings_scene(scene: Any, idx: int, total: int) -> Any:
             "subline": "every workday coffee run",
             "headline": "Workday coffee becomes a bill",
             "visual_description": "monthly coffee total calculator card",
-            "caption_text": "Five dollars every workday becomes a monthly bill.",
+            "caption_text": "That is $100/month",
+            "force_template_background": True,
         })
     elif idx == 2:
         base.update({
@@ -224,7 +226,8 @@ def _enrich_coffee_savings_scene(scene: Any, idx: int, total: int) -> Any:
             "subline": "same habit, cheaper route",
             "headline": "Same habit, cheaper route",
             "visual_description": "coffee shop versus home brew monthly cost comparison save eighty dollars",
-            "caption_text": "Same habit, cheaper route.",
+            "caption_text": "Same habit. Cheaper route.",
+            "force_template_background": True,
         })
     else:
         base.update({
@@ -235,7 +238,8 @@ def _enrich_coffee_savings_scene(scene: Any, idx: int, total: int) -> Any:
             "subline": "gone before tips + snacks",
             "headline": "That small habit became a yearly number",
             "visual_description": "yearly savings reveal phone dashboard coffee receipt",
-            "caption_text": "That is twelve hundred dollars a year.",
+            "caption_text": "Almost $1,000 saved",
+            "force_template_background": True,
         })
     return base
 
@@ -1070,6 +1074,9 @@ def render_hybrid_video(
     for scene_idx, (scene, template_name, duration, bg_path, stock_meta, asset_resolution, spec) in enumerate(prepared):
         scene_profile_start = time.perf_counter()
         template = get_template(template_name)
+        force_template_background = bool(_scene_value(scene, "force_template_background", False))
+        if force_template_background:
+            bg_path = None
         frame_count = max(1, int(round(duration * fps)))
         scene_id = _scene_value(scene, "id", None) or _scene_value(scene, "scene", None) or _scene_value(scene, "scene_index", scene_idx + 1)
         scene_start_time = elapsed
@@ -1166,7 +1173,14 @@ def render_hybrid_video(
                 if key not in postability_signals:
                     postability_signals[key] = value
 
-            active_caption_event = next((ev for ev in caption_events if ev["start"] <= current_t < ev["end"]), None)
+            if force_template_background:
+                active_caption_event = {
+                    "start": scene_start_time,
+                    "end": scene_end_time,
+                    "text": str(_scene_value(scene, "caption_text", "") or ""),
+                }
+            else:
+                active_caption_event = next((ev for ev in caption_events if ev["start"] <= current_t < ev["end"]), None)
             active_caption = active_caption_event["text"] if active_caption_event else ""
             caption_start = time.perf_counter()
             animation = (
