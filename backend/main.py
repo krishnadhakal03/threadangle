@@ -56,6 +56,26 @@ def verify_env_variables():
 
 verify_env_variables()
 
+
+def log_no_spend_video_policy():
+    from utils.paid_provider_guard import get_paid_provider_policy
+
+    policy = get_paid_provider_policy()
+    print("\n=== THREADANGLE VIDEO SAFETY POLICY ===")
+    print(f"  paid providers disabled: {not policy.allow_paid_providers}")
+    print(f"  Runway disabled: {not policy.allow_runwayml}")
+    print(f"  ElevenLabs disabled: {not policy.allow_elevenlabs}")
+    print(f"  OpenAI disabled: {not policy.allow_openai}")
+    print(f"  Anthropic disabled: {not policy.allow_anthropic}")
+    print(f"  Gemini disabled: {not policy.allow_gemini}")
+    print(f"  HMR enabled: {os.getenv('ENABLE_HYBRID_MOTION_RENDERER', '0') == '1'}")
+    print(f"  dry run: {os.getenv('VIDEO_GENERATION_DRY_RUN', '1') == '1'}")
+    print(f"  RUNWAYML_MAX_SCENES: {os.getenv('RUNWAYML_MAX_SCENES', '(unset)')}")
+    print("========================================\n")
+
+
+log_no_spend_video_policy()
+
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,

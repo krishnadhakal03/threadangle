@@ -16,6 +16,13 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 
+def _generated_video_path(*parts: str) -> Path:
+    path = BACKEND_DIR / "generated_videos" / "test_hmr_contract" / Path(*parts)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"fake mp4 bytes")
+    return path
+
+
 @pytest_asyncio.fixture()
 async def hmr_session(tmp_path):
     from database import Base
@@ -72,6 +79,8 @@ async def test_hmr_durable_job_create_update_and_progress(hmr_session):
     assert updated.started_at is not None
     assert updated.render_invoked is True
 
+    video_path = _generated_video_path("durable-run.mp4")
+
     done = await update_hmr_render_job_record(
         hmr_session,
         job.id,
@@ -79,14 +88,53 @@ async def test_hmr_durable_job_create_update_and_progress(hmr_session):
         percent=100,
         step="done",
         message="Done",
-        result={"video_path": "out.mp4"},
+        result={"video_path": str(video_path.resolve())},
     )
     assert done.status == "success"
     assert done.worker_active is False
-    assert done.result_json == {"video_path": "out.mp4"}
+    assert done.result_json == {"video_path": str(video_path.resolve())}
+    await hmr_session.refresh(generation)
+    assert generation.video_file == "test_hmr_contract/durable-run.mp4"
     done_progress = hmr_job_to_progress(done)
     assert done_progress["hmr_render_job"]["status"] == "success"
     assert done_progress["hmr_render_job"]["worker_active"] is False
+
+
+@pytest.mark.asyncio
+async def test_hmr_durable_job_success_requires_existing_generated_mp4(hmr_session):
+    from models import Generation, User
+    from utils.hmr_durable_jobs import create_hmr_render_job_record, update_hmr_render_job_record
+
+    user = User(email="missing-video@example.com", password_hash="x")
+    hmr_session.add(user)
+    await hmr_session.flush()
+    generation = Generation(user_id=user.id, input_type="video", input_content="script", status="processing")
+    hmr_session.add(generation)
+    await hmr_session.flush()
+    job = await create_hmr_render_job_record(
+        hmr_session,
+        generation_id=generation.id,
+        user_id=user.id,
+        run_id="missing-video-run",
+        request_payload={},
+    )
+
+    done = await update_hmr_render_job_record(
+        hmr_session,
+        job.id,
+        status="success",
+        percent=100,
+        step="done",
+        message="Done",
+        result={"video_path": "missing-video-run.mp4"},
+    )
+
+    assert done.status == "failed"
+    assert done.step == "missing_video_artifact"
+    await hmr_session.refresh(generation)
+    assert generation.status == "failed"
+    assert generation.video_file is None
+    assert "no final MP4" in generation.error_message
 
 
 @pytest.mark.asyncio
@@ -186,7 +234,7 @@ async def test_async_hmr_route_creates_durable_job_and_progress_uses_job_state(h
         step="done",
         message="HMR background render complete.",
         render_invoked=True,
-        result={"video_path": "backend/generated_videos/route-async.mp4"},
+        result={"video_path": str(_generated_video_path("route-async.mp4").resolve())},
     )
     generation.status = "success"
     await hmr_session.commit()
@@ -238,9 +286,7 @@ async def test_hmr_video_history_falls_back_to_hmr_job_artifact_path(hmr_session
     hmr_session.add(generation)
     await hmr_session.flush()
 
-    video_path = tmp_path / "generated_videos" / "run-123.mp4"
-    video_path.parent.mkdir(parents=True, exist_ok=True)
-    video_path.write_text("dummy")
+    video_path = _generated_video_path("run-123.mp4")
 
     job = HMRRenderJob(
         id="job-123",
@@ -258,9 +304,9 @@ async def test_hmr_video_history_falls_back_to_hmr_job_artifact_path(hmr_session
     await hmr_session.commit()
 
     history_item = await get_video_history_item(generation.id, current_user=user, db=hmr_session)
-    assert history_item["file"] == "run-123.mp4"
-    assert history_item["video_url"] == "/api/generate/video/download/run-123.mp4"
-    assert history_item["download_url"] == "/api/generate/video/download/run-123.mp4"
+    assert history_item["file"] == "test_hmr_contract/run-123.mp4"
+    assert history_item["video_url"] == "/api/generate/video/download/test_hmr_contract/run-123.mp4"
+    assert history_item["download_url"] == "/api/generate/video/download/test_hmr_contract/run-123.mp4"
 
 
 @pytest.mark.asyncio
@@ -284,6 +330,7 @@ async def test_hmr_video_history_list_falls_back_to_hmr_job_artifact_paths(hmr_s
     hmr_session.add(generation)
     await hmr_session.flush()
 
+    video_path = _generated_video_path("run-456.mp4")
     job = HMRRenderJob(
         id="job-456",
         generation_id=generation.id,
@@ -293,7 +340,7 @@ async def test_hmr_video_history_list_falls_back_to_hmr_job_artifact_paths(hmr_s
         percent=100,
         step="done",
         message="Done",
-        artifact_paths_json={"video": "f:/Threadforge/generated_videos/run-456.mp4"},
+        artifact_paths_json={"video": str(video_path.resolve())},
         result_json={},
     )
     hmr_session.add(job)
@@ -303,9 +350,9 @@ async def test_hmr_video_history_list_falls_back_to_hmr_job_artifact_paths(hmr_s
     assert isinstance(history, list)
     assert len(history) == 1
     row = history[0]
-    assert row["file"] == "run-456.mp4"
-    assert row["video_url"] == "/api/generate/video/download/run-456.mp4"
-    assert row["download_url"] == "/api/generate/video/download/run-456.mp4"
+    assert row["file"] == "test_hmr_contract/run-456.mp4"
+    assert row["video_url"] == "/api/generate/video/download/test_hmr_contract/run-456.mp4"
+    assert row["download_url"] == "/api/generate/video/download/test_hmr_contract/run-456.mp4"
     assert row["thumbnail_url"] is None
 
 
@@ -330,6 +377,7 @@ async def test_hmr_video_history_list_falls_back_to_hybrid_motion_result_json(hm
     hmr_session.add(generation)
     await hmr_session.flush()
 
+    video_path = _generated_video_path("run-789.mp4")
     job = HMRRenderJob(
         id="job-789",
         generation_id=generation.id,
@@ -340,7 +388,7 @@ async def test_hmr_video_history_list_falls_back_to_hybrid_motion_result_json(hm
         step="done",
         message="Done",
         artifact_paths_json={},
-        result_json={"hybrid_motion": {"video_path": "f:/Threadforge/generated_videos/run-789.mp4"}},
+        result_json={"hybrid_motion": {"video_path": str(video_path.resolve())}},
     )
     hmr_session.add(job)
     await hmr_session.commit()
@@ -349,10 +397,52 @@ async def test_hmr_video_history_list_falls_back_to_hybrid_motion_result_json(hm
     assert isinstance(history, list)
     assert len(history) == 1
     row = history[0]
-    assert row["file"] == "run-789.mp4"
-    assert row["video_url"] == "/api/generate/video/download/run-789.mp4"
-    assert row["download_url"] == "/api/generate/video/download/run-789.mp4"
+    assert row["file"] == "test_hmr_contract/run-789.mp4"
+    assert row["video_url"] == "/api/generate/video/download/test_hmr_contract/run-789.mp4"
+    assert row["download_url"] == "/api/generate/video/download/test_hmr_contract/run-789.mp4"
     assert row["thumbnail_url"] is None
+
+
+@pytest.mark.asyncio
+async def test_video_history_rejects_json_clip_list_as_downloadable_file(hmr_session):
+    from models import Generation, User
+    from routes.generate import get_video_history_item
+
+    user = User(email="json-list-video@example.com", password_hash="x")
+    hmr_session.add(user)
+    await hmr_session.flush()
+
+    generation = Generation(
+        user_id=user.id,
+        input_type="video",
+        input_content="clip list is not a final video",
+        status="success",
+        video_file='["raw/clip-one.mp4", "raw/clip-two.mp4"]',
+    )
+    hmr_session.add(generation)
+    await hmr_session.commit()
+
+    history_item = await get_video_history_item(generation.id, current_user=user, db=hmr_session)
+    assert history_item["status"] == "failed"
+    assert history_item["file"] is None
+    assert history_item["download_url"] is None
+    assert history_item["warning"] == "Generation completed without a downloadable MP4 artifact."
+
+
+@pytest.mark.asyncio
+async def test_download_endpoint_returns_generated_mp4_and_blocks_traversal():
+    from fastapi import HTTPException
+    from fastapi.responses import FileResponse
+    from routes.generate import download_generated_video
+
+    video_path = _generated_video_path("downloadable.mp4")
+    response = await download_generated_video("test_hmr_contract/downloadable.mp4")
+    assert isinstance(response, FileResponse)
+    assert Path(response.path) == video_path.resolve()
+
+    with pytest.raises(HTTPException) as exc:
+        await download_generated_video("../secret.mp4")
+    assert exc.value.status_code == 400
 
 
 @pytest.mark.asyncio

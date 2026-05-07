@@ -79,8 +79,11 @@ def _resolve_existing_local_path(value: str | None) -> str | None:
     raw = str(value).strip()
     if not raw or raw.startswith(("http://", "https://", "data:")):
         return None
+    if raw.startswith(("[", "{")):
+        return None
     raw = raw.split("?", 1)[0].split("#", 1)[0]
     p = Path(raw)
+    generated_root = (BACKEND_ROOT / "generated_videos").resolve()
 
     candidates: list[Path] = []
     if p.is_absolute():
@@ -98,11 +101,24 @@ def _resolve_existing_local_path(value: str | None) -> str | None:
 
     for candidate in candidates:
         try:
-            if candidate.exists() and candidate.is_file() and candidate.stat().st_size > 0:
-                return str(candidate.resolve())
+            resolved = candidate.resolve()
+            if generated_root not in resolved.parents:
+                continue
+            if resolved.exists() and resolved.is_file() and resolved.stat().st_size > 0:
+                return str(resolved)
         except Exception:
             continue
     return None
+
+
+def _relative_generated_asset_path(value: str | None) -> str | None:
+    resolved = _resolve_existing_local_path(value)
+    if not resolved:
+        return None
+    try:
+        return str(Path(resolved).relative_to((BACKEND_ROOT / "generated_videos").resolve())).replace("\\", "/")
+    except Exception:
+        return None
 
 
 def _candidate_video_paths(*payloads: Any) -> list[str]:
@@ -217,13 +233,13 @@ async def inspect_generation(generation_id: int, apply: bool = False) -> dict[st
 
         if apply:
             if resolved_video:
-                generation.video_file = resolved_video
+                generation.video_file = _relative_generated_asset_path(resolved_video) or resolved_video
                 if job is not None:
                     generation.video_run_id = generation.video_run_id or job.run_id
                 generation.status = "success"
                 generation.error_message = None
                 if resolved_thumb:
-                    generation.video_thumbnail = resolved_thumb
+                    generation.video_thumbnail = _relative_generated_asset_path(resolved_thumb) or resolved_thumb
                 if job is not None:
                     job.status = "success"
                     job.percent = 100

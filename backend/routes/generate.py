@@ -84,6 +84,20 @@ def _is_valid_audio_file(path_value: Optional[str]) -> bool:
         return False
 
 
+def _fallback_no_spend_video_seo(script_text: str, niche: Optional[str] = None) -> dict[str, Any]:
+    parts = parse_script(full_script=script_text or "")
+    title_seed = (parts.hook or niche or "Recovery Test").strip()
+    title = re.sub(r"\s+", " ", title_seed).strip(" .!?")[:60] or "Recovery Test"
+    thumbnail = " ".join(title.upper().split()[:5]) or "RECOVERY TEST"
+    return {
+        "title": title,
+        "description": "No-spend recovery render generated locally with downloadable MP4 output.",
+        "tags": ["no spend video", "local render", "hybrid motion", "recovery test"],
+        "hashtags": ["#NoSpend", "#LocalRender", "#HybridMotion"],
+        "thumbnail_text": thumbnail,
+    }
+
+
 def _log_scene_text_check(scene_idx: int, subtitle: str, on_screen_text: str, visual_description: str) -> None:
     sub_preview = str(subtitle or "")[:220].replace('"', '\\"')
     on_screen_preview = str(on_screen_text or "")[:220].replace('"', '\\"')
@@ -1305,14 +1319,20 @@ async def generate_free_video(
     total_cost = round(runway_cost + elevenlabs_cost, 4)
 
     seo_metadata = None
-    try:
-        seo_metadata = await generate_youtube_metadata(
-            script=script_text,
-            niche=request.niche or "general",
-            duration=duration_seconds,
-        )
-    except Exception as seo_exc:
-        print(f"[SEO] Metadata generation failed (non-fatal): {seo_exc}")
+    from utils.paid_provider_guard import get_paid_provider_policy
+
+    if get_paid_provider_policy().allow_anthropic:
+        try:
+            seo_metadata = await generate_youtube_metadata(
+                script=script_text,
+                niche=request.niche or "general",
+                duration=duration_seconds,
+            )
+        except Exception as seo_exc:
+            print(f"[SEO] Metadata generation failed (non-fatal): {seo_exc}")
+    else:
+        seo_metadata = _fallback_no_spend_video_seo(script_text, request.niche)
+        print("[SEO] Anthropic disabled by paid-provider policy; using no-spend metadata fallback.")
     
     # Rename video file with SEO title for easy social media posting
     if seo_metadata and isinstance(seo_metadata, dict) and seo_metadata.get("title"):
@@ -2555,6 +2575,19 @@ async def get_video_generation_progress(
         return {"generation_id": generation_id, "status": hmr_job.status, **progress}
 
     if generation.status == "success":
+        if not _resolve_downloadable_generated_video_file(generation.video_file):
+            generation.status = "failed"
+            generation.error_message = "Generation completed without a downloadable MP4 artifact."
+            await db.commit()
+            _task_progress.pop(generation_id, None)
+            return {
+                "generation_id": generation_id,
+                "status": "failed",
+                "percent": 0,
+                "message": generation.error_message,
+                "step": "missing_video_artifact",
+                "updated_at": None,
+            }
         _task_progress.pop(generation_id, None)
         return {
             "generation_id": generation_id,
@@ -2730,22 +2763,31 @@ async def get_video_history(
     rows = result.scalars().all()
 
     history = []
+    repaired_status = False
     for g in rows:
         try:
             video_file_override = None
-            if not g.video_file:
+            video_file = _resolve_downloadable_generated_video_file(g.video_file)
+            if not video_file:
                 video_file_override = await _find_hmr_video_file_for_generation(g, db)
+                video_file = video_file_override
+            if g.status == "success" and not video_file:
+                g.status = "failed"
+                g.error_message = "Generation completed without a downloadable MP4 artifact."
+                repaired_status = True
             history.append(
                 _serialize_video_history_row(
                     g,
                     include_heavy=False,
-                    video_file_override=video_file_override,
+                    video_file_override=video_file,
                 )
             )
         except Exception as exc:
             logger.warning(f"[video.history] Failed to serialize row id={getattr(g, 'id', None)}: {exc}")
             history.append(_serialize_video_history_row_fallback(g, warning=str(exc)))
 
+    if repaired_status:
+        await db.commit()
     return history
 
 
@@ -2762,15 +2804,49 @@ def _safe_json_loads(value: Any, *, expected_type: type | None = None, default: 
 
 
 def _resolve_possible_video_file_name(path_value: Any) -> Optional[str]:
+    return _resolve_downloadable_generated_video_file(path_value)
+
+
+def _generated_videos_root() -> Path:
+    return Path(__file__).resolve().parents[1] / "generated_videos"
+
+
+def _resolve_downloadable_generated_video_file(path_value: Any) -> Optional[str]:
     if not path_value:
         return None
-    try:
-        path = Path(str(path_value))
-        if path.suffix.lower() != ".mp4":
-            return None
-        return path.name
-    except Exception:
+    raw = str(path_value).strip()
+    if not raw or raw.startswith(("http://", "https://", "data:", "[", "{")):
         return None
+    raw = raw.split("?", 1)[0].split("#", 1)[0]
+    if not raw.lower().endswith(".mp4"):
+        return None
+
+    generated_root = _generated_videos_root().resolve()
+    path = Path(raw)
+    candidates: list[Path] = []
+    if path.is_absolute():
+        candidates.append(path)
+    else:
+        backend_root = Path(__file__).resolve().parents[1]
+        candidates.extend(
+            [
+                generated_root / path,
+                backend_root / path,
+                backend_root.parent / path,
+                generated_root / path.name,
+            ]
+        )
+
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+            if generated_root not in resolved.parents:
+                continue
+            if resolved.exists() and resolved.is_file() and resolved.stat().st_size > 0:
+                return str(resolved.relative_to(generated_root)).replace("\\", "/")
+        except Exception:
+            continue
+    return None
 
 
 def _extract_hmr_job_video_file(job: HMRRenderJob) -> Optional[str]:
@@ -2786,8 +2862,9 @@ def _extract_hmr_job_video_file(job: HMRRenderJob) -> Optional[str]:
 
 
 async def _find_hmr_video_file_for_generation(generation: Generation, db: AsyncSession) -> Optional[str]:
-    if generation.video_file:
-        return str(generation.video_file)
+    existing_video = _resolve_downloadable_generated_video_file(generation.video_file)
+    if existing_video:
+        return existing_video
 
     result = await db.execute(
         select(HMRRenderJob)
@@ -2813,7 +2890,9 @@ def _serialize_video_history_row(
 ) -> dict[str, Any]:
     parsed_seo_tags = _safe_json_loads(g.seo_tags, expected_type=list, default=[]) or []
     parsed_seo_hashtags = _safe_json_loads(g.seo_hashtags, expected_type=list, default=[]) or []
-    video_file = video_file_override or g.video_file
+    video_file = video_file_override
+    if video_file is None:
+        video_file = _resolve_downloadable_generated_video_file(g.video_file)
 
     payload = {
         "id": g.id,
@@ -2874,13 +2953,14 @@ def _serialize_video_history_row(
 
 
 def _serialize_video_history_row_fallback(g: Generation, warning: Optional[str] = None) -> dict[str, Any]:
+    video_file = _resolve_downloadable_generated_video_file(g.video_file)
     return {
         "id": g.id,
         "run_id": g.video_run_id,
         "duration_seconds": g.video_duration_seconds,
-        "file": g.video_file,
-        "video_url": f"/api/generate/video/download/{quote(str(g.video_file), safe='/')}" if g.video_file else None,
-        "download_url": f"/api/generate/video/download/{quote(str(g.video_file), safe='/')}" if g.video_file else None,
+        "file": video_file,
+        "video_url": f"/api/generate/video/download/{quote(str(video_file), safe='/')}" if video_file else None,
+        "download_url": f"/api/generate/video/download/{quote(str(video_file), safe='/')}" if video_file else None,
         "thumbnail_url": f"/api/generate/video/thumbnail/{quote(str(_relative_generated_asset_path(g.video_thumbnail) or ''), safe='/')}" if g.video_thumbnail else None,
         "created_at": g.created_at.isoformat() if g.created_at else None,
         "status": g.status,
@@ -2926,12 +3006,18 @@ async def get_video_history_item(
 
     try:
         video_file_override = None
-        if not generation.video_file:
+        video_file = _resolve_downloadable_generated_video_file(generation.video_file)
+        if not video_file:
             video_file_override = await _find_hmr_video_file_for_generation(generation, db)
+            video_file = video_file_override
+        if generation.status == "success" and not video_file:
+            generation.status = "failed"
+            generation.error_message = "Generation completed without a downloadable MP4 artifact."
+            await db.commit()
         return _serialize_video_history_row(
             generation,
             include_heavy=True,
-            video_file_override=video_file_override,
+            video_file_override=video_file,
         )
     except Exception as exc:
         logger.warning(f"[video.history.detail] Failed to serialize row id={generation_id}: {exc}")

@@ -38,6 +38,10 @@ def _backend_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _generated_root() -> Path:
+    return _backend_root() / "generated_videos"
+
+
 def _iter_artifact_strings(value: Any, *, wanted_keys: set[str] | None = None) -> list[str]:
     """Recursively collect artifact-looking string values from nested JSON."""
     out: list[str] = []
@@ -101,11 +105,14 @@ def _resolve_existing_local_path(path_value: str | None) -> str | None:
     raw = str(path_value).strip()
     if not raw or raw.startswith(("http://", "https://", "data:")):
         return None
+    if raw.startswith(("[", "{")):
+        return None
 
     # Remove query/hash if any accidentally came from a URL-like local value.
     raw = raw.split("?", 1)[0].split("#", 1)[0]
     p = Path(raw)
     backend = _backend_root()
+    generated_root = _generated_root().resolve()
 
     candidates = []
     if p.is_absolute():
@@ -121,11 +128,24 @@ def _resolve_existing_local_path(path_value: str | None) -> str | None:
 
     for candidate in candidates:
         try:
-            if candidate.exists() and candidate.is_file() and candidate.stat().st_size > 0:
-                return str(candidate)
+            resolved = candidate.resolve()
+            if generated_root not in resolved.parents:
+                continue
+            if resolved.exists() and resolved.is_file() and resolved.stat().st_size > 0:
+                return str(resolved)
         except Exception:
             continue
     return None
+
+
+def _relative_generated_asset_path(path_value: str | None) -> str | None:
+    resolved = _resolve_existing_local_path(path_value)
+    if not resolved:
+        return None
+    try:
+        return str(Path(resolved).relative_to(_generated_root().resolve())).replace("\\", "/")
+    except Exception:
+        return None
 
 
 def _valid_generation_video_path(generation: Generation | None) -> str | None:
@@ -157,7 +177,7 @@ async def _finalize_generation_video_artifact(
         if not resolved:
             continue
         if generation is not None:
-            generation.video_file = resolved
+            generation.video_file = _relative_generated_asset_path(resolved) or resolved
             generation.video_run_id = generation.video_run_id or job.run_id
             generation.status = "success"
             generation.error_message = None
@@ -165,7 +185,7 @@ async def _finalize_generation_video_artifact(
                 for thumb in _candidate_thumbnail_paths(*payloads):
                     resolved_thumb = _resolve_existing_local_path(thumb)
                     if resolved_thumb:
-                        generation.video_thumbnail = resolved_thumb
+                        generation.video_thumbnail = _relative_generated_asset_path(resolved_thumb) or resolved_thumb
                         break
         print(f"[VIDEO_FINALIZE] generation.video_file backfilled from HMR artifact: {resolved}")
         await session.flush()

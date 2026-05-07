@@ -1180,8 +1180,25 @@ class TestHMRUISmokePreflight:
 # ===========================================================================
 
 class TestRunwayMLClientQuotaDetection:
-    def test_402_raises_quota_error(self):
+    def test_blocked_runway_uses_local_fallback_without_network_call(self, monkeypatch, tmp_path):
         from utils.runwayml_client import RunwayMLClient
+
+        monkeypatch.setenv("ALLOW_PAID_PROVIDERS", "0")
+        monkeypatch.setenv("ALLOW_RUNWAYML", "0")
+
+        with patch("utils.runwayml_client.requests.post") as mock_post:
+            client = RunwayMLClient(api_key="test_key", model="gen4_turbo")
+            output = client.generate_video("test prompt")
+
+        mock_post.assert_not_called()
+        assert output.endswith(".mp4")
+        assert Path(output).exists()
+
+    def test_402_raises_quota_error(self, monkeypatch):
+        from utils.runwayml_client import RunwayMLClient
+
+        monkeypatch.setenv("ALLOW_PAID_PROVIDERS", "1")
+        monkeypatch.setenv("ALLOW_RUNWAYML", "1")
 
         mock_response = MagicMock()
         mock_response.status_code = 402
@@ -1192,8 +1209,11 @@ class TestRunwayMLClientQuotaDetection:
             with pytest.raises(RunwayMLQuotaError):
                 client.generate_video("test prompt")
 
-    def test_400_with_credits_message_raises_quota_error(self):
+    def test_400_with_credits_message_raises_quota_error(self, monkeypatch):
         from utils.runwayml_client import RunwayMLClient
+
+        monkeypatch.setenv("ALLOW_PAID_PROVIDERS", "1")
+        monkeypatch.setenv("ALLOW_RUNWAYML", "1")
 
         mock_response = MagicMock()
         mock_response.status_code = 400
@@ -1204,8 +1224,11 @@ class TestRunwayMLClientQuotaDetection:
             with pytest.raises(RunwayMLQuotaError):
                 client.generate_video("test prompt")
 
-    def test_429_retries_then_raises(self):
+    def test_429_retries_then_raises(self, monkeypatch):
         from utils.runwayml_client import RunwayMLClient
+
+        monkeypatch.setenv("ALLOW_PAID_PROVIDERS", "1")
+        monkeypatch.setenv("ALLOW_RUNWAYML", "1")
 
         mock_response = MagicMock()
         mock_response.status_code = 429
