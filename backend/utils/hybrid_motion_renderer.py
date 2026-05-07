@@ -179,15 +179,17 @@ def _enrich_coffee_savings_scene(scene: Any, idx: int, total: int) -> Any:
     if idx == 0:
         base.update({
             "template": "grocery_receipt_hook",
-            "headline": "This coffee habit adds up",
-            "price_text": "$5 -> $1.2K",
-            "hook_number": "$5 -> $1.2K",
+            "headline": "Coffee habit",
+            "daily_number": "$5/DAY",
+            "yearly_number": "$1,200/YEAR",
+            "price_text": "$1,200/YEAR",
+            "hook_number": "$1,200/YEAR",
             "receipt_price_text": "$5.00",
-            "store_name": "COFFEE RECEIPT",
-            "subline": "quiet workday spend",
-            "receipt_rows": [("workday coffee", "$5.00"), ("monthly total", "$100"), ("yearly total", "$1,200"), ("tips + snacks", "extra")],
-            "visual_description": "coffee cup receipt bold proof card yearly cost reveal",
-            "caption_text": text or "This coffee habit quietly costs more than you think.",
+            "store_name": "COFFEE HABIT",
+            "subline": "before tips + snacks",
+            "receipt_rows": [("workday coffee", "$5.00"), ("monthly total", "$100"), ("yearly total", "$1,200")],
+            "visual_description": "clean bold finance hook card five dollars a day twelve hundred a year",
+            "caption_text": "This coffee habit quietly adds up.",
             "force_template_background": True,
         })
     elif is_cta:
@@ -201,31 +203,39 @@ def _enrich_coffee_savings_scene(scene: Any, idx: int, total: int) -> Any:
     elif idx == 1:
         base.update({
             "template": "money_shock_math",
-            "number": "$100/mo",
-            "monthly_number": "$100/mo",
-            "formula": "$5 x 20 workdays",
+            "label": "MONTHLY MATH",
+            "number": "$100/MONTH",
+            "monthly_number": "$100/MONTH",
+            "formula": "$5 x 20 WORKDAYS",
+            "subline": "every workday coffee run",
             "headline": "Workday coffee becomes a bill",
             "visual_description": "monthly coffee total calculator card",
-            "caption_text": text or "Five dollars every workday becomes about one hundred dollars a month.",
+            "caption_text": "Five dollars every workday becomes a monthly bill.",
         })
     elif idx == 2:
         base.update({
             "template": "comparison_split",
-            "comparison_title": "MONTHLY COFFEE",
-            "savings_number": "$40/mo",
-            "headline": "Two skipped coffees moves fast",
-            "visual_description": "coffee shop receipt compared with savings phone",
-            "caption_text": text or "Skip two coffees a week and the savings start showing up.",
+            "comparison_title": "COFFEE SHOP vs HOME BREW",
+            "shop_label": "COFFEE SHOP",
+            "shop_number": "$100/mo",
+            "home_label": "HOME BREW",
+            "home_number": "$20/mo",
+            "savings_number": "SAVE $80/mo",
+            "subline": "same habit, cheaper route",
+            "headline": "Same habit, cheaper route",
+            "visual_description": "coffee shop versus home brew monthly cost comparison save eighty dollars",
+            "caption_text": "Same habit, cheaper route.",
         })
     else:
         base.update({
             "template": "grocery_savings_payoff",
             "number": "$1,200/year",
             "payoff_number": "$1,200/year",
-            "subline": "before tips, snacks, delivery",
+            "label": "12 MONTHS LATER",
+            "subline": "gone before tips + snacks",
             "headline": "That small habit became a yearly number",
             "visual_description": "yearly savings reveal phone dashboard coffee receipt",
-            "caption_text": text or "That is twelve hundred dollars a year before tips, snacks, or delivery fees.",
+            "caption_text": "That is twelve hundred dollars a year.",
         })
     return base
 

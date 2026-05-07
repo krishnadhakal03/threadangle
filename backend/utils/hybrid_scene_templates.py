@@ -390,60 +390,53 @@ def grocery_receipt_hook(frame_idx: int, scene_progress: float, canvas: np.ndarr
                 "real_asset_primary_visual": True,
             },
         }
-    animated_background(canvas, scene_progress, ((30, 36, 34), (70, 82, 62)))
+    animated_background(canvas, scene_progress, ((8, 15, 20), (22, 70, 62)))
     image = to_pil(canvas).convert("RGBA")
     draw = ImageDraw.Draw(image, "RGBA")
     area = safe_area(w, h)
-    _draw_realistic_grocery_props(image, area, scene_progress)
 
-    snap = ease_out(min(1.0, scene_progress / 0.30))
-    receipt_w = int(w * 0.54)
-    receipt_h = int(h * 0.62)
-    rx = area.right - receipt_w - int(w * 0.01) + int(w * 0.10 * (1 - snap))
-    ry = int(h * 0.20 - h * 0.025 * (1 - snap))
-    shadow = (rx + int(w * 0.025), ry + int(h * 0.025), rx + receipt_w + int(w * 0.025), ry + receipt_h + int(h * 0.025))
-    draw_rounded_rect(draw, shadow, max(18, int(w * 0.035)), (0, 0, 0, 76), None, 1)
-    receipt = (rx, ry, rx + receipt_w, ry + receipt_h)
-    _draw_paper_texture(draw, receipt)
+    for i in range(5):
+        alpha = int(34 + 20 * math.sin(scene_progress * math.tau + i))
+        x = int(w * (0.12 + i * 0.18))
+        draw.line((x, int(h * 0.10), x + int(w * 0.18), int(h * 0.90)), fill=(115, 231, 185, max(12, alpha)), width=max(1, int(w * 0.004)))
 
-    store = _scene_text(scene_config, "store_name", default="MARKET RECEIPT")
-    loss_number = _scene_text(scene_config, "price_text", "hook_number", default="$2,080/year")
-    title_font = fit_font(draw, store, max(22, int(w * 0.048)), receipt_w - int(w * 0.10), min_size=max(16, int(w * 0.034)), bold=True)
-    draw.text((rx + int(w * 0.05), ry + int(h * 0.045)), store, font=title_font, fill=(55, 48, 42))
-    draw.text((rx + int(w * 0.05), ry + int(h * 0.085)), "weekly repeat items", font=pil_font(max(15, int(w * 0.033)), bold=False), fill=(110, 96, 80))
-    rows = scene_config.get("receipt_rows") or [("snacks", "$11.80"), ("brand cereal", "$8.49"), ("drinks", "$13.20"), ("extras", "$6.51")]
-    row_font = pil_font(max(15, int(w * 0.034)), bold=False)
-    y = ry + int(h * 0.155)
-    for idx, row in enumerate(rows[:5]):
-        label, value = row
-        draw.text((rx + int(w * 0.05), y), str(label).upper(), font=row_font, fill=(68, 58, 48))
-        value_font = pil_font(max(15, int(w * 0.036)), bold=True)
-        vw, _ = text_size(draw, str(value), value_font)
-        draw.text((rx + receipt_w - vw - int(w * 0.05), y), str(value), font=value_font, fill=(68, 58, 48))
-        y += int(h * 0.055)
-        if idx < 4:
-            draw.line((rx + int(w * 0.045), y - int(h * 0.018), rx + receipt_w - int(w * 0.045), y - int(h * 0.018)), fill=(190, 178, 156, 85), width=1)
+    snap = ease_out(min(1.0, scene_progress / 0.34))
+    panel = (area.left + int(w * 0.02), int(h * 0.115), area.right - int(w * 0.02), int(h * 0.655))
+    panel_shift = int(h * 0.045 * (1.0 - snap))
+    panel = (panel[0], panel[1] + panel_shift, panel[2], panel[3] + panel_shift)
+    draw_rounded_rect(draw, (panel[0] + int(w * 0.018), panel[1] + int(h * 0.018), panel[2] + int(w * 0.018), panel[3] + int(h * 0.018)), 34, (0, 0, 0, 82), None, 1)
+    draw_rounded_rect(draw, panel, 34, (246, 250, 246), (188, 212, 204), max(1, int(w * 0.004)))
 
-    box_y = ry + int(h * 0.43)
-    number_font = fit_font(draw, loss_number, max(44, int(w * 0.116)), receipt_w - int(w * 0.12), min_size=max(30, int(w * 0.070)), bold=True)
-    nw, nh = text_size(draw, loss_number, number_font)
-    number_box = (rx + int(w * 0.045), box_y, rx + receipt_w - int(w * 0.045), box_y + nh + int(h * 0.055))
-    draw_rounded_rect(draw, number_box, max(14, int(w * 0.030)), (255, 245, 232), (207, 74, 58), max(2, int(w * 0.006)))
-    draw.text((number_box[0] + max(0, (number_box[2] - number_box[0] - nw) // 2), number_box[1] + int(h * 0.022)), loss_number, font=number_font, fill=(178, 48, 42))
-    sub = _scene_text(scene_config, "subline", default="hidden grocery leak")
-    sub_font = fit_font(draw, sub, max(18, int(w * 0.043)), number_box[2] - number_box[0] - int(w * 0.05), min_size=max(14, int(w * 0.032)), bold=True)
-    sw, _ = text_size(draw, sub, sub_font)
-    draw.text((number_box[0] + max(0, (number_box[2] - number_box[0] - sw) // 2), number_box[3] + int(h * 0.018)), sub, font=sub_font, fill=(75, 65, 54))
+    label = _scene_text(scene_config, "store_name", default="COFFEE HABIT")
+    label_font = fit_font(draw, label, max(20, int(w * 0.052)), panel[2] - panel[0] - int(w * 0.12), min_size=max(15, int(w * 0.038)), bold=True)
+    lw, lh = text_size(draw, label, label_font)
+    label_box = ((w - lw) // 2 - int(w * 0.035), panel[1] + int(h * 0.05), (w + lw) // 2 + int(w * 0.035), panel[1] + int(h * 0.05) + lh + int(h * 0.018))
+    draw_rounded_rect(draw, label_box, max(12, int(w * 0.026)), (11, 18, 32), None, 1)
+    draw.text(((w - lw) // 2, label_box[1] + int(h * 0.008)), label, font=label_font, fill=(255, 255, 255))
 
-    headline = _scene_text(scene_config, "headline", default="I found a grocery leak")
-    report = draw_text_block(
-        image,
-        headline,
-        (area.left, int(h * 0.16), rx - int(w * 0.04), int(h * 0.42)),
-        font_size=max(32, int(w * 0.086)),
-        accent=(255, 226, 142),
-        max_lines=3,
-    )
+    daily = _scene_text(scene_config, "daily_number", default="$5/DAY")
+    yearly = _scene_text(scene_config, "yearly_number", "hook_number", default="$1,200/YEAR")
+    daily_font = fit_font(draw, daily, max(60, int(w * 0.19)), panel[2] - panel[0] - int(w * 0.12), min_size=max(42, int(w * 0.12)), bold=True)
+    yearly_font = fit_font(draw, yearly, max(54, int(w * 0.155)), panel[2] - panel[0] - int(w * 0.12), min_size=max(36, int(w * 0.10)), bold=True)
+    dw, dh = text_size(draw, daily, daily_font)
+    yw, yh = text_size(draw, yearly, yearly_font)
+    daily_y = panel[1] + int(h * 0.16)
+    yearly_y = panel[1] + int(h * 0.32)
+    daily_box = ((w - dw) // 2, daily_y, (w + dw) // 2, daily_y + dh)
+    yearly_box = ((w - yw) // 2, yearly_y, (w + yw) // 2, yearly_y + yh)
+    draw.text((daily_box[0], daily_box[1]), daily, font=daily_font, fill=(16, 24, 39))
+    draw.line((panel[0] + int(w * 0.12), panel[1] + int(h * 0.285), panel[2] - int(w * 0.12), panel[1] + int(h * 0.285)), fill=(207, 219, 214), width=max(2, int(w * 0.006)))
+    draw.text((yearly_box[0], yearly_box[1]), yearly, font=yearly_font, fill=(184, 48, 44))
+
+    sub = _scene_text(scene_config, "subline", default="before tips + snacks")
+    sub_font = fit_font(draw, sub, max(18, int(w * 0.052)), panel[2] - panel[0] - int(w * 0.14), min_size=max(14, int(w * 0.036)), bold=True)
+    sw, sh = text_size(draw, sub, sub_font)
+    sub_box = ((w - sw) // 2 - int(w * 0.035), panel[1] + int(h * 0.465), (w + sw) // 2 + int(w * 0.035), panel[1] + int(h * 0.465) + sh + int(h * 0.022))
+    draw_rounded_rect(draw, sub_box, max(12, int(w * 0.028)), (224, 247, 237), None, 1)
+    draw.text(((w - sw) // 2, sub_box[1] + int(h * 0.010)), sub, font=sub_font, fill=(11, 95, 72))
+
+    number_box = yearly_box
+    report = {"boxes": [label_box, daily_box, yearly_box, sub_box], "cropped": False}
     canvas[:] = to_cv_rgb(image)
     return {
         "template": "grocery_receipt_hook",
@@ -684,37 +677,37 @@ def grocery_savings_payoff(frame_idx: int, scene_progress: float, canvas: np.nda
                     "resolved_capture_used": True,
                 },
             }
-    animated_background(canvas, scene_progress, ((20, 28, 30), (21, 92, 72)))
+    animated_background(canvas, scene_progress, ((10, 18, 30), (18, 80, 66)))
     image = to_pil(canvas).convert("RGBA")
     draw = ImageDraw.Draw(image, "RGBA")
     area = safe_area(w, h)
-    _draw_realistic_grocery_props(image, area, scene_progress)
 
     reveal = ease_out(min(1.0, scene_progress / 0.50))
-    phone_w = int(w * 0.68)
-    phone_h = int(h * 0.54)
-    px = (w - phone_w) // 2
-    py = int(h * (0.14 + 0.035 * (1 - reveal)))
-    draw.ellipse((px - int(w * 0.05), py + phone_h - int(h * 0.02), px + phone_w + int(w * 0.05), py + phone_h + int(h * 0.06)), fill=(0, 0, 0, 96))
-    draw_rounded_rect(draw, (px, py, px + phone_w, py + phone_h), max(26, int(w * 0.07)), (14, 21, 31), (74, 88, 104), max(2, int(w * 0.006)))
-    screen = (px + int(w * 0.035), py + int(h * 0.04), px + phone_w - int(w * 0.035), py + phone_h - int(h * 0.04))
-    draw_rounded_rect(draw, screen, max(18, int(w * 0.052)), (239, 253, 244), None, 1)
-    draw.text((screen[0] + int(w * 0.05), screen[1] + int(h * 0.045)), "SAVINGS ESTIMATE", font=pil_font(max(17, int(w * 0.045))), fill=(15, 95, 72))
-    number = _scene_text(scene_config, "number", "payoff_number", default="$2,080")
-    num_font = fit_font(draw, number, max(58, int(w * 0.18)), screen[2] - screen[0] - int(w * 0.10), min_size=max(38, int(w * 0.11)), bold=True)
+    panel = (area.left + int(w * 0.025), int(h * 0.145 + h * 0.035 * (1.0 - reveal)), area.right - int(w * 0.025), int(h * 0.665 + h * 0.035 * (1.0 - reveal)))
+    draw_rounded_rect(draw, (panel[0] + int(w * 0.016), panel[1] + int(h * 0.016), panel[2] + int(w * 0.016), panel[3] + int(h * 0.016)), 34, (0, 0, 0, 78), None, 1)
+    draw_rounded_rect(draw, panel, 34, (246, 250, 247), (190, 214, 206), max(1, int(w * 0.004)))
+
+    label = _scene_text(scene_config, "label", default="12 MONTHS LATER")
+    label_font = fit_font(draw, label, max(20, int(w * 0.052)), panel[2] - panel[0] - int(w * 0.12), min_size=max(14, int(w * 0.036)), bold=True)
+    lw, _ = text_size(draw, label, label_font)
+    draw.text(((w - lw) // 2, panel[1] + int(h * 0.055)), label, font=label_font, fill=(58, 69, 83))
+
+    number = _scene_text(scene_config, "number", "payoff_number", default="$1,200/year")
+    num_font = fit_font(draw, number, max(60, int(w * 0.175)), panel[2] - panel[0] - int(w * 0.10), min_size=max(38, int(w * 0.11)), bold=True)
     nw, nh = text_size(draw, number, num_font)
-    num_y = screen[1] + int(h * 0.15)
+    num_y = panel[1] + int(h * 0.175)
     num_box = ((w - nw) // 2, num_y, (w + nw) // 2, num_y + nh)
-    draw.text((num_box[0] + 4, num_box[1] + 5), number, font=num_font, fill=(0, 0, 0, 86))
-    draw.text((num_box[0], num_box[1]), number, font=num_font, fill=(6, 132, 92))
-    sub = _scene_text(scene_config, "subline", default="possible yearly savings")
-    sub_font = fit_font(draw, sub, max(20, int(w * 0.055)), screen[2] - screen[0] - int(w * 0.12), min_size=max(15, int(w * 0.038)), bold=True)
+    draw.text((num_box[0], num_box[1]), number, font=num_font, fill=(184, 48, 44))
+
+    sub = _scene_text(scene_config, "subline", default="gone before tips + snacks")
+    sub_font = fit_font(draw, sub, max(20, int(w * 0.055)), panel[2] - panel[0] - int(w * 0.12), min_size=max(15, int(w * 0.038)), bold=True)
     sw, _ = text_size(draw, sub, sub_font)
     draw.text(((w - sw) // 2, num_box[3] + int(h * 0.025)), sub, font=sub_font, fill=(23, 83, 68))
-    for idx, text in enumerate(["$40/week leak", "AI swap list", "repeatable cart"]):
-        y = screen[1] + int(h * (0.36 + idx * 0.065))
-        draw_rounded_rect(draw, (screen[0] + int(w * 0.055), y, screen[2] - int(w * 0.055), y + int(h * 0.047)), max(9, int(w * 0.020)), (255, 255, 255), (192, 223, 208), 1)
-        draw.text((screen[0] + int(w * 0.082), y + int(h * 0.011)), text, font=pil_font(max(12, int(w * 0.033)), bold=True), fill=(42, 78, 65))
+
+    bar = (panel[0] + int(w * 0.08), panel[3] - int(h * 0.115), panel[2] - int(w * 0.08), panel[3] - int(h * 0.075))
+    draw_rounded_rect(draw, bar, max(8, int(w * 0.018)), (219, 228, 224), None, 1)
+    fill = (bar[0], bar[1], bar[0] + int((bar[2] - bar[0]) * reveal), bar[3])
+    draw_rounded_rect(draw, fill, max(8, int(w * 0.018)), (115, 231, 185), None, 1)
     canvas[:] = to_cv_rgb(image)
     return {
         "template": "grocery_savings_payoff",
@@ -816,43 +809,54 @@ def hook_footage_overlay(frame_idx: int, scene_progress: float, canvas: np.ndarr
 
 def money_shock_math(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
     h, w = canvas.shape[:2]
-    animated_background(canvas, scene_progress, ((30, 20, 18), (76, 42, 30)))
-    image = to_pil(canvas)
+    animated_background(canvas, scene_progress, ((12, 18, 30), (36, 64, 58)))
+    image = to_pil(canvas).convert("RGBA")
     draw = ImageDraw.Draw(image, "RGBA")
     area = safe_area(w, h)
-    card = (area.left, int(h * 0.16), area.right, int(h * 0.70))
-    draw_rounded_rect(draw, card, 38, (248, 250, 252), (226, 232, 240), 3)
-    draw.line((card[0] + 50, card[1] + 170, card[2] - 50, card[1] + 170), fill=(210, 220, 230), width=4)
-    font_label = fit_font(draw, "DAILY COFFEE", 46, card[2] - card[0] - 120, min_size=30, bold=True)
-    number = _scene_text(scene_config, "number", "monthly_number", default="$150/mo")
-    font_num = fit_font(draw, number, 122, card[2] - card[0] - 80, min_size=58, bold=True)
-    draw.text((card[0] + 60, card[1] + 58), "DAILY COFFEE", font=font_label, fill=(58, 69, 83))
+
+    card = (area.left + int(w * 0.02), int(h * 0.125), area.right - int(w * 0.02), int(h * 0.70))
+    draw_rounded_rect(draw, (card[0] + int(w * 0.016), card[1] + int(h * 0.016), card[2] + int(w * 0.016), card[3] + int(h * 0.016)), 34, (0, 0, 0, 80), None, 1)
+    draw_rounded_rect(draw, card, 34, (248, 250, 252), (210, 220, 230), max(1, int(w * 0.004)))
+
+    label = _scene_text(scene_config, "label", default="MONTHLY MATH")
+    label_font = fit_font(draw, label, max(19, int(w * 0.052)), card[2] - card[0] - int(w * 0.12), min_size=max(14, int(w * 0.036)), bold=True)
+    draw.text((card[0] + int(w * 0.06), card[1] + int(h * 0.045)), label, font=label_font, fill=(58, 69, 83))
+
+    dot_progress = ease_out(min(1.0, scene_progress / 0.72))
+    dot_size = max(8, int(w * 0.025))
+    gap = max(10, int(w * 0.022))
+    start_x = card[0] + int(w * 0.075)
+    start_y = card[1] + int(h * 0.12)
+    for i in range(20):
+        col = i % 5
+        row = i // 5
+        x = start_x + col * (dot_size + gap)
+        y = start_y + row * (dot_size + gap)
+        active = i < int(20 * dot_progress)
+        fill = (17, 148, 111) if active else (213, 222, 230)
+        draw.ellipse((x, y, x + dot_size, y + dot_size), fill=fill)
+
+    formula = _scene_text(scene_config, "formula", default="$5 x 20 WORKDAYS")
+    formula_font = fit_font(draw, formula, max(31, int(w * 0.088)), card[2] - card[0] - int(w * 0.12), min_size=max(22, int(w * 0.060)), bold=True)
+    fw, fh = text_size(draw, formula, formula_font)
+    formula_box = ((w - fw) // 2, card[1] + int(h * 0.275), (w + fw) // 2, card[1] + int(h * 0.275) + fh)
+    draw.text((formula_box[0], formula_box[1]), formula, font=formula_font, fill=(18, 24, 38))
+
+    number = _scene_text(scene_config, "number", "monthly_number", default="$100/MONTH")
+    font_num = fit_font(draw, number, max(56, int(w * 0.16)), card[2] - card[0] - int(w * 0.10), min_size=max(36, int(w * 0.10)), bold=True)
     nw, nh = text_size(draw, number, font_num)
-    num_box = ((w - nw) // 2, card[1] + 225, (w + nw) // 2, card[1] + 225 + nh)
+    num_y = card[1] + int(h * 0.395)
+    num_box = ((w - nw) // 2, num_y, (w + nw) // 2, num_y + nh)
     draw.text((num_box[0], num_box[1]), number, font=font_num, fill=(184, 48, 44))
-    formula = _scene_text(scene_config, "formula", default="$5 x 30 = $150/mo")
-    font_formula = fit_font(draw, formula, 58, card[2] - card[0] - 80, min_size=34, bold=True)
-    fw, _ = text_size(draw, formula, font_formula)
-    draw.text(((w - fw) // 2, card[1] + 430), formula, font=font_formula, fill=(20, 26, 36))
-    if scene_progress < 0.28:
-        burst = ease_out(scene_progress / 0.28)
-        band_x = int(-w * 0.45 + burst * w * 1.1)
-        draw.polygon(
-            [
-                (band_x, int(h * 0.02)),
-                (band_x + int(w * 0.36), int(h * 0.02)),
-                (band_x + int(w * 0.52), int(h * 0.36)),
-                (band_x + int(w * 0.16), int(h * 0.36)),
-            ],
-            fill=(255, 255, 255, 52),
-        )
-        tag = "PRICE CHECK"
-        tag_font = pil_font(max(18, int(w * 0.055)), bold=True)
-        tag_w, tag_h = text_size(draw, tag, tag_font)
-        tag_box = (area.left, int(h * 0.075), area.left + tag_w + int(w * 0.08), int(h * 0.075) + tag_h + int(h * 0.035))
-        draw_rounded_rect(draw, tag_box, max(10, int(w * 0.03)), (15, 23, 42), (115, 231, 185), max(1, int(w * 0.006)))
-        draw.text((tag_box[0] + int(w * 0.035), tag_box[1] + int(h * 0.015)), tag, font=tag_font, fill=(255, 255, 255))
-    canvas[:] = to_cv(image)
+
+    explainer = _scene_text(scene_config, "subline", default="every workday coffee run")
+    explainer_font = fit_font(draw, explainer, max(16, int(w * 0.044)), card[2] - card[0] - int(w * 0.14), min_size=max(13, int(w * 0.032)), bold=True)
+    ew, eh = text_size(draw, explainer, explainer_font)
+    explainer_box = ((w - ew) // 2 - int(w * 0.035), card[3] - int(h * 0.085), (w + ew) // 2 + int(w * 0.035), card[3] - int(h * 0.085) + eh + int(h * 0.020))
+    draw_rounded_rect(draw, explainer_box, max(10, int(w * 0.025)), (234, 246, 242), None, 1)
+    draw.text(((w - ew) // 2, explainer_box[1] + int(h * 0.009)), explainer, font=explainer_font, fill=(30, 94, 74))
+
+    canvas[:] = to_cv_rgb(image)
     return {
         "template": "money_shock_math",
         "key_number_boxes": [num_box],
@@ -908,90 +912,56 @@ def ai_prompt_mock(frame_idx: int, scene_progress: float, canvas: np.ndarray, sc
 
 def comparison_split(frame_idx: int, scene_progress: float, canvas: np.ndarray, scene_config: dict[str, Any]) -> dict[str, Any]:
     h, w = canvas.shape[:2]
-    animated_background(canvas, scene_progress, ((13, 20, 28), (28, 70, 58)))
+    animated_background(canvas, scene_progress, ((9, 16, 28), (20, 72, 61)))
     image = to_pil(canvas).convert("RGBA")
     draw = ImageDraw.Draw(image, "RGBA")
     area = safe_area(w, h)
-    cache = scene_cache(scene_config)
 
-    for i in range(7):
-        y = int(h * (0.10 + i * 0.115) + math.sin(scene_progress * math.tau + i) * h * 0.012)
-        x = int(w * ((0.08 + i * 0.17 + scene_progress * 0.16) % 1.05) - w * 0.08)
-        draw.line((x, y, x + int(w * 0.32), y - int(h * 0.035)), fill=(255, 255, 255, 30), width=max(1, int(w * 0.008)))
+    title = _scene_text(scene_config, "comparison_title", default="COFFEE SHOP vs HOME BREW")
+    title_font = fit_font(draw, title, max(23, int(w * 0.060)), area.right - area.left, min_size=max(16, int(w * 0.040)), bold=True)
+    tw, th = text_size(draw, title, title_font)
+    draw.text(((w - tw) // 2, int(h * 0.105)), title, font=title_font, fill=(232, 246, 241))
 
-    desk_shadow = (area.left - int(w * 0.08), int(h * 0.70), area.right + int(w * 0.10), int(h * 0.88))
-    draw.ellipse(desk_shadow, fill=(0, 0, 0, 70))
+    shop_label = _scene_text(scene_config, "shop_label", default="COFFEE SHOP")
+    shop_value = _scene_text(scene_config, "shop_number", default="$100/mo")
+    home_label = _scene_text(scene_config, "home_label", default="HOME BREW")
+    home_value = _scene_text(scene_config, "home_number", default="$20/mo")
+    save_text = _scene_text(scene_config, "savings_number", default="SAVE $80/mo")
 
-    scan = ease_in_out(scene_progress)
-    receipt_w = int(w * 0.43)
-    receipt_h = int(h * 0.55)
-    receipt_x = area.left + int(math.sin(scene_progress * math.tau) * w * 0.006)
-    receipt_y = int(h * 0.16)
-    receipt = (receipt_x, receipt_y, receipt_x + receipt_w, receipt_y + receipt_h)
-    receipt_patch = cache.get("comparison_receipt_patch")
-    if receipt_patch is None:
-        receipt_patch = Image.new("RGBA", (receipt_w, receipt_h), (0, 0, 0, 0))
-        patch_draw = ImageDraw.Draw(receipt_patch, "RGBA")
-        draw_rounded_rect(patch_draw, (0, 0, receipt_w, receipt_h), max(14, int(w * 0.045)), (253, 250, 242), (235, 229, 214), max(1, int(w * 0.006)))
-        receipt_title = _scene_text(scene_config, "comparison_title", default="MONTHLY COST")
-        title_font = fit_font(patch_draw, receipt_title, max(15, int(w * 0.052)), receipt_w - int(w * 0.09), min_size=max(12, int(w * 0.038)), bold=True)
-        patch_draw.text((int(w * 0.045), int(h * 0.04)), receipt_title, font=title_font, fill=(90, 76, 62))
-        row_font = pil_font(max(13, int(w * 0.045)), bold=False)
-        rows = [("Coffee shop", "$150"), ("Home brew", "$20"), ("Difference", "$130")]
-        for idx, (label, value) in enumerate(rows):
-            y = int(h * (0.15 + idx * 0.105))
-            patch_draw.text((int(w * 0.045), y), label, font=row_font, fill=(64, 54, 44))
-            value_font = pil_font(max(14, int(w * 0.052)), bold=True)
-            vw, _ = text_size(patch_draw, value, value_font)
-            color = (190, 56, 48) if idx == 0 else ((9, 130, 96) if idx == 1 else (20, 25, 35))
-            patch_draw.text((receipt_w - vw - int(w * 0.045), y), value, font=value_font, fill=color)
-            patch_draw.line((int(w * 0.04), y + int(h * 0.058), receipt_w - int(w * 0.04), y + int(h * 0.058)), fill=(224, 216, 200), width=max(1, int(w * 0.003)))
-        cache["comparison_receipt_patch"] = receipt_patch
-    paste_overlay_clipped(image, receipt_patch, (receipt_x, receipt_y))
-    scan_y = receipt_y + int(receipt_h * (0.16 + 0.62 * scan))
-    draw.rectangle((receipt_x, scan_y - int(h * 0.005), receipt[2], scan_y + int(h * 0.005)), fill=(115, 231, 185, 58))
+    card_gap = int(h * 0.025)
+    card_h = int(h * 0.145)
+    top = int(h * 0.195)
+    cards = [
+        ((area.left + int(w * 0.02), top, area.right - int(w * 0.02), top + card_h), shop_label, shop_value, (184, 48, 44)),
+        ((area.left + int(w * 0.02), top + card_h + card_gap, area.right - int(w * 0.02), top + card_h * 2 + card_gap), home_label, home_value, (8, 132, 94)),
+    ]
+    for idx, (card, label, value, color) in enumerate(cards):
+        enter = ease_out(min(1.0, max(0.0, scene_progress - idx * 0.10) / 0.45))
+        y_shift = int(h * 0.025 * (1.0 - enter))
+        card = (card[0], card[1] + y_shift, card[2], card[3] + y_shift)
+        draw_rounded_rect(draw, (card[0] + int(w * 0.012), card[1] + int(h * 0.010), card[2] + int(w * 0.012), card[3] + int(h * 0.010)), 26, (0, 0, 0, 58), None, 1)
+        draw_rounded_rect(draw, card, 26, (248, 250, 252), (205, 216, 224), max(1, int(w * 0.004)))
+        label_font = fit_font(draw, label, max(20, int(w * 0.052)), int((card[2] - card[0]) * 0.48), min_size=max(14, int(w * 0.036)), bold=True)
+        draw.text((card[0] + int(w * 0.055), card[1] + int(h * 0.047)), label, font=label_font, fill=(58, 69, 83))
+        value_font = fit_font(draw, value, max(35, int(w * 0.098)), int((card[2] - card[0]) * 0.40), min_size=max(24, int(w * 0.065)), bold=True)
+        vw, vh = text_size(draw, value, value_font)
+        draw.text((card[2] - vw - int(w * 0.055), card[1] + (card_h - vh) // 2), value, font=value_font, fill=color)
 
-    phone_w = int(w * 0.36)
-    phone_h = int(h * 0.54)
-    phone_enter = ease_out(min(1.0, scene_progress / 0.55))
-    phone_x = area.right - phone_w + int(w * 0.06 * (1.0 - phone_enter))
-    phone_y = int(h * 0.19)
-    phone = (phone_x, phone_y, phone_x + phone_w, phone_y + phone_h)
-    save_text = _scene_text(scene_config, "savings_number", default="$130/mo")
-    phone_patch = cache.get("comparison_phone_patch")
-    if phone_patch is None:
-        phone_patch = Image.new("RGBA", (phone_w, phone_h), (0, 0, 0, 0))
-        phone_draw = ImageDraw.Draw(phone_patch, "RGBA")
-        draw_rounded_rect(phone_draw, (0, 0, phone_w, phone_h), max(18, int(w * 0.06)), (12, 18, 30), (77, 92, 110), max(1, int(w * 0.006)))
-        screen_box = (int(w * 0.025), int(h * 0.035), phone_w - int(w * 0.025), phone_h - int(h * 0.035))
-        draw_rounded_rect(phone_draw, screen_box, max(14, int(w * 0.045)), (235, 253, 246), None, 1)
-        phone_draw.text((int(w * 0.055), int(h * 0.07)), "AI SWAP", font=pil_font(max(15, int(w * 0.055))), fill=(7, 90, 68))
-        save_font = fit_font(phone_draw, save_text, max(24, int(w * 0.115)), phone_w - int(w * 0.10), min_size=max(18, int(w * 0.078)), bold=True)
-        sw, sh = text_size(phone_draw, save_text, save_font)
-        local_save_x = max(0, (phone_w - sw) // 2)
-        local_save_y = int(h * 0.18)
-        phone_draw.text((local_save_x + 2, local_save_y + 3), save_text, font=save_font, fill=(0, 0, 0, 90))
-        phone_draw.text((local_save_x, local_save_y), save_text, font=save_font, fill=(5, 150, 105))
-        phone_draw.text((int(w * 0.06), local_save_y + sh + int(h * 0.035)), "same habit", font=pil_font(max(13, int(w * 0.045))), fill=(7, 90, 68))
-        phone_draw.text((int(w * 0.06), local_save_y + sh + int(h * 0.085)), "cheaper path", font=pil_font(max(13, int(w * 0.045))), fill=(7, 90, 68))
-        cache["comparison_phone_patch"] = phone_patch
-        cache["comparison_phone_number_metrics"] = (sw, sh)
-    else:
-        sw, sh = cache.get("comparison_phone_number_metrics", (0, 0))
-    paste_overlay_clipped(image, phone_patch, (phone_x, phone_y))
-    save_x = phone_x + max(0, (phone_w - sw) // 2)
-    save_y = phone_y + int(h * 0.18)
-    num_box = (save_x, save_y, save_x + sw, save_y + sh)
+    save_reveal = ease_out(min(1.0, max(0.0, scene_progress - 0.22) / 0.50))
+    badge_h = int(h * 0.135)
+    badge = (area.left + int(w * 0.05), int(h * 0.555), area.right - int(w * 0.05), int(h * 0.555) + badge_h)
+    badge = (badge[0], badge[1] + int(h * 0.035 * (1.0 - save_reveal)), badge[2], badge[3] + int(h * 0.035 * (1.0 - save_reveal)))
+    draw_rounded_rect(draw, (badge[0] + int(w * 0.014), badge[1] + int(h * 0.012), badge[2] + int(w * 0.014), badge[3] + int(h * 0.012)), 30, (0, 0, 0, 70), None, 1)
+    draw_rounded_rect(draw, badge, 30, (115, 231, 185), None, 1)
+    save_font = fit_font(draw, save_text, max(42, int(w * 0.115)), badge[2] - badge[0] - int(w * 0.10), min_size=max(28, int(w * 0.076)), bold=True)
+    sw, sh = text_size(draw, save_text, save_font)
+    num_box = ((w - sw) // 2, badge[1] + (badge_h - sh) // 2, (w + sw) // 2, badge[1] + (badge_h + sh) // 2)
+    draw.text((num_box[0], num_box[1]), save_text, font=save_font, fill=(6, 42, 34))
 
-    pulse = 0.5 + 0.5 * math.sin(scene_progress * math.tau * 2.0)
-    chip_text = "SAVE"
-    chip_font = pil_font(max(14, int(w * 0.05)), bold=True)
-    cw, ch = text_size(draw, chip_text, chip_font)
-    chip_x = int(w * (0.47 + 0.025 * math.sin(scene_progress * math.tau)))
-    chip_y = int(h * (0.64 + 0.02 * pulse))
-    chip = (chip_x, chip_y, chip_x + cw + int(w * 0.08), chip_y + ch + int(h * 0.035))
-    draw_rounded_rect(draw, chip, max(12, int(w * 0.04)), (14, 22, 38), (115, 231, 185), max(1, int(w * 0.006)))
-    draw.text((chip_x + int(w * 0.04), chip_y + int(h * 0.014)), chip_text, font=chip_font, fill=(255, 255, 255))
+    sub = _scene_text(scene_config, "subline", default="same habit, cheaper route")
+    sub_font = fit_font(draw, sub, max(16, int(w * 0.044)), area.right - area.left - int(w * 0.12), min_size=max(13, int(w * 0.034)), bold=True)
+    sub_w, _ = text_size(draw, sub, sub_font)
+    draw.text(((w - sub_w) // 2, badge[3] + int(h * 0.030)), sub, font=sub_font, fill=(206, 237, 226))
 
     canvas[:] = to_cv_rgb(image)
     return {
@@ -1000,7 +970,7 @@ def comparison_split(frame_idx: int, scene_progress: float, canvas: np.ndarray, 
         "cropped": False,
         "motion_score": 0.9,
         "postability_signals": {
-            "scene_treatment": "receipt_scan_ai_overlay",
+            "scene_treatment": "coffee_cost_comparison",
             "foreground_layers": 3,
         },
     }

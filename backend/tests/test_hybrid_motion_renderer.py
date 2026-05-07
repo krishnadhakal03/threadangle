@@ -126,6 +126,19 @@ def test_coffee_savings_story_uses_premium_local_cards(tmp_path, monkeypatch):
     assert "Hook:" not in captions
     assert "Body:" not in captions
     assert "CTA:" not in captions
+    enriched = hmr._enrich_no_spend_explainer_scenes(scenes, script)
+    assert enriched[0]["daily_number"] == "$5/DAY"
+    assert enriched[0]["yearly_number"] == "$1,200/YEAR"
+    assert enriched[0]["subline"] == "before tips + snacks"
+    assert enriched[1]["formula"] == "$5 x 20 WORKDAYS"
+    assert enriched[1]["monthly_number"] == "$100/MONTH"
+    assert enriched[2]["shop_number"] == "$100/mo"
+    assert enriched[2]["home_number"] == "$20/mo"
+    assert enriched[2]["savings_number"] == "SAVE $80/mo"
+    assert "AI SWAP" not in json.dumps(enriched)
+    assert "$150" not in json.dumps(enriched)
+    assert "$130" not in json.dumps(enriched)
+    assert "quiet workday" not in json.dumps(enriched).lower()
 
 
 def test_scene_reports_include_media_classification(tmp_path, monkeypatch):
