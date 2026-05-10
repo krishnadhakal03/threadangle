@@ -42,7 +42,7 @@ def verify_env_variables():
         if not value or 'your-' in value.lower():
             missing.append(var)
         else:
-            present.append(f"  [OK] {var} = {value[:8]}...")
+            present.append(f"  [OK] {var} is set")
     print("\n=== THREADANGLE ENV CHECK ===")
     for p in present:
         print(p)
@@ -66,7 +66,8 @@ app.add_middleware(
         "https://localhost:5174",
         "http://localhost:5175",
         "http://localhost:3000",
-        "https://kriangle.com"
+        "https://kriangle.com",
+        "https://www.kriangle.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -95,6 +96,11 @@ app.include_router(ab_testing_router)
 @app.get("/")
 async def root():
     return {"message": "Threadangle API is running"}
+
+
+@app.get("/api/health")
+async def health():
+    return {"status": "ok"}
 
 
 @app.on_event("startup")

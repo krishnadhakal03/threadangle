@@ -1,4 +1,5 @@
 import json
+import asyncio
 import logging
 import os
 import time as _time
@@ -46,6 +47,13 @@ from utils.video_pipeline import (
 from routes.voice_gen import generate_voice, VoiceGenRequest
 from utils.youtube_seo import generate_youtube_metadata
 from auth import get_current_user
+from utils.render_guard import (
+    acquire_render_slot,
+    assert_video_duration_allowed,
+    release_render_slot,
+    require_video_render_access,
+    run_with_render_timeout,
+)
 
 router = APIRouter()
 
@@ -875,7 +883,7 @@ async def schedule_auto_post(
 async def generate_free_video(
     request: GenerateVideoRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_video_render_access),
 ):
     authoritative_script = (request.full_script or request.script or "").strip()
     if not authoritative_script and not (request.hook and request.body and request.cta):
@@ -898,6 +906,7 @@ async def generate_free_video(
         duration_seconds = int(max(scene.end for scene in timeline_scenes))
     else:
         duration_seconds = resolve_duration_seconds(parts, request.duration_seconds)
+    assert_video_duration_allowed(duration_seconds)
     run_id = new_run_id()
     # Per-request dry_run overrides env; falls back to env flag
     dry_run = request.dry_run if request.dry_run is not None else is_video_dry_run_enabled()
@@ -952,7 +961,7 @@ async def generate_free_video(
             ),
         )
 
-
+    render_token = await acquire_render_slot()
     try:
         scenes = timeline_scenes or build_scene_plan(parts, duration_seconds=duration_seconds)
         for scene in scenes:
@@ -975,23 +984,30 @@ async def generate_free_video(
             effective_max_scenes = 3
         else:
             effective_max_scenes = 0
-        scenes = await fetch_scene_clips(
-            scenes,
-            run_id=run_id,
-            mode=scene_mode,
-            available_credits=available_credits,
-            runway_model=request.runway_model,
-            max_scenes=effective_max_scenes,
+        scenes = await run_with_render_timeout(
+            fetch_scene_clips(
+                scenes,
+                run_id=run_id,
+                mode=scene_mode,
+                available_credits=available_credits,
+                runway_model=request.runway_model,
+                max_scenes=effective_max_scenes,
+            )
         )
         if not audio_path:
             print("[TTS] No valid audio file, video will be silent.")
-        render_result = assemble_video(scenes, run_id=run_id, audio_path=audio_path)
+        render_result = await run_with_render_timeout(
+            asyncio.to_thread(assemble_video, scenes, run_id=run_id, audio_path=audio_path)
+        )
     except RuntimeError as exc:
+        await release_render_slot(render_token)
         print(f"[VIDEO] Runtime error: {exc}")
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
+        await release_render_slot(render_token)
         print(f"[VIDEO] Exception: {exc}")
         raise HTTPException(status_code=500, detail=f"Video generation failed: {str(exc)}")
+    await release_render_slot(render_token)
 
     ffmpeg_warning = render_result.get("ffmpeg_error")
     filename = Path(render_result["video_path"]).name
@@ -1987,14 +2003,18 @@ async def generate_video_from_approved_preview(
                 if not stock_scenes:
                     raise RuntimeError("Failed to build stock timeline from approved scenes")
 
-                stock_scenes = await fetch_scene_clips(
-                    stock_scenes,
-                    run_id=run_id,
-                    mode="stock",
-                    available_credits=0.0,
+                stock_scenes = await run_with_render_timeout(
+                    fetch_scene_clips(
+                        stock_scenes,
+                        run_id=run_id,
+                        mode="stock",
+                        available_credits=0.0,
+                    )
                 )
                 _upd(75, "Assembling footage video...", "render")
-                render_result = assemble_video(stock_scenes, run_id=run_id, audio_path=audio_path)
+                render_result = await run_with_render_timeout(
+                    asyncio.to_thread(assemble_video, stock_scenes, run_id=run_id, audio_path=audio_path)
+                )
 
                 seo_metadata = None
                 if script_text:
@@ -2162,11 +2182,14 @@ async def generate_video_from_approved_preview(
 async def generate_video_from_preview(
     request: GenerateFromPreviewRequest,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_video_render_access),
     db: AsyncSession = Depends(get_db),
 ):
     if not request.approved_scenes:
         raise HTTPException(status_code=400, detail="No approved scenes provided")
+    assert_video_duration_allowed(
+        sum(float(scene.get("duration", 0) or 0) for scene in request.approved_scenes)
+    )
 
     if not request.dry_run:
         preview_script = (request.full_script or request.script or "").strip()
@@ -2205,8 +2228,10 @@ async def generate_video_from_preview(
         "updated_at": datetime.utcnow().isoformat(),
     }
 
+    render_token = await acquire_render_slot()
     background_tasks.add_task(
-        generate_video_from_approved_preview,
+        _generate_video_from_preview_with_slot,
+        render_token,
         generation_id=generation_id,
         preview_id=request.preview_id,
         scenes=request.approved_scenes,
@@ -2226,6 +2251,31 @@ async def generate_video_from_preview(
         "message": "Video generation started in background.",
         "dry_run": request.dry_run,
     }
+
+
+async def _generate_video_from_preview_with_slot(render_token: object, **kwargs):
+    try:
+        try:
+            await run_with_render_timeout(generate_video_from_approved_preview(**kwargs))
+        except TimeoutError as exc:
+            generation_id = kwargs.get("generation_id")
+            if generation_id:
+                async with AsyncSessionLocal() as session:
+                    from sqlalchemy import update as sa_update
+                    await session.execute(
+                        sa_update(Generation)
+                        .where(Generation.id == generation_id)
+                        .values(status="failed", error_message=f"Video render exceeded timeout: {exc}"[:500])
+                    )
+                    await session.commit()
+                _task_progress[int(generation_id)] = {
+                    "percent": 0,
+                    "message": "Video render exceeded timeout.",
+                    "step": "error",
+                    "updated_at": datetime.utcnow().isoformat(),
+                }
+    finally:
+        await release_render_slot(render_token)
 
 
 @router.get("/video/progress/{generation_id}")
@@ -2893,6 +2943,7 @@ async def _generate_single_video_background(batch_id: str, request: GenerateVide
             authoritative_script = (request.full_script or request.script or "").strip()
             parts = parse_script(full_script=authoritative_script, hook=request.hook, body=request.body, cta=request.cta)
             duration_seconds = resolve_duration_seconds(parts, request.duration_seconds)
+            assert_video_duration_allowed(duration_seconds)
             run_id = new_run_id()
             script_text = authoritative_script or f"{parts.hook} {parts.body} {parts.cta}"
 
@@ -2911,13 +2962,17 @@ async def _generate_single_video_background(batch_id: str, request: GenerateVide
                     on_screen_text=getattr(scene, "on_screen_text", "") or getattr(scene, "subtitle", ""),
                     visual_description=getattr(scene, "visual_description", ""),
                 )
-            scenes = await fetch_scene_clips(
-                scenes,
-                run_id=run_id,
-                mode="stock" if dry_run else (request.scene_mode or "auto"),
-                available_credits=float(os.getenv("RUNWAYML_AVAILABLE_CREDITS", "750")),
+            scenes = await run_with_render_timeout(
+                fetch_scene_clips(
+                    scenes,
+                    run_id=run_id,
+                    mode="stock" if dry_run else (request.scene_mode or "auto"),
+                    available_credits=float(os.getenv("RUNWAYML_AVAILABLE_CREDITS", "750")),
+                )
             )
-            render_result = assemble_video(scenes, run_id=run_id, audio_path=audio_path)
+            render_result = await run_with_render_timeout(
+                asyncio.to_thread(assemble_video, scenes, run_id=run_id, audio_path=audio_path)
+            )
 
             runway_credits_used = round(sum(float(getattr(s, "credits_cost", 0.0) or 0.0) for s in scenes), 2)
             if dry_run:
@@ -2963,26 +3018,58 @@ async def _generate_single_video_background(batch_id: str, request: GenerateVide
 async def generate_batch_videos(
     request: BatchVideoRequest,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_video_render_access),
 ):
     if not request.topics:
         raise HTTPException(status_code=400, detail="Please provide at least one topic")
+    assert_video_duration_allowed(request.duration)
 
     batch_id = str(uuid.uuid4())
-    for topic in request.topics:
-        task_request = GenerateVideoRequest(
-            script=topic,
-            duration_seconds=request.duration,
-            scene_mode=request.style,
-            niche=request.niche,
-        )
-        background_tasks.add_task(_generate_single_video_background, batch_id, task_request, current_user.id)
+    render_token = await acquire_render_slot()
+    background_tasks.add_task(
+        _generate_batch_videos_with_slot,
+        render_token,
+        batch_id,
+        request,
+        current_user.id,
+    )
 
     return {
         "batch_id": batch_id,
         "total_videos": len(request.topics),
         "status": "queued",
     }
+
+
+async def _generate_batch_videos_with_slot(
+    render_token: object,
+    batch_id: str,
+    request: BatchVideoRequest,
+    user_id: int,
+):
+    try:
+        for topic in request.topics:
+            task_request = GenerateVideoRequest(
+                script=topic,
+                duration_seconds=request.duration,
+                scene_mode=request.style,
+                niche=request.niche,
+            )
+            try:
+                await run_with_render_timeout(
+                    _generate_single_video_background(batch_id, task_request, user_id)
+                )
+            except TimeoutError as exc:
+                async with AsyncSessionLocal() as session:
+                    from sqlalchemy import update as sa_update
+                    await session.execute(
+                        sa_update(Generation)
+                        .where(and_(Generation.batch_id == batch_id, Generation.status == "processing"))
+                        .values(status="failed", error_message=f"Video render exceeded timeout: {exc}"[:500])
+                    )
+                    await session.commit()
+    finally:
+        await release_render_slot(render_token)
 
 
 @router.get("/video/batch/{batch_id}")

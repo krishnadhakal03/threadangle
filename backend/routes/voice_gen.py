@@ -1,7 +1,8 @@
 import os
 import requests
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from utils.render_guard import require_video_render_access
 
 
 def _post_process_voice(file_path: str) -> None:
@@ -123,7 +124,11 @@ def test_elevenlabs_key():
         return {"status": "exception", "error": str(ex)}
 
 
-@router.post("/voice", response_model=VoiceGenResponse)
+@router.post(
+    "/voice",
+    response_model=VoiceGenResponse,
+    dependencies=[Depends(require_video_render_access)],
+)
 def generate_voice(req: VoiceGenRequest):
     import hashlib, tempfile, subprocess
     api_key = os.getenv("ELEVENLABS_API_KEY")

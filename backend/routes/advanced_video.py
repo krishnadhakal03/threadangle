@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Body, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Body, BackgroundTasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Dict
@@ -10,6 +10,13 @@ from utils.captions import build_word_timestamps, build_srt_from_words
 from utils.pattern_interrupts import build_interrupt_schedule
 from utils.batch_queue import create_job, run_job, BATCH_JOBS
 from utils.optimization import ingest_metrics_csv, summarize_metrics
+from utils.render_guard import (
+    acquire_render_slot,
+    assert_video_duration_allowed,
+    release_render_slot,
+    require_video_render_access,
+    run_with_render_timeout,
+)
 
 router = APIRouter(prefix="/api/generate", tags=["ViralVideo"])
 
@@ -70,7 +77,8 @@ async def download_thumbnail(filename: str):
 
 
 @router.post("/captions")
-async def generate_captions(req: CaptionsRequest):
+async def generate_captions(req: CaptionsRequest, _=Depends(require_video_render_access)):
+    assert_video_duration_allowed(req.duration_seconds)
     words = build_word_timestamps(req.text, req.duration_seconds)
     srt = build_srt_from_words(words)
     return {
@@ -81,19 +89,40 @@ async def generate_captions(req: CaptionsRequest):
 
 
 @router.post("/pattern-interrupts")
-async def generate_interrupts(req: InterruptRequest):
+async def generate_interrupts(req: InterruptRequest, _=Depends(require_video_render_access)):
+    assert_video_duration_allowed(req.duration_seconds)
     return {
         "interrupts": build_interrupt_schedule(req.duration_seconds, req.min_gap, req.max_gap)
     }
 
 
 @router.post("/batch")
-async def create_batch_job(req: BatchRequest, background_tasks: BackgroundTasks):
+async def create_batch_job(
+    req: BatchRequest,
+    background_tasks: BackgroundTasks,
+    _=Depends(require_video_render_access),
+):
     if not req.items:
         raise HTTPException(status_code=400, detail="Batch items cannot be empty.")
+    for item in req.items:
+        assert_video_duration_allowed(item.get("duration_seconds"))
+    token = await acquire_render_slot()
     job_id = create_job(req.items)
-    background_tasks.add_task(run_job, job_id)
+    background_tasks.add_task(_run_job_with_slot, job_id, token)
     return {"job_id": job_id, "status": "queued"}
+
+
+async def _run_job_with_slot(job_id: str, token: object):
+    try:
+        try:
+            await run_with_render_timeout(run_job(job_id))
+        except TimeoutError as exc:
+            job = BATCH_JOBS.get(job_id)
+            if job is not None:
+                job["status"] = "failed"
+                job["error"] = f"Video render exceeded timeout: {exc}"
+    finally:
+        await release_render_slot(token)
 
 
 @router.get("/batch/{job_id}")

@@ -37,6 +37,13 @@ from utils.video_pipeline import (
     new_run_id,
 )
 from routes.voice_gen import generate_voice, VoiceGenRequest
+from utils.render_guard import (
+    acquire_render_slot,
+    assert_video_duration_allowed,
+    release_render_slot,
+    require_video_render_access,
+    run_with_render_timeout,
+)
 
 router = APIRouter(prefix="/api/batch", tags=["Batch Generation"])
 
@@ -69,7 +76,7 @@ async def create_batch(
     req: BatchRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_video_render_access),
 ):
     """
     Queue a batch of videos. Returns immediately with batch_id.
@@ -82,6 +89,8 @@ async def create_batch(
         raise HTTPException(status_code=400, detail="topics list cannot be empty")
     if len(req.topics) > 30:
         raise HTTPException(status_code=400, detail="Maximum 30 topics per batch")
+    assert_video_duration_allowed(req.duration_seconds)
+    token = await acquire_render_slot()
 
     batch_id = f"batch_{uuid.uuid4().hex[:12]}"
     batch = BatchJob(
@@ -95,19 +104,17 @@ async def create_batch(
     db.add(batch)
     await db.commit()
 
-    # Queue each topic as an independent background task
-    for idx, topic in enumerate(req.topics):
-        background_tasks.add_task(
-            _generate_one,
-            batch_id=batch_id,
-            topic=topic,
-            niche=req.niche,
-            duration_seconds=req.duration_seconds,
-            scene_mode=req.scene_mode,
-            runway_model=req.runway_model,
-            user_id=current_user.id,
-            position=idx,
-        )
+    background_tasks.add_task(
+        _generate_batch_with_slot,
+        token=token,
+        batch_id=batch_id,
+        topics=req.topics,
+        niche=req.niche,
+        duration_seconds=req.duration_seconds,
+        scene_mode=req.scene_mode,
+        runway_model=req.runway_model,
+        user_id=current_user.id,
+    )
 
     return {
         "batch_id": batch_id,
@@ -116,6 +123,44 @@ async def create_batch(
         "estimated_minutes": round(len(req.topics) * 2.5, 1),
         "poll_url": f"/api/batch/{batch_id}",
     }
+
+
+async def _generate_batch_with_slot(
+    token: object,
+    batch_id: str,
+    topics: list[str],
+    niche: str,
+    duration_seconds: int,
+    scene_mode: str,
+    runway_model: str,
+    user_id: int,
+):
+    try:
+        for idx, topic in enumerate(topics):
+            try:
+                await run_with_render_timeout(
+                    _generate_one(
+                        batch_id=batch_id,
+                        topic=topic,
+                        niche=niche,
+                        duration_seconds=duration_seconds,
+                        scene_mode=scene_mode,
+                        runway_model=runway_model,
+                        user_id=user_id,
+                        position=idx,
+                    )
+                )
+            except TimeoutError as exc:
+                async with AsyncSessionLocal() as db:
+                    result = await db.execute(select(BatchJob).where(BatchJob.id == batch_id))
+                    batch = result.scalar_one_or_none()
+                    if batch:
+                        batch.status = "failed"
+                        batch.error_message = f"Video render exceeded timeout: {exc}"[:500]
+                        await db.commit()
+                break
+    finally:
+        await release_render_slot(token)
 
 
 @router.get("/")
@@ -230,6 +275,7 @@ async def _generate_one(
             script_text = topic   # Topic IS the hook text for batch mode
             parts = parse_script(script_text)
             duration = resolve_duration_seconds(parts, duration_seconds)
+            assert_video_duration_allowed(duration)
             scenes = build_scene_plan(parts, duration)
             run_id = new_run_id()
 
@@ -242,15 +288,19 @@ async def _generate_one(
                 print(f"[BATCH] TTS failed for '{topic}': {tts_exc}")
 
             # ── Fetch scene clips (stock-only by default, no credits risk) ─
-            scenes = await fetch_scene_clips(
-                scenes,
-                run_id=run_id,
-                mode=scene_mode,
-                runway_model=runway_model,
+            scenes = await run_with_render_timeout(
+                fetch_scene_clips(
+                    scenes,
+                    run_id=run_id,
+                    mode=scene_mode,
+                    runway_model=runway_model,
+                )
             )
 
             # ── Assemble video ─────────────────────────────────────────────
-            render = assemble_video(scenes, run_id=run_id, audio_path=audio_path)
+            render = await run_with_render_timeout(
+                asyncio.to_thread(assemble_video, scenes, run_id=run_id, audio_path=audio_path)
+            )
 
             runway_credits = round(
                 sum(float(getattr(s, "credits_cost", 0.0) or 0.0) for s in scenes), 2

@@ -1,0 +1,87 @@
+name: Deploy Threadangle
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy Threadangle to EC2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Deploy Threadangle only
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          THREADANGLE_DEPLOY_BRANCH: ${{ secrets.THREADANGLE_DEPLOY_BRANCH }}
+        run: |
+          set -euo pipefail
+
+          ssh -o StrictHostKeyChecking=accept-new "$EC2_USER@$EC2_HOST" "THREADANGLE_DEPLOY_BRANCH='$THREADANGLE_DEPLOY_BRANCH' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          APP_DIR="/var/www/threadangle"
+          BACKEND_DIR="$APP_DIR/backend"
+          FRONTEND_DIR="$APP_DIR/frontend"
+          PUBLIC_DIR="$APP_DIR/public"
+          DEPLOY_BRANCH="${THREADANGLE_DEPLOY_BRANCH:-feature/batch6-hook-visual}"
+
+          echo "Pre-deploy WealthPro checks"
+          curl -fsS --max-time 15 "http://wealthproplus.com/" >/dev/null || true
+          systemctl is-active --quiet wealthpro.service
+
+          test "$APP_DIR" = "/var/www/threadangle"
+          test "$BACKEND_DIR" = "/var/www/threadangle/backend"
+          test "$PUBLIC_DIR" = "/var/www/threadangle/public"
+
+          cd "$APP_DIR"
+          git fetch origin "$DEPLOY_BRANCH"
+          git checkout "$DEPLOY_BRANCH"
+          git pull --ff-only origin "$DEPLOY_BRANCH"
+
+          cd "$BACKEND_DIR"
+          python3 -m venv venv
+          . venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+          cd "$FRONTEND_DIR"
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+          npm run build
+
+          BUILD_DIR=""
+          if [ -d dist ]; then
+            BUILD_DIR="dist"
+          elif [ -d build ]; then
+            BUILD_DIR="build"
+          else
+            echo "No frontend dist or build directory found" >&2
+            exit 1
+          fi
+
+          mkdir -p "$PUBLIC_DIR"
+          rsync -a --delete "$BUILD_DIR"/ "$PUBLIC_DIR"/
+
+          sudo systemctl restart threadangle.service
+          sudo nginx -t
+          sudo systemctl reload nginx
+
+          curl -fsS --max-time 30 "http://kriangle.com/" >/dev/null
+          curl -fsS --max-time 30 "http://127.0.0.1:8010/api/health" >/dev/null || \
+            curl -fsS --max-time 30 "http://127.0.0.1:8010/" >/dev/null
+
+          echo "Post-deploy WealthPro checks"
+          curl -fsS --max-time 15 "http://wealthproplus.com/" >/dev/null || true
+          systemctl is-active --quiet wealthpro.service
+          REMOTE

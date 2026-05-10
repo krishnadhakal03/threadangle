@@ -28,7 +28,10 @@ DATABASE_URL = _normalize_database_url(
     os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./threadangle.db")
 )
 
-_echo = os.getenv("SQLALCHEMY_ECHO", "1") == "1"
+_echo = (
+    os.getenv("SQLALCHEMY_ECHO", "0") == "1"
+    and os.getenv("ENVIRONMENT", "development").strip().lower() != "production"
+)
 
 # SQLite + async + frequent polling/background tasks can easily exhaust the default
 # QueuePool (size=5, overflow=10). For local SQLite we prefer NullPool so each session

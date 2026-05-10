@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from utils.openai_client import chat_complete
+from utils.render_guard import assert_video_duration_allowed, require_video_render_access
 
 router = APIRouter(prefix="/api/generate", tags=["ViralVideo"])
 
@@ -33,8 +34,13 @@ class ViralScriptResponse(BaseModel):
     raw_script: str
     prompt_used: str
 
-@router.post("/viral-script", response_model=ViralScriptResponse)
+@router.post(
+    "/viral-script",
+    response_model=ViralScriptResponse,
+    dependencies=[Depends(require_video_render_access)],
+)
 async def generate_viral_script(req: ViralScriptRequest):
+    assert_video_duration_allowed(req.duration)
     niche = req.niche.lower()
     if niche not in NICHE_TEMPLATES:
         raise HTTPException(status_code=400, detail="Unsupported niche")
