@@ -41,6 +41,28 @@ const PrivateRoute = ({ children }) => {
   return user ? children : <Navigate to="/login" />;
 };
 
+const BetaWaitlist = () => {
+  const { user, logout } = useAuth();
+  const message = user?.beta_waitlist_message || 'Thank you for signing up. Threadangle is currently in private beta testing. You have been added to our priority waitlist. Our admin will contact you shortly, and we will email you once Threadangle officially opens.';
+
+  return (
+    <div className="min-h-screen bg-[#09090B] text-white flex items-center justify-center px-5">
+      <div className="w-full max-w-xl border border-[#27272A] bg-[#111113] rounded-lg p-8">
+        <ThreadangleLogo size={36} showText={true} textSize={20} />
+        <h1 className="mt-8 text-2xl font-bold">Private beta waitlist</h1>
+        <p className="mt-4 text-[#D4D4D8] leading-relaxed">{message}</p>
+        <p className="mt-4 text-sm text-[#8B949E]">Signed in as {user?.email}</p>
+        <button
+          onClick={logout}
+          className="mt-8 px-4 py-2 rounded-lg border border-[#27272A] bg-[#18181B] text-[#E4E4E7] hover:text-white hover:bg-[#27272A] transition-colors"
+        >
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const DashboardLayout = () => {
     const [activeTab, setActiveTab] = useState('dashboard');
     const { user, loading } = useAuth();
@@ -64,6 +86,9 @@ const DashboardLayout = () => {
     }, [user]);
 
     if (loading) return null;
+    if (user?.beta_waitlist_mode && !user?.beta_full_access) {
+        return <BetaWaitlist />;
+    }
 
     const handleTabChange = (tab) => {
         setActiveTab(tab);

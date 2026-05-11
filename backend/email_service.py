@@ -252,6 +252,40 @@ async def send_admin_test_email(to_email: str):
     return await send_email_async(to_email, subject, html)
 
 # EMAIL 1 — WELCOME EMAIL
+def _parse_email_list(value: str) -> list[str]:
+    return [email.strip() for email in str(value or "").split(",") if email.strip()]
+
+
+async def send_beta_signup_notifications(user_email: str, signup_method: str = "email/password", name: str | None = None):
+    recipients = _parse_email_list(
+        os.getenv("BETA_SIGNUP_NOTIFY_EMAILS", "krishna.dhakal03@gmail.com,info@kriangle.com")
+    )
+    if not recipients:
+        return False
+
+    timestamp = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    safe_name = (name or "").strip() or "Not provided"
+    subject = "New Threadangle beta signup"
+    body = f"""<p class="greeting">New beta signup</p>
+
+<div class="info-box">
+  <p><strong>User email:</strong> {user_email}</p>
+  <p><strong>Signup method:</strong> {signup_method}</p>
+  <p><strong>Name:</strong> {safe_name}</p>
+  <p><strong>Timestamp:</strong> {timestamp}</p>
+  <p><strong>Source/domain:</strong> kriangle.com</p>
+</div>
+
+<p style="font-size: 14px; color: #71717A;">This notification was generated automatically by Threadangle beta waitlist mode.</p>"""
+    html = get_email_wrapper(subject, body, "Internal beta signup notification")
+
+    sent_any = False
+    for recipient in recipients:
+        ok = await send_email_async(recipient, subject, html)
+        sent_any = sent_any or bool(ok)
+    return sent_any
+
+
 async def send_welcome_email(user_email):
     subject = get_email_setting("email_subject_welcome", "Your Threadangle account is ready ⚡")
     body_fallback = """<p class="greeting">Welcome to Threadangle! 🎉</p>

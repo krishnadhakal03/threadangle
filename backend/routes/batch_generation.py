@@ -25,7 +25,7 @@ from sqlalchemy import select
 
 from database import get_db, AsyncSessionLocal
 from models import User, Generation, BatchJob
-from auth import get_current_user
+from auth import require_full_access_user
 
 from utils.video_pipeline import (
     parse_script,
@@ -166,7 +166,7 @@ async def _generate_batch_with_slot(
 @router.get("/")
 async def list_batches(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
 ):
     """List all batch jobs for the current user."""
     result = await db.execute(
@@ -194,7 +194,7 @@ async def list_batches(
 async def get_batch_status(
     batch_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
 ):
     """Poll batch progress. Returns per-video status and download URLs."""
     result = await db.execute(

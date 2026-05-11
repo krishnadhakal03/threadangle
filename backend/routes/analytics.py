@@ -14,7 +14,7 @@ from sqlalchemy import select, func
 
 from database import get_db
 from models import User, Generation, BatchJob
-from auth import get_current_user
+from auth import require_full_access_user
 
 router = APIRouter(prefix="/api/analytics", tags=["Analytics"])
 
@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/analytics", tags=["Analytics"])
 @router.get("/dashboard")
 async def analytics_dashboard(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
 ):
     """
     Full analytics overview.
@@ -146,7 +146,7 @@ async def analytics_videos(
     limit: int = 20,
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
 ):
     """Per-video performance table, paginated."""
     result = await db.execute(
@@ -196,7 +196,7 @@ async def update_video_performance(
     retention_pct: float = 0.0,
     ctr_pct: float = 0.0,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
 ):
     """
     Update real-world performance data for a video.

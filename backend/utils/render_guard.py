@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import Depends, HTTPException, status
 
-from auth import get_current_user
+from auth import BETA_WAITLIST_MESSAGE, get_current_user, user_has_beta_full_access
 from models import User
 
 
@@ -82,6 +82,12 @@ async def require_video_render_access(
         )
 
     user_email = str(getattr(current_user, "email", "") or "").strip().lower()
+    if not user_has_beta_full_access(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=BETA_WAITLIST_MESSAGE,
+        )
+
     if not user_email or user_email != allowed_video_render_email():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

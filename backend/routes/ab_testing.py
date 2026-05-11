@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from auth import get_current_user
+from auth import require_full_access_user
 from database import get_db
 from models import ABTest, User
 from utils.ai import generate_content  # existing Claude wrapper — text only
@@ -84,7 +84,7 @@ class RecordWinnerRequest(BaseModel):
 async def generate_variants(
     req: GenerateVariantsRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
 ):
     """
     Generate 3 script variants with different hook styles for A/B testing.
@@ -144,7 +144,7 @@ async def generate_variants(
 async def list_ab_tests(
     limit: int = 20,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
 ):
     """List user's A/B tests, most recent first."""
     result = await db.execute(
@@ -173,7 +173,7 @@ async def list_ab_tests(
 async def get_ab_test(
     test_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
 ):
     """Return full detail including all variant scripts."""
     result = await db.execute(
@@ -207,7 +207,7 @@ async def record_winner(
     test_id: str,
     req: RecordWinnerRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
 ):
     """Record which hook style won the A/B test."""
     result = await db.execute(

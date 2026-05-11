@@ -10,9 +10,18 @@ import os
 
 from database import get_db
 from models import User
-from auth import get_password_hash, verify_password, create_access_token, get_current_user
+from auth import (
+    BETA_WAITLIST_MESSAGE,
+    beta_waitlist_mode_enabled,
+    get_password_hash,
+    user_has_beta_full_access,
+    verify_password,
+    create_access_token,
+    get_current_user,
+    require_full_access_user,
+)
 import secrets
-from email_service import send_welcome_email, send_password_reset_email
+from email_service import send_welcome_email, send_password_reset_email, send_beta_signup_notifications
 from utils.site_settings import get_plan_limit
 
 router = APIRouter()
@@ -20,6 +29,39 @@ router = APIRouter()
 class UserAuth(BaseModel):
     email: EmailStr
     password: str
+
+
+def _auth_user_payload(user: User):
+    beta_full_access = user_has_beta_full_access(user)
+    return {
+        "email": user.email,
+        "name": user.name,
+        "plan": user.plan,
+        "usage_count": user.usage_count,
+        "onboarding_completed": bool(user.onboarding_completed),
+        "beta_full_access": beta_full_access,
+        "beta_waitlist_mode": beta_waitlist_mode_enabled(),
+        "beta_waitlist_message": None if beta_full_access else BETA_WAITLIST_MESSAGE,
+    }
+
+
+async def _send_signup_notifications_safely(user: User, signup_method: str):
+    try:
+        await send_beta_signup_notifications(
+            user_email=user.email,
+            signup_method=signup_method,
+            name=user.name,
+        )
+    except Exception as exc:
+        print(f"[beta-signup] notification failed for {user.email}: {type(exc).__name__}")
+
+
+def _schedule_signup_notifications(user: User, signup_method: str):
+    try:
+        import asyncio
+        asyncio.create_task(_send_signup_notifications_safely(user, signup_method))
+    except Exception as exc:
+        print(f"[beta-signup] notification scheduling failed: {type(exc).__name__}")
 
 @router.post("/signup")
 async def signup(user_data: UserAuth, db: AsyncSession = Depends(get_db)):
@@ -49,16 +91,12 @@ async def signup(user_data: UserAuth, db: AsyncSession = Depends(get_db)):
         asyncio.create_task(send_welcome_email(new_user.email))
     except Exception:
         pass
+    _schedule_signup_notifications(new_user, "email/password")
     
     token = create_access_token(data={"sub": new_user.email})
     return {
         "token": token,
-        "user": {
-            "email": new_user.email, 
-            "plan": new_user.plan, 
-            "usage_count": new_user.usage_count,
-            "onboarding_completed": bool(new_user.onboarding_completed)
-        }
+        "user": _auth_user_payload(new_user),
     }
 
 @router.post("/google")
@@ -109,6 +147,7 @@ async def google_auth(token_data: dict = Body(...), db: AsyncSession = Depends(g
             asyncio.create_task(send_welcome_email(user.email))
         except Exception:
             pass
+        _schedule_signup_notifications(user, "Google")
     else:
         if not user.google_id:
             user.google_id = google_id
@@ -120,7 +159,7 @@ async def google_auth(token_data: dict = Body(...), db: AsyncSession = Depends(g
         "access_token": token,
         "token_type": "bearer",
         "is_new_user": is_new_user,
-        "user": {"email": email, "name": name},
+        "user": _auth_user_payload(user),
     }
 
 @router.post("/login")
@@ -134,12 +173,7 @@ async def login(user_data: UserAuth, db: AsyncSession = Depends(get_db)):
     token = create_access_token(data={"sub": user.email})
     return {
         "token": token,
-        "user": {
-            "email": user.email, 
-            "plan": user.plan, 
-            "usage_count": user.usage_count,
-            "onboarding_completed": bool(user.onboarding_completed)
-        }
+        "user": _auth_user_payload(user),
     }
 
 @router.get("/me")
@@ -161,6 +195,9 @@ async def get_me(current_user: User = Depends(get_current_user), db: AsyncSessio
         "successful_generations_count": current_user.successful_generations_count or 0,
         "voice_samples_submitted": bool(current_user.voice_samples_submitted),
         "niche_tags": current_user.niche_tags or None,
+        "beta_full_access": user_has_beta_full_access(current_user),
+        "beta_waitlist_mode": beta_waitlist_mode_enabled(),
+        "beta_waitlist_message": None if user_has_beta_full_access(current_user) else BETA_WAITLIST_MESSAGE,
     }
 
 class UpdateNameReq(BaseModel):
@@ -276,7 +313,7 @@ class SaveVoiceSamplesReq(BaseModel):
     sample_text: str = ""
 
 @router.post("/save-voice-samples")
-async def save_voice_samples(req: SaveVoiceSamplesReq, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def save_voice_samples(req: SaveVoiceSamplesReq, current_user: User = Depends(require_full_access_user), db: AsyncSession = Depends(get_db)):
     import asyncio
     from utils.voice_learning import analyze_user_voice_from_samples
 

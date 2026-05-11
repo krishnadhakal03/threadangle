@@ -46,7 +46,7 @@ from utils.video_pipeline import (
 # Import the TTS function directly
 from routes.voice_gen import generate_voice, VoiceGenRequest
 from utils.youtube_seo import generate_youtube_metadata
-from auth import get_current_user
+from auth import require_full_access_user
 from utils.render_guard import (
     acquire_render_slot,
     assert_video_duration_allowed,
@@ -401,7 +401,7 @@ class BatchVideoRequest(BaseModel):
 
 
 @router.get("/video/mode")
-async def get_video_mode(current_user: User = Depends(get_current_user)):
+async def get_video_mode(current_user: User = Depends(require_full_access_user)):
     dry_run = is_video_dry_run_enabled()
     return {
         "dry_run": dry_run,
@@ -472,7 +472,7 @@ async def run_generate(
     platforms: list = Body(..., embed=True),
     tone: str = Body(..., embed=True),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_full_access_user)
 ):
     # Check Usage Limits (CMS-driven plan limits + per-user custom override)
     plan_limit = await get_plan_limit(db, current_user.plan)
@@ -748,7 +748,7 @@ async def run_generate(
 async def update_edited_content(
     generation_id: int,
     req: EditContentRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Save user's edited version of a generated content field."""
@@ -789,7 +789,7 @@ async def update_edited_content(
 
 @router.get("/history")
 async def get_history(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(
@@ -841,7 +841,7 @@ class ScheduleAutoPostRequest(BaseModel):
 async def schedule_auto_post(
     generation_id: int,
     request: ScheduleAutoPostRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -1185,7 +1185,7 @@ async def generate_free_video(
 @router.post("/video/plan")
 async def plan_video_content(
     request: GenerateVideoPlanRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
 ):
     script_seed = (request.full_script or request.script or "").strip()
     if not script_seed and request.hook and request.body and request.cta:
@@ -1575,7 +1575,7 @@ Return keys:
 @router.post("/video/preview")
 async def generate_video_preview(
     request: VideoPreviewRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
 ):
     authoritative_script = (request.full_script or request.script or "").strip()
     if not authoritative_script and request.hook and request.body and request.cta:
@@ -1704,7 +1704,7 @@ async def generate_video_preview(
 @router.post("/regenerate-scene-image")
 async def regenerate_scene_image(
     request: RegenerateSceneImageRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
 ):
     manager = CharacterManager()
     result = await manager.get_character_image_result(
@@ -2296,7 +2296,7 @@ async def _generate_video_from_preview_with_slot(render_token: object, **kwargs)
 @router.get("/video/progress/{generation_id}")
 async def get_video_generation_progress(
     generation_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Poll the progress of a background video generation task.
@@ -2375,7 +2375,7 @@ async def get_video_generation_progress(
 
 
 @router.get("/video/characters/presets")
-async def get_character_presets(current_user: User = Depends(get_current_user)):
+async def get_character_presets(current_user: User = Depends(require_full_access_user)):
     manager = CharacterManager()
     return {"presets": list(manager.preset_library.values())}
 
@@ -2383,7 +2383,7 @@ async def get_character_presets(current_user: User = Depends(get_current_user)):
 @router.post("/regenerate-thumbnail")
 async def regenerate_thumbnail(
     request: RegenerateThumbnailRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
     db: AsyncSession = Depends(get_db),
 ):
     row = await db.execute(
@@ -2419,7 +2419,7 @@ async def regenerate_thumbnail(
 @router.post("/video/editor/save")
 async def save_video_editor_changes(
     request: SaveVideoEditorRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
     db: AsyncSession = Depends(get_db),
 ):
     row = await db.execute(
@@ -2475,7 +2475,7 @@ async def save_video_editor_changes(
 
 @router.get("/video/history")
 async def get_video_history(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -2613,7 +2613,7 @@ def _serialize_video_history_row_fallback(g: Generation, warning: Optional[str] 
 @router.get("/video/history/{generation_id}")
 async def get_video_history_item(
     generation_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
     db: AsyncSession = Depends(get_db),
 ):
     row = await db.execute(
@@ -2646,7 +2646,7 @@ def _delete_generation_assets(generation: Generation) -> None:
 
 async def _delete_video_history_item_core(
     generation_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
     db: AsyncSession = Depends(get_db),
 ):
     row = await db.execute(
@@ -2679,7 +2679,7 @@ async def _delete_video_history_item_core(
 @router.delete("/video/{generation_id}")
 async def delete_video_history_item(
     generation_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
     db: AsyncSession = Depends(get_db),
 ):
     return await _delete_video_history_item_core(generation_id=generation_id, current_user=current_user, db=db)
@@ -2688,7 +2688,7 @@ async def delete_video_history_item(
 @router.delete("/video/history/{generation_id}")
 async def delete_video_history_item_legacy_path(
     generation_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
     db: AsyncSession = Depends(get_db),
 ):
     # Backward-compatible alias path for clients that target /video/history/{id}.
@@ -2698,7 +2698,7 @@ async def delete_video_history_item_legacy_path(
 @router.get("/analytics")
 async def get_analytics(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
 ):
     total_videos_result = await db.execute(
         select(func.count(Generation.id)).where(
@@ -2749,7 +2749,7 @@ async def get_analytics(
 
 
 @router.get("/video/credits")
-async def get_api_credit_balances(current_user: User = Depends(get_current_user)):
+async def get_api_credit_balances(current_user: User = Depends(require_full_access_user)):
     """Return live API credit balances for Runway ML, ElevenLabs, and Gemini. Cached 5 min."""
     from utils.runwayml_client import RUNWAYML_API_VERSION
 
@@ -3050,7 +3050,7 @@ async def _generate_batch_videos_with_slot(
 async def get_batch_status(
     batch_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
 ):
     rows = await db.execute(
         select(Generation)
@@ -3084,7 +3084,7 @@ async def get_batch_status(
 @router.get("/video/download/{filename:path}")
 async def download_generated_video(
     filename: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
     db: AsyncSession = Depends(get_db),
 ):
     if not filename.lower().endswith(".mp4"):
@@ -3126,7 +3126,7 @@ async def download_generated_video(
 @router.get("/video/thumbnail/{filename:path}")
 async def download_generated_thumbnail(
     filename: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_full_access_user),
     db: AsyncSession = Depends(get_db),
 ):
     if not filename.lower().endswith((".jpg", ".jpeg", ".png")):

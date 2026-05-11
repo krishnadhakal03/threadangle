@@ -17,6 +17,7 @@ from utils.render_guard import (
     require_video_render_access,
     run_with_render_timeout,
 )
+from auth import require_full_access_user
 
 router = APIRouter(prefix="/api/generate", tags=["ViralVideo"])
 
@@ -50,7 +51,7 @@ class BatchRequest(BaseModel):
 
 
 @router.post("/seo")
-async def generate_seo_content(req: SeoRequest):
+async def generate_seo_content(req: SeoRequest, _=Depends(require_full_access_user)):
     try:
         return generate_seo(req.topic, req.niche, req.keywords)
     except Exception as exc:
@@ -58,7 +59,7 @@ async def generate_seo_content(req: SeoRequest):
 
 
 @router.post("/thumbnail")
-async def generate_thumbnail_image(req: ThumbnailRequest):
+async def generate_thumbnail_image(req: ThumbnailRequest, _=Depends(require_full_access_user)):
     model = req.model or "gpt-image-1"
     try:
         return generate_thumbnail(req.topic, req.niche, model=model)
@@ -67,7 +68,7 @@ async def generate_thumbnail_image(req: ThumbnailRequest):
 
 
 @router.get("/thumbnail/download/{filename}")
-async def download_thumbnail(filename: str):
+async def download_thumbnail(filename: str, _=Depends(require_full_access_user)):
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename.")
     file_path = Path(__file__).resolve().parents[1] / "generated_videos" / "thumbnails" / filename
@@ -126,7 +127,7 @@ async def _run_job_with_slot(job_id: str, token: object):
 
 
 @router.get("/batch/{job_id}")
-async def get_batch_job(job_id: str):
+async def get_batch_job(job_id: str, _=Depends(require_full_access_user)):
     job = BATCH_JOBS.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
@@ -134,7 +135,7 @@ async def get_batch_job(job_id: str):
 
 
 @router.post("/metrics/upload")
-async def upload_metrics(csv_text: str = Body(..., embed=True)):
+async def upload_metrics(csv_text: str = Body(..., embed=True), _=Depends(require_full_access_user)):
     try:
         return ingest_metrics_csv(csv_text)
     except Exception as exc:
@@ -142,5 +143,5 @@ async def upload_metrics(csv_text: str = Body(..., embed=True)):
 
 
 @router.get("/metrics/summary")
-async def get_metrics_summary():
+async def get_metrics_summary(_=Depends(require_full_access_user)):
     return summarize_metrics()
