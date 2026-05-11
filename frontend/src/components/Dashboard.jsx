@@ -2382,6 +2382,8 @@ export default function Dashboard({ mode = 'generate' }) {
           status: queue.status,
           message: queue.message || 'Video generation started in background.',
           dry_run: queue.dry_run,
+          effective_dry_run: queue.effective_dry_run,
+          warning: queue.diagnostic_reason,
           duration_seconds: videoForm.duration_seconds,
           queued: true,
         });
@@ -3282,8 +3284,8 @@ export default function Dashboard({ mode = 'generate' }) {
             <div className="text-cyan-300 text-xs bg-cyan-500/10 border border-cyan-500/20 rounded-xl px-3 py-3">
               <div>
                 {videoResult.message || 'Video generation has been queued in the background.'}
-                {videoResult.dry_run
-                  ? ' Dry-run mode is enabled: this validates workflow and stores history, but does not render/download a final MP4.'
+                {videoResult.effective_dry_run || videoResult.dry_run
+                  ? ` ${videoResult.warning || 'Dry run only — no MP4 rendered.'}`
                   : ''}
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -3496,13 +3498,17 @@ export default function Dashboard({ mode = 'generate' }) {
                       {(item.status === 'success' || item.status === 'completed') && (
                         <>
                           <span className="flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">DONE</span>
-                          {item.warning && item.warning.includes('Dry-run') && <span className="flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/25">DRY RUN</span>}
+                          {(item.metadata_only || (item.warning && item.warning.toLowerCase().includes('dry run'))) && <span className="flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/25">DRY RUN</span>}
                         </>
                       )}
                     </div>
                     <p className="text-xs text-[#71717A]">{item.duration_seconds ? `${item.duration_seconds}s` : ''}{item.duration_seconds && dateLabel ? ' · ' : ''}{dateLabel}{item.costs?.runway_credits_used > 0 ? ` · ${item.costs.runway_credits_used} cr` : ''}</p>
                     <p className="text-xs text-[#8B97B3] truncate mt-1">
-                      {item.status === 'failed' ? (item.warning || 'Generation failed') : (item.seo?.thumbnail_text || item.seo?.description || 'Saved metadata available')}
+                      {item.status === 'failed'
+                        ? (item.warning || 'Generation failed')
+                        : item.metadata_only
+                          ? (item.result_reason || item.warning || 'Dry run only — no MP4 rendered.')
+                          : (item.seo?.thumbnail_text || item.seo?.description || 'Saved metadata available')}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">

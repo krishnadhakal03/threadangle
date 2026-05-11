@@ -53,6 +53,7 @@ from utils.render_guard import (
     release_render_slot,
     require_video_render_access,
     run_with_render_timeout,
+    server_video_rendering_enabled,
 )
 from utils.video_artifacts import (
     delete_generation_assets,
@@ -75,6 +76,54 @@ _task_progress: dict[int, dict] = {}
 
 def is_video_dry_run_enabled() -> bool:
     return os.getenv("VIDEO_GENERATION_DRY_RUN", "1") == "1"
+
+
+def _preview_render_reason(*, request_dry_run: bool, env_dry_run: bool, render_enabled: bool) -> str:
+    if request_dry_run:
+        return "Dry run only - no MP4 rendered. Disable Dry Run in Video Studio to request a real render."
+    if env_dry_run:
+        return "Dry run only - no MP4 rendered. VIDEO_GENERATION_DRY_RUN is enabled on the server."
+    if not render_enabled:
+        return "Server rendering disabled."
+    return "Real free-footage render requested."
+
+
+def _log_preview_render_diag(
+    *,
+    event: str,
+    user_email: Optional[str],
+    generation_id: Optional[int],
+    dry_run: bool,
+    env_dry_run: bool,
+    effective_dry_run: bool,
+    tts_provider: Optional[str],
+    scene_mode: str = "stock",
+    final_mp4_path: Optional[str] = None,
+    failure_reason: Optional[str] = None,
+) -> None:
+    path_exists = None
+    if final_mp4_path:
+        try:
+            path_exists = Path(final_mp4_path).exists()
+        except Exception:
+            path_exists = False
+    logger.info(
+        "[generate-from-preview] event=%s user_email=%s generation_id=%s dry_run_request=%s "
+        "env_dry_run=%s effective_dry_run=%s server_rendering_enabled=%s "
+        "free_paid_providers_enabled=%s scene_mode=%s tts_provider=%s final_mp4_exists=%s reason=%s",
+        event,
+        user_email,
+        generation_id,
+        dry_run,
+        env_dry_run,
+        effective_dry_run,
+        server_video_rendering_enabled(),
+        is_paid_free_video_provider_enabled(),
+        scene_mode,
+        tts_provider,
+        path_exists,
+        failure_reason,
+    )
 
 
 def is_audio_required_enabled() -> bool:
@@ -1742,8 +1791,9 @@ async def generate_video_from_approved_preview(preview_id: str, scenes: list[dic
         generation_id = generation.id
 
         if effective_dry_run:
+            _task_progress[generation_id]["message"] = "Dry run only - no MP4 rendered."
             generation.status = "success"
-            generation.error_message = "Dry-run mode active. Set VIDEO_GENERATION_DRY_RUN=0 and disable Dry Run in Video Studio for live generation."
+            generation.error_message = "Dry run only - no MP4 rendered."
             await session.commit()
             return
 
@@ -1840,12 +1890,19 @@ async def generate_video_from_approved_preview(
     Progress is written to _task_progress[generation_id] throughout."""
     env_dry_run = os.getenv("VIDEO_GENERATION_DRY_RUN", "1") == "1"
     effective_dry_run = dry_run or env_dry_run  # either flag = no spend
+    user_email = None
+    diagnostic_reason = _preview_render_reason(
+        request_dry_run=bool(dry_run),
+        env_dry_run=env_dry_run,
+        render_enabled=server_video_rendering_enabled(),
+    )
 
     def _upd(percent: int, message: str, step: str = ""):
         _task_progress[generation_id] = {
             "percent": percent,
             "message": message,
             "step": step,
+            "reason": diagnostic_reason,
             "updated_at": datetime.utcnow().isoformat(),
         }
 
@@ -1858,24 +1915,50 @@ async def generate_video_from_approved_preview(
             logger.error(f"[VideoGen] generation_id={generation_id} not found in DB")
             _upd(0, "Internal error: generation record missing", "error")
             return
+        user_row = await session.execute(select(User).where(User.id == user_id))
+        user = user_row.scalar_one_or_none()
+        user_email = getattr(user, "email", None)
+        _log_preview_render_diag(
+            event="worker_start",
+            user_email=user_email,
+            generation_id=generation_id,
+            dry_run=bool(dry_run),
+            env_dry_run=env_dry_run,
+            effective_dry_run=effective_dry_run,
+            tts_provider=tts_provider,
+            failure_reason=diagnostic_reason,
+        )
 
         generation.status = "processing"
         generation.video_plan_json = json.dumps({
             "preview_id": preview_id,
             "scenes": scenes,
             "dry_run": effective_dry_run,
+            "dry_run_request": bool(dry_run),
+            "env_dry_run": env_dry_run,
+            "diagnostic_reason": diagnostic_reason,
             "script": script,
             "confirmed_plan": confirmed_plan,
         })
         await session.commit()
 
         if effective_dry_run:
-            _upd(100, "Dry-run complete — no credits consumed.", "done")
+            _upd(100, "Dry run only - no MP4 rendered.", "done")
             generation.status = "success"
             generation.video_scenes_json = json.dumps(scenes)
             generation.video_duration_seconds = int(sum(float(s.get("duration", 5) or 5) for s in scenes)) if scenes else None
-            generation.error_message = "Dry-run mode active. Set VIDEO_GENERATION_DRY_RUN=0 and disable Dry Run in Video Studio for live generation."
+            generation.error_message = diagnostic_reason
             await session.commit()
+            _log_preview_render_diag(
+                event="dry_run_complete",
+                user_email=user_email,
+                generation_id=generation_id,
+                dry_run=bool(dry_run),
+                env_dry_run=env_dry_run,
+                effective_dry_run=effective_dry_run,
+                tts_provider=tts_provider,
+                failure_reason=diagnostic_reason,
+            )
             return
 
         all_stock_mode = bool(scenes) and all(str(scene.get("method", "")).lower() == "stock" for scene in scenes)
@@ -2030,6 +2113,21 @@ async def generate_video_from_approved_preview(
                 render_result = await run_with_render_timeout(
                     asyncio.to_thread(assemble_video, stock_scenes, run_id=run_id, audio_path=audio_path)
                 )
+                rendered_path = render_result.get("video_path")
+                rendered_exists = bool(rendered_path and Path(rendered_path).exists())
+                _log_preview_render_diag(
+                    event="render_end",
+                    user_email=user_email,
+                    generation_id=generation_id,
+                    dry_run=bool(dry_run),
+                    env_dry_run=env_dry_run,
+                    effective_dry_run=effective_dry_run,
+                    tts_provider=tts_provider,
+                    final_mp4_path=rendered_path,
+                    failure_reason=None if rendered_exists else "Render completed but final MP4 path was missing.",
+                )
+                if not rendered_exists:
+                    raise RuntimeError("Render completed but final MP4 file was not found.")
 
                 seo_metadata = None
                 if script_text:
@@ -2088,10 +2186,30 @@ async def generate_video_from_approved_preview(
                 generation.error_message = None
                 await session.commit()
                 _upd(100, "Footage video complete.", "done")
+                _log_preview_render_diag(
+                    event="persist_success",
+                    user_email=user_email,
+                    generation_id=generation_id,
+                    dry_run=bool(dry_run),
+                    env_dry_run=env_dry_run,
+                    effective_dry_run=effective_dry_run,
+                    tts_provider=tts_provider,
+                    final_mp4_path=str(generated_root() / stored_video_file),
+                )
                 _task_progress.pop(generation_id, None)
                 return
             except Exception as exc:
                 logger.error(f"[VideoGen] stock generation_id={generation_id} failed: {exc}", exc_info=True)
+                _log_preview_render_diag(
+                    event="render_failed",
+                    user_email=user_email,
+                    generation_id=generation_id,
+                    dry_run=bool(dry_run),
+                    env_dry_run=env_dry_run,
+                    effective_dry_run=effective_dry_run,
+                    tts_provider=tts_provider,
+                    failure_reason=str(exc)[:180],
+                )
                 _upd(0, f"Failed: {str(exc)[:120]}", "error")
                 try:
                     generation.status = "failed"
@@ -2200,6 +2318,23 @@ async def generate_video_from_preview(
     current_user: User = Depends(require_video_render_access),
     db: AsyncSession = Depends(get_db),
 ):
+    env_dry_run = is_video_dry_run_enabled()
+    effective_dry_run = bool(request.dry_run or env_dry_run)
+    diagnostic_reason = _preview_render_reason(
+        request_dry_run=bool(request.dry_run),
+        env_dry_run=env_dry_run,
+        render_enabled=server_video_rendering_enabled(),
+    )
+    _log_preview_render_diag(
+        event="queued_request",
+        user_email=getattr(current_user, "email", None),
+        generation_id=None,
+        dry_run=bool(request.dry_run),
+        env_dry_run=env_dry_run,
+        effective_dry_run=effective_dry_run,
+        tts_provider=request.tts_provider,
+        failure_reason=diagnostic_reason,
+    )
     if not request.approved_scenes:
         raise HTTPException(status_code=400, detail="No approved scenes provided")
     assert_video_duration_allowed(
@@ -2238,10 +2373,21 @@ async def generate_video_from_preview(
     # Seed the progress tracker so the polling endpoint can respond instantly.
     _task_progress[generation_id] = {
         "percent": 2,
-        "message": "Queued for processing...",
+        "message": "Queued for dry-run metadata validation..." if effective_dry_run else "Queued for real free-footage render...",
         "step": "queued",
+        "reason": diagnostic_reason,
         "updated_at": datetime.utcnow().isoformat(),
     }
+    _log_preview_render_diag(
+        event="queued_created",
+        user_email=getattr(current_user, "email", None),
+        generation_id=generation_id,
+        dry_run=bool(request.dry_run),
+        env_dry_run=env_dry_run,
+        effective_dry_run=effective_dry_run,
+        tts_provider=request.tts_provider,
+        failure_reason=diagnostic_reason,
+    )
 
     render_token = await acquire_render_slot()
     background_tasks.add_task(
@@ -2265,6 +2411,8 @@ async def generate_video_from_preview(
         "preview_id": request.preview_id,
         "message": "Video generation started in background.",
         "dry_run": request.dry_run,
+        "effective_dry_run": effective_dry_run,
+        "diagnostic_reason": diagnostic_reason,
     }
 
 
@@ -2313,12 +2461,16 @@ async def get_video_generation_progress(
 
     if generation.status == "success":
         _task_progress.pop(generation_id, None)
+        metadata_only = not bool(generation.video_file)
+        success_message = generation.error_message if metadata_only and generation.error_message else "Video generation complete!"
         return {
             "generation_id": generation_id,
             "status": "success",
             "percent": 100,
-            "message": "Video generation complete!",
+            "message": success_message,
             "step": "done",
+            "metadata_only": metadata_only,
+            "reason": generation.error_message if metadata_only else None,
             "updated_at": generation.created_at.isoformat() if generation.created_at else None,
         }
 
@@ -2518,6 +2670,7 @@ def _serialize_video_history_row(
     parsed_seo_tags = _safe_json_loads(g.seo_tags, expected_type=list, default=[]) or []
     parsed_seo_hashtags = _safe_json_loads(g.seo_hashtags, expected_type=list, default=[]) or []
     downloadable = bool(g.video_file and (g.status in {"success", "completed"}))
+    metadata_only = bool((g.status in {"success", "completed"}) and not g.video_file)
 
     payload = {
         "id": g.id,
@@ -2529,6 +2682,8 @@ def _serialize_video_history_row(
         "thumbnail_url": f"/api/generate/video/thumbnail/{quote(str(_relative_generated_asset_path(g.video_thumbnail) or ''), safe='/')}" if g.video_thumbnail else None,
         "created_at": g.created_at.isoformat() if g.created_at else None,
         "status": g.status,
+        "metadata_only": metadata_only,
+        "result_reason": g.error_message if metadata_only else None,
         "warning": warning or g.error_message,
         "seo": {
             "title": g.seo_title,
@@ -2579,6 +2734,7 @@ def _serialize_video_history_row(
 
 def _serialize_video_history_row_fallback(g: Generation, warning: Optional[str] = None) -> dict[str, Any]:
     downloadable = bool(g.video_file and (g.status in {"success", "completed"}))
+    metadata_only = bool((g.status in {"success", "completed"}) and not g.video_file)
     return {
         "id": g.id,
         "run_id": g.video_run_id,
@@ -2589,6 +2745,8 @@ def _serialize_video_history_row_fallback(g: Generation, warning: Optional[str] 
         "thumbnail_url": f"/api/generate/video/thumbnail/{quote(str(_relative_generated_asset_path(g.video_thumbnail) or ''), safe='/')}" if g.video_thumbnail else None,
         "created_at": g.created_at.isoformat() if g.created_at else None,
         "status": g.status,
+        "metadata_only": metadata_only,
+        "result_reason": g.error_message if metadata_only else None,
         "warning": warning or g.error_message,
         "seo": {
             "title": g.seo_title,
