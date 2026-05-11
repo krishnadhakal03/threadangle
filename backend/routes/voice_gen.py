@@ -1,5 +1,6 @@
 import os
 import requests
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from utils.render_guard import require_video_render_access
@@ -76,12 +77,14 @@ class VoiceGenRequest(BaseModel):
     voice_id: str = "pNInz6obpgDQGcFmaJgB"  # ElevenLabs "Adam" — confirmed working on free tier
     speed: float = 1.1
     model_id: str = "eleven_multilingual_v2"
-    force_free: bool = False  # True = skip ElevenLabs, use pyttsx3 regardless of API key
+    force_free: bool = False  # True = skip ElevenLabs, use free fallbacks regardless of API key
+    allow_silent: bool = False
 
 class VoiceGenResponse(BaseModel):
     audio_url: str
     audio_file: str
     provider: str
+    warning: Optional[str] = None
 
 @router.get("/voice/test")
 def test_elevenlabs_key():
@@ -135,6 +138,7 @@ def generate_voice(req: VoiceGenRequest):
     out_dir = "assets/voice_cache"
     os.makedirs(out_dir, exist_ok=True)
     text_hash = hashlib.sha256(req.text.encode("utf-8")).hexdigest()[:16]
+    fallback_errors: list[str] = []
 
     # Try ElevenLabs if API key is set AND force_free is not requested
     if api_key and not req.force_free:
@@ -185,16 +189,51 @@ def generate_voice(req: VoiceGenRequest):
         except Exception as e:
             print(f"[TTS] ElevenLabs failed, falling back: {e}")
 
-    # Fallback: use pyttsx3 (offline TTS)
+    # Free fallback chain: gTTS first, then pyttsx3, then optional explicit silent fallback.
     if req.force_free:
-        print("[TTS] force_free=True — using pyttsx3 (no ElevenLabs credits consumed)")
+        print("[TTS] force_free=True - using free TTS fallbacks (no ElevenLabs credits consumed)")
     free_filename = f"voice_free_{text_hash}.wav"
     free_file_path = os.path.join(out_dir, free_filename)
+    gtts_mp3_path = os.path.join(out_dir, f"voice_gtts_{text_hash}.mp3")
+    try:
+        try:
+            from gtts import gTTS
+        except ImportError as ie:
+            fallback_errors.append(f"gTTS unavailable: {ie}")
+            raise
+        gTTS(text=req.text, lang="en").save(gtts_mp3_path)
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", gtts_mp3_path, free_file_path],
+            check=True,
+            timeout=60,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        _post_process_voice(free_file_path)
+        size = os.path.getsize(free_file_path) if os.path.exists(free_file_path) else 0
+        if not os.path.exists(free_file_path) or size < 1000:
+            raise Exception("gTTS audio file missing or too small")
+        print(f"[TTS] gTTS audio saved: {free_file_path} ({size} bytes)")
+        return VoiceGenResponse(
+            audio_url=f"/static/voice_cache/{free_filename}",
+            audio_file=free_file_path,
+            provider="gtts",
+        )
+    except Exception as e:
+        fallback_errors.append(f"gTTS failed: {e}")
+        print(f"[TTS] gTTS failed, trying pyttsx3: {e}")
+    finally:
+        try:
+            if os.path.exists(gtts_mp3_path):
+                os.unlink(gtts_mp3_path)
+        except Exception:
+            pass
     try:
         try:
             import pyttsx3
         except ImportError as ie:
             print(f"[TTS] pyttsx3 not installed: {ie}")
+            fallback_errors.append(f"pyttsx3 unavailable: {ie}")
             raise HTTPException(status_code=500, detail="pyttsx3 is not installed in the backend environment.")
         engine = pyttsx3.init()
         engine.setProperty('rate', 180)
@@ -211,5 +250,11 @@ def generate_voice(req: VoiceGenRequest):
             provider="pyttsx3"
         )
     except Exception as e:
+        fallback_errors.append(f"pyttsx3 failed: {e}")
         print(f"[TTS] pyttsx3 failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Voice generation failed (offline fallback): {str(e)}")
+        if req.allow_silent:
+            reason = "Free TTS failed; silent fallback selected. " + " | ".join(fallback_errors[-3:])
+            print(f"[TTS] {reason}")
+            return VoiceGenResponse(audio_url="", audio_file="", provider="silent", warning=reason[:500])
+        reason = " | ".join(fallback_errors[-4:]) or str(e)
+        raise HTTPException(status_code=500, detail=f"Voice generation failed (free fallbacks): {reason}")

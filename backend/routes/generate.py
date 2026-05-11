@@ -131,6 +131,11 @@ def is_audio_required_enabled() -> bool:
     return os.getenv("VIDEO_REQUIRE_AUDIO", "1") == "1"
 
 
+def is_silent_fallback_enabled(tts_provider: Optional[str] = None) -> bool:
+    provider = str(tts_provider or os.getenv("TTS_PROVIDER", "")).strip().lower()
+    return provider == "silent" or os.getenv("VIDEO_ALLOW_SILENT_FALLBACK", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def is_paid_free_video_provider_enabled() -> bool:
     return os.getenv("FREE_VIDEO_ALLOW_PAID_PROVIDERS", "0").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -977,10 +982,10 @@ async def generate_free_video(
                 status_code=400,
                 detail="Free Footage Mode only allows stock footage unless FREE_VIDEO_ALLOW_PAID_PROVIDERS=1.",
             )
-        if requested_tts_provider != "free":
+        if requested_tts_provider not in {"free", "silent"}:
             raise HTTPException(
                 status_code=400,
-                detail="Free Footage Mode only allows free TTS unless FREE_VIDEO_ALLOW_PAID_PROVIDERS=1.",
+                detail="Free Footage Mode only allows free or silent TTS unless FREE_VIDEO_ALLOW_PAID_PROVIDERS=1.",
             )
 
     platform_meta = None
@@ -1010,11 +1015,14 @@ async def generate_free_video(
             text=script_text,
             voice_id=getattr(request, 'voice_id', 'pNInz6obpgDQGcFmaJgB'),
             force_free=use_free_tts,
+            allow_silent=is_silent_fallback_enabled(requested_tts_provider),
         )
         try:
             tts_result = generate_voice(tts_req)
             audio_path = tts_result.audio_file
             print(f"[TTS] Audio file generated: {audio_path}")
+            if getattr(tts_result, "provider", "") == "silent":
+                print(f"[TTS] Silent fallback selected: {getattr(tts_result, 'warning', '')}")
         except Exception as e:
             print(f"[TTS] Voice generation failed: {e}")
             audio_path = None
@@ -1024,7 +1032,11 @@ async def generate_free_video(
         print(f"[TTS] Audio file missing/invalid: {audio_path}")
         audio_path = None
 
-    if not dry_run and is_audio_required_enabled() and not audio_path:
+    audio_warning = None
+    if not dry_run and not audio_path and is_silent_fallback_enabled(requested_tts_provider):
+        audio_warning = "Audio was not generated; explicit silent fallback was used."
+
+    if not dry_run and is_audio_required_enabled() and not audio_path and not is_silent_fallback_enabled(requested_tts_provider):
         raise HTTPException(
             status_code=400,
             detail=(
@@ -1186,6 +1198,7 @@ async def generate_free_video(
         runway_credits_used=runway_credits_used,
         elevenlabs_credits_used=elevenlabs_chars,
         total_cost_usd=total_cost,
+        error_message=audio_warning,
     )
     db.add(generation)
     await db.commit()
@@ -1973,6 +1986,7 @@ async def generate_video_from_approved_preview(
                 ).strip()
 
                 audio_path = None
+                audio_warning = None
                 if script_text:
                     if effective_dry_run:
                         _upd(28, "Dry-run: skipping TTS.", "tts")
@@ -1983,14 +1997,25 @@ async def generate_video_from_approved_preview(
                                     text=script_text,
                                     voice_id=voice_id,
                                     force_free=(tts_provider == "free"),
+                                    allow_silent=is_silent_fallback_enabled(tts_provider),
                                 )
                             )
                             audio_path = tts_result.audio_file
-                            _upd(35, "Voice track generated.", "tts")
+                            if getattr(tts_result, "provider", "") == "silent":
+                                audio_warning = getattr(tts_result, "warning", None) or "Audio was not generated; explicit silent fallback was used."
+                                _upd(35, "Silent fallback selected - no audio track generated.", "tts")
+                            else:
+                                _upd(35, "Voice track generated.", "tts")
                         except Exception as tts_exc:
                             logger.warning(f"[VideoGen] Stock-mode TTS failed, continuing silent: {tts_exc}")
+                            audio_warning = f"Audio was not generated; TTS failed: {str(tts_exc)[:160]}"
 
-                if not effective_dry_run and is_audio_required_enabled() and not _is_valid_audio_file(audio_path):
+                if (
+                    not effective_dry_run
+                    and is_audio_required_enabled()
+                    and not _is_valid_audio_file(audio_path)
+                    and not is_silent_fallback_enabled(tts_provider)
+                ):
                     generation.status = "failed"
                     generation.error_message = (
                         "Voice generation failed, so rendering was stopped to avoid silent output and unnecessary cost. "
@@ -2183,7 +2208,7 @@ async def generate_video_from_approved_preview(
                 generation.seo_tags = json.dumps((seo_metadata or {}).get("tags", [])) if isinstance(seo_metadata, dict) else None
                 generation.seo_hashtags = json.dumps((seo_metadata or {}).get("hashtags", [])) if isinstance(seo_metadata, dict) else None
                 generation.thumbnail_text = (seo_metadata or {}).get("thumbnail_text") if isinstance(seo_metadata, dict) else None
-                generation.error_message = None
+                generation.error_message = audio_warning
                 await session.commit()
                 _upd(100, "Footage video complete.", "done")
                 _log_preview_render_diag(

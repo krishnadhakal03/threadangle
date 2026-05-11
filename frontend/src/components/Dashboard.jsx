@@ -1409,7 +1409,7 @@ function AIVideoModal({
                   onClick={() => setForm(prev => ({ ...prev, tts_provider: 'free' }))}
                   className={`px-3 py-2.5 rounded-xl border text-xs font-semibold transition-all ${form.tts_provider === 'free' ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' : 'bg-[#09090B] border-[#27272A] text-[#A1A1AA] hover:text-white'}`}
                 >
-                  ✦ Free TTS (pyttsx3)
+                  ✦ Free TTS
                   <span className="block text-[10px] font-normal opacity-70 mt-0.5">No credits — robotic voice</span>
                 </button>
               </div>
@@ -1439,7 +1439,7 @@ function AIVideoModal({
               )}
               <p className="mt-1.5 text-[11px] text-[#52525B]">
                 {form.tts_provider === 'free'
-                  ? '✦ No ElevenLabs credits consumed — uses offline pyttsx3 engine'
+                  ? '✦ No ElevenLabs credits consumed — tries gTTS, then pyttsx3, with explicit silent fallback if enabled'
                   : `⚡ ElevenLabs credits: ~${Math.ceil(((form.hook || '') + (form.body || '') + (form.cta || '')).length || 200)} chars per video`}
               </p>
             </div>
