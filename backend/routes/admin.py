@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 from database import get_db
 from models import User, Generation, Contact
-from email_service import send_admin_test_email
+from email_service import get_smtp_config, send_admin_test_email
 
 router = APIRouter()
 
@@ -197,9 +197,9 @@ async def send_test_email(
 ):
     _check_admin(x_admin_password)
 
-    target_email = payload.to_email or os.getenv("ZOHO_EMAIL")
+    target_email = payload.to_email or get_smtp_config()["username"]
     if not target_email:
-        raise HTTPException(status_code=400, detail="No recipient email provided and ZOHO_EMAIL is not configured")
+        raise HTTPException(status_code=400, detail="No recipient email provided and SMTP user is not configured")
 
     ok = await send_admin_test_email(target_email)
     if not ok:

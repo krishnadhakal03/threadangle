@@ -2,21 +2,84 @@ import os
 import asyncio
 import logging
 import sqlite3
+from pathlib import Path
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import aiosmtplib
+from dotenv import load_dotenv
 
-# SMTP Configuration
-SMTP_HOST = "smtp.zoho.com"
-SMTP_PORT = 587
-SMTP_USER = os.getenv("ZOHO_EMAIL")
-SMTP_PASS = os.getenv("ZOHO_PASSWORD")
-ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+_email_config_logged = False
+
+
+def _get_env(*keys, default=None):
+    for key in keys:
+        value = os.getenv(key)
+        if value not in (None, ""):
+            return value
+    return default
+
+
+def _parse_bool(value, default=False):
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def get_smtp_config():
+    """Read SMTP settings from env, supporting production and legacy local keys."""
+    port_raw = _get_env("SMTP_PORT", default="587")
+    try:
+        port = int(port_raw)
+    except (TypeError, ValueError):
+        port = 587
+
+    username = _get_env("SMTP_USER", "ZOHO_EMAIL", "SMTP_FROM_EMAIL")
+    from_email = _get_env("SMTP_FROM_EMAIL", "SMTP_USER", "ZOHO_EMAIL")
+    from_header = _get_env("SMTP_FROM")
+    if not from_header and from_email:
+        from_header = f"Threadangle <{from_email}>"
+
+    return {
+        "host": _get_env("SMTP_HOST", default="smtp.zoho.com"),
+        "port": port,
+        "username": username,
+        "password": _get_env("SMTP_PASSWORD", "ZOHO_PASSWORD"),
+        "from_header": from_header,
+        "start_tls": _parse_bool(_get_env("SMTP_STARTTLS"), default=(port != 465)),
+        "use_tls": _parse_bool(_get_env("SMTP_USE_TLS"), default=(port == 465)),
+        "contact_to_email": _get_env("CONTACT_TO_EMAIL", default="hello@kriangle.com"),
+    }
+
+
+def log_email_config_status():
+    global _email_config_logged
+    if _email_config_logged:
+        return
+
+    config = get_smtp_config()
+    logger.info(
+        "Email config status: SMTP_HOST present=%s, SMTP_PORT present=%s, "
+        "SMTP_USER present=%s, SMTP_PASSWORD present=%s, SMTP_FROM present=%s, "
+        "SMTP_FROM_EMAIL present=%s, SMTP_STARTTLS present=%s, CONTACT_TO_EMAIL present=%s",
+        "yes" if os.getenv("SMTP_HOST") else "no",
+        "yes" if os.getenv("SMTP_PORT") else "no",
+        "yes" if config["username"] else "no",
+        "yes" if config["password"] else "no",
+        "yes" if os.getenv("SMTP_FROM") else "no",
+        "yes" if os.getenv("SMTP_FROM_EMAIL") else "no",
+        "yes" if os.getenv("SMTP_STARTTLS") else "no",
+        "yes" if os.getenv("CONTACT_TO_EMAIL") else "no",
+    )
+    if config["contact_to_email"]:
+        logger.info("Contact form recipient configured as %s", config["contact_to_email"])
+    _email_config_logged = True
 
 
 def get_email_setting(key, default=""):
@@ -135,26 +198,31 @@ def get_email_wrapper(subject, body_content, unsubscribe_line=""):
 </body>
 </html>"""
 
-async def send_email_async(to_email, subject, html_content):
-    if not SMTP_USER or not SMTP_PASS:
-        logger.error(f"SKIPPING EMAIL TO {to_email}: SMTP credentials missing from .env")
+async def send_email_async(to_email, subject, html_content, reply_to=None):
+    config = get_smtp_config()
+    log_email_config_status()
+
+    if not config["username"] or not config["password"]:
+        logger.error("SKIPPING EMAIL TO %s: SMTP credentials missing from environment", to_email)
         return False
         
     message = MIMEMultipart("alternative")
-    message["From"] = f"Threadangle <{SMTP_USER}>"
+    message["From"] = config["from_header"]
     message["To"] = to_email
     message["Subject"] = subject
+    if reply_to:
+        message["Reply-To"] = reply_to
     message.attach(MIMEText(html_content, "html"))
 
     try:
         await aiosmtplib.send(
             message,
-            hostname=SMTP_HOST,
-            port=SMTP_PORT,
-            username=SMTP_USER,
-            password=SMTP_PASS,
-            use_tls=False,
-            start_tls=True,
+            hostname=config["host"],
+            port=config["port"],
+            username=config["username"],
+            password=config["password"],
+            use_tls=config["use_tls"],
+            start_tls=config["start_tls"],
             timeout=10,
         )
         logger.info(f"EMAIL SENT SUCCESSFULLY TO {to_email} AT {datetime.now()}")
@@ -357,9 +425,8 @@ async def send_admin_contact_notification(contact_data):
     "timestamp": timestamp,
   })
     
-    # Internal notification, using Zoho user as recipient if needed or custom
     html = get_email_wrapper(subject, body, "")
-    return await send_email_async("hello@kriangle.com", subject, html)
+    return await send_email_async(get_smtp_config()["contact_to_email"], subject, html, reply_to=user_email)
 
 # EMAIL 5 — UPGRADE CONFIRMATION EMAIL
 async def send_upgrade_confirmation(user_email, plan_name, amount, next_billing_date):
@@ -719,26 +786,27 @@ async def send_auto_post_failure_email(user_email: str, user_name: str, failed_p
 
 
 async def test_email_connection():
-    if not SMTP_USER:
-        print("❌ EMAIL TEST FAILED: ZOHO_EMAIL not found in environment")
+    config = get_smtp_config()
+    if not config["username"]:
+        print("EMAIL TEST FAILED: SMTP_USER/ZOHO_EMAIL not found in environment")
         return
         
     subject = "Threadangle email system working ✅"
     body = "<p class='greeting'>Success!</p><p>The Zoho SMTP connection is working perfectly. Branded emails are ready to send.</p>"
     html = get_email_wrapper(subject, body, "Internal test email")
     
-    success = await send_email_async(SMTP_USER, subject, html)
+    success = await send_email_async(config["username"], subject, html)
     if success:
-        print(f"✅ EMAIL TEST SUCCESSFUL: Sent to {SMTP_USER}")
+        print(f"EMAIL TEST SUCCESSFUL: Sent to {config['username']}")
     else:
-        print("❌ EMAIL TEST FAILED: Check Zoho SMTP credentials")
+        print("EMAIL TEST FAILED: Check SMTP credentials")
         
     subject = "Threadangle email system working ✅"
     body = "<p class='greeting'>Success!</p><p>The Zoho SMTP connection is working perfectly. Branded emails are ready to send.</p>"
     html = get_email_wrapper(subject, body, "Internal test email")
     
-    success = await send_email_async(SMTP_USER, subject, html)
+    success = await send_email_async(config["username"], subject, html)
     if success:
-        print(f"✅ EMAIL TEST SUCCESSFUL: Sent to {SMTP_USER}")
+        print(f"EMAIL TEST SUCCESSFUL: Sent to {config['username']}")
     else:
-        print("❌ EMAIL TEST FAILED: Check Zoho SMTP credentials")
+        print("EMAIL TEST FAILED: Check SMTP credentials")

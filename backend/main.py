@@ -34,8 +34,10 @@ def verify_env_variables():
     required_vars = [
         'ANTHROPIC_API_KEY', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET',
         'STRIPE_STARTER_PRICE_ID', 'STRIPE_PRO_PRICE_ID',
-        'ZOHO_EMAIL', 'ZOHO_PASSWORD', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'JWT_SECRET',
+        'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'JWT_SECRET',
     ]
+    smtp_user_present = bool(os.getenv("SMTP_USER") or os.getenv("ZOHO_EMAIL") or os.getenv("SMTP_FROM_EMAIL"))
+    smtp_password_present = bool(os.getenv("SMTP_PASSWORD") or os.getenv("ZOHO_PASSWORD"))
     missing, present = [], []
     for var in required_vars:
         value = os.getenv(var)
@@ -43,6 +45,14 @@ def verify_env_variables():
             missing.append(var)
         else:
             present.append(f"  [OK] {var} is set")
+    if smtp_user_present:
+        present.append("  [OK] SMTP user is set")
+    else:
+        missing.append("SMTP_USER or ZOHO_EMAIL")
+    if smtp_password_present:
+        present.append("  [OK] SMTP password is set")
+    else:
+        missing.append("SMTP_PASSWORD or ZOHO_PASSWORD")
     print("\n=== THREADANGLE ENV CHECK ===")
     for p in present:
         print(p)

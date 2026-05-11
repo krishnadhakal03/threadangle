@@ -10,7 +10,7 @@ from slowapi.util import get_remote_address
 
 from database import get_db
 from models import Contact
-from email_service import send_admin_contact_notification, send_contact_auto_reply
+from email_service import send_admin_contact_notification, send_contact_auto_reply, send_email_async
 from auth import get_current_user
 from models import User
 
@@ -47,7 +47,7 @@ async def create_contact(request: Request, contact_req: ContactReq, db: AsyncSes
             "message": contact_req.message
         }
         asyncio.create_task(send_admin_contact_notification(contact_data))
-        asyncio.create_task(send_contact_auto_reply(contact_req.name, contact_req.email))
+        asyncio.create_task(send_contact_auto_reply(contact_req.name, contact_req.email, contact_req.subject))
     except Exception:
         pass
         
@@ -94,15 +94,6 @@ async def submit_bug_report(request: Request, bug_req: BugReportReq, db: AsyncSe
 async def _send_bug_report_email(data: dict):
     """Send a formatted bug report email to the bugs inbox."""
     try:
-        import aiosmtplib
-        from email.mime.text import MIMEText
-        from email.mime.multipart import MIMEMultipart
-
-        smtp_user = os.getenv("ZOHO_EMAIL")
-        smtp_pass = os.getenv("ZOHO_PASSWORD")
-        if not smtp_user or not smtp_pass:
-            return
-
         severity_emoji = {"LOW": "🟡", "MEDIUM": "🟠", "HIGH": "🔴"}.get(data["severity"], "⚪")
 
         body = f"""
@@ -119,19 +110,15 @@ async def _send_bug_report_email(data: dict):
 <p>{data['steps']}</p>
 """
 
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"[BUG] [{data['severity']}] {data['category']} — {data['user_email']}"
-        msg["From"] = smtp_user
-        msg["To"] = "bugs@kriangle.com"
-        msg.attach(MIMEText(body, "html"))
-
-        await aiosmtplib.send(
-            msg,
-            hostname="smtp.zoho.com",
-            port=587,
-            start_tls=True,
-            username=smtp_user,
-            password=smtp_pass,
+        recipient = os.getenv("BUG_REPORT_TO_EMAIL") or os.getenv("CONTACT_TO_EMAIL") or "bugs@kriangle.com"
+        reply_to = data["user_email"] if data["user_email"] != "Anonymous" else None
+        await send_email_async(
+            recipient,
+            f"[BUG] [{data['severity']}] {data['category']} - {data['user_email']}",
+            body,
+            reply_to=reply_to,
         )
+        return
+
     except Exception as e:
         print(f"[bug-report] Email send failed: {e}")
