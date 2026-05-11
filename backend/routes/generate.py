@@ -54,6 +54,12 @@ from utils.render_guard import (
     require_video_render_access,
     run_with_render_timeout,
 )
+from utils.video_artifacts import (
+    delete_generation_assets,
+    generated_root,
+    relative_generated_path,
+    safe_move_into_run_dir,
+)
 
 router = APIRouter()
 
@@ -74,6 +80,10 @@ def is_video_dry_run_enabled() -> bool:
 def is_audio_required_enabled() -> bool:
     # Safety default ON: prevent silent final videos unless explicitly disabled.
     return os.getenv("VIDEO_REQUIRE_AUDIO", "1") == "1"
+
+
+def is_paid_free_video_provider_enabled() -> bool:
+    return os.getenv("FREE_VIDEO_ALLOW_PAID_PROVIDERS", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _is_valid_audio_file(path_value: Optional[str]) -> bool:
@@ -910,6 +920,19 @@ async def generate_free_video(
     run_id = new_run_id()
     # Per-request dry_run overrides env; falls back to env flag
     dry_run = request.dry_run if request.dry_run is not None else is_video_dry_run_enabled()
+    requested_scene_mode = (request.scene_mode or os.getenv("VIDEO_SCENE_MODE", "stock") or "stock").strip().lower()
+    requested_tts_provider = (request.tts_provider or "free").strip().lower()
+    if not dry_run and not is_paid_free_video_provider_enabled():
+        if requested_scene_mode not in {"stock"}:
+            raise HTTPException(
+                status_code=400,
+                detail="Free Footage Mode only allows stock footage unless FREE_VIDEO_ALLOW_PAID_PROVIDERS=1.",
+            )
+        if requested_tts_provider != "free":
+            raise HTTPException(
+                status_code=400,
+                detail="Free Footage Mode only allows free TTS unless FREE_VIDEO_ALLOW_PAID_PROVIDERS=1.",
+            )
 
     platform_meta = None
     if request.confirmed_plan and isinstance(request.confirmed_plan, dict):
@@ -924,7 +947,7 @@ async def generate_free_video(
     import time
     script_text = f"{parts.hook} {parts.body} {parts.cta}"
     audio_path = None
-    use_free_tts = (getattr(request, 'tts_provider', 'elevenlabs') == 'free')
+    use_free_tts = requested_tts_provider == "free"
 
     if not dry_run:
         quality_issue = _script_quality_issue(script_text)
@@ -972,7 +995,7 @@ async def generate_free_video(
                 visual_description=getattr(scene, "visual_description", ""),
             )
         # Accept scene_mode from request, fallback to env default
-        scene_mode = "stock" if dry_run else (request.scene_mode or os.getenv('VIDEO_SCENE_MODE', 'auto'))
+        scene_mode = "stock" if dry_run else requested_scene_mode
         available_credits = float(os.getenv("RUNWAYML_AVAILABLE_CREDITS", "750"))
         # Derive max_scenes from scene_mode if not explicitly set:
         # ai=all scenes, auto/hybrid=3, stock=0
@@ -1078,6 +1101,7 @@ async def generate_free_video(
         run_id=run_id,
         video_path=video_path,
         thumbnail_path=thumbnail_path,
+        audio_path=audio_path,
         title=_strip_unwanted_year_tokens(
             (seo_metadata or {}).get("title") if isinstance(seo_metadata, dict) else None,
             script_text=script_text or "",
@@ -1425,19 +1449,7 @@ def _prepare_thumbnail_text(raw_title: str, script_text: Optional[str] = None) -
 
 
 def _relative_generated_asset_path(path_value: Optional[str]) -> Optional[str]:
-    if not path_value:
-        return None
-    generated_root = Path(__file__).resolve().parents[1] / "generated_videos"
-    candidate = Path(str(path_value))
-    try:
-        if candidate.is_absolute():
-            resolved = candidate.resolve()
-            if generated_root.resolve() in resolved.parents:
-                return str(resolved.relative_to(generated_root.resolve())).replace("\\", "/")
-            return candidate.name
-        return str(candidate).replace("\\", "/")
-    except Exception:
-        return candidate.name
+    return relative_generated_path(path_value)
 
 
 def _organize_run_assets(
@@ -1445,16 +1457,17 @@ def _organize_run_assets(
     run_id: str,
     video_path: Path,
     thumbnail_path: Optional[str],
+    audio_path: Optional[str] = None,
     title: Optional[str],
 ) -> tuple[str, Optional[str]]:
-    generated_root = Path(__file__).resolve().parents[1] / "generated_videos"
-    raw_dir = generated_root / "raw"
-    temp_dir = generated_root / "temp"
-    cache_dir = generated_root / "cache"
+    generated_root_path = generated_root()
+    raw_dir = generated_root_path / "raw"
+    temp_dir = generated_root_path / "temp"
+    cache_dir = generated_root_path / "cache"
 
     title_slug = _slugify(title or "", max_len=48)
     folder_name = f"{title_slug}-{run_id}" if title_slug else run_id
-    run_dir = generated_root / folder_name
+    run_dir = generated_root_path / folder_name
     run_dir.mkdir(parents=True, exist_ok=True)
 
     final_video_name = f"{title_slug}.mp4" if title_slug else f"{run_id}.mp4"
@@ -1483,7 +1496,9 @@ def _organize_run_assets(
                     thumb_src.unlink(missing_ok=True)
                 except Exception:
                     pass
-            final_thumb_rel = str(final_thumb_path.relative_to(generated_root)).replace("\\", "/")
+            final_thumb_rel = str(final_thumb_path.relative_to(generated_root_path)).replace("\\", "/")
+
+    safe_move_into_run_dir(audio_path, run_dir, "audio")
 
     for src_dir, label in ((raw_dir, "raw"), (temp_dir, "temp"), (cache_dir, "cache")):
         if not src_dir.exists():
@@ -1509,7 +1524,7 @@ def _organize_run_assets(
             except Exception:
                 pass
 
-    rel_video = str(final_video_path.relative_to(generated_root)).replace("\\", "/")
+    rel_video = str(final_video_path.relative_to(generated_root_path)).replace("\\", "/")
     return rel_video, final_thumb_rel
 async def generate_character_profile(script: str, niche: str) -> dict[str, Any]:
     prompt = f"""Analyze this short-video script and return only valid JSON.
@@ -2502,14 +2517,15 @@ def _serialize_video_history_row(
 ) -> dict[str, Any]:
     parsed_seo_tags = _safe_json_loads(g.seo_tags, expected_type=list, default=[]) or []
     parsed_seo_hashtags = _safe_json_loads(g.seo_hashtags, expected_type=list, default=[]) or []
+    downloadable = bool(g.video_file and (g.status in {"success", "completed"}))
 
     payload = {
         "id": g.id,
         "run_id": g.video_run_id,
         "duration_seconds": g.video_duration_seconds,
         "file": g.video_file,
-        "video_url": f"/api/generate/video/download/{quote(str(g.video_file), safe='/')}" if g.video_file else None,
-        "download_url": f"/api/generate/video/download/{quote(str(g.video_file), safe='/')}" if g.video_file else None,
+        "video_url": f"/api/generate/video/download/{quote(str(g.video_file), safe='/')}" if downloadable else None,
+        "download_url": f"/api/generate/video/download/{quote(str(g.video_file), safe='/')}" if downloadable else None,
         "thumbnail_url": f"/api/generate/video/thumbnail/{quote(str(_relative_generated_asset_path(g.video_thumbnail) or ''), safe='/')}" if g.video_thumbnail else None,
         "created_at": g.created_at.isoformat() if g.created_at else None,
         "status": g.status,
@@ -2562,13 +2578,14 @@ def _serialize_video_history_row(
 
 
 def _serialize_video_history_row_fallback(g: Generation, warning: Optional[str] = None) -> dict[str, Any]:
+    downloadable = bool(g.video_file and (g.status in {"success", "completed"}))
     return {
         "id": g.id,
         "run_id": g.video_run_id,
         "duration_seconds": g.video_duration_seconds,
         "file": g.video_file,
-        "video_url": f"/api/generate/video/download/{quote(str(g.video_file), safe='/')}" if g.video_file else None,
-        "download_url": f"/api/generate/video/download/{quote(str(g.video_file), safe='/')}" if g.video_file else None,
+        "video_url": f"/api/generate/video/download/{quote(str(g.video_file), safe='/')}" if downloadable else None,
+        "download_url": f"/api/generate/video/download/{quote(str(g.video_file), safe='/')}" if downloadable else None,
         "thumbnail_url": f"/api/generate/video/thumbnail/{quote(str(_relative_generated_asset_path(g.video_thumbnail) or ''), safe='/')}" if g.video_thumbnail else None,
         "created_at": g.created_at.isoformat() if g.created_at else None,
         "status": g.status,
@@ -2619,57 +2636,14 @@ async def get_video_history_item(
         return _serialize_video_history_row_fallback(generation, warning=str(exc))
 
 
-def _safe_remove_generated_file(path_value: Optional[str], generated_root: Path) -> None:
-    if not path_value:
-        return
-    candidate = Path(str(path_value))
-    try:
-        resolved = candidate.resolve() if candidate.is_absolute() else (generated_root / candidate).resolve()
-    except Exception:
-        return
-    if generated_root.resolve() not in resolved.parents:
-        return
-    if resolved.exists() and resolved.is_file():
-        try:
-            resolved.unlink()
-        except Exception:
-            pass
-
-
 def _delete_generation_assets(generation: Generation) -> None:
-    generated_root = Path(__file__).resolve().parents[1] / "generated_videos"
-    raw_dir = generated_root / "raw"
-    temp_dir = generated_root / "temp"
-    cache_dir = generated_root / "cache"
-
-    # Primary output files
-    _safe_remove_generated_file(generation.video_file, generated_root)
-    _safe_remove_generated_file(generation.video_thumbnail, generated_root)
-
-    # Thumbnail may be absolute path; fallback by basename as well.
-    if generation.video_thumbnail:
-        _safe_remove_generated_file(Path(str(generation.video_thumbnail)).name, generated_root)
-
-    # Remove run-specific artifacts in raw/temp/cache and main folder.
-    run_id = (generation.video_run_id or "").strip()
-    if run_id:
-        for folder in (generated_root, raw_dir, temp_dir, cache_dir):
-            if not folder.exists():
-                continue
-            for path in folder.glob(f"*{run_id}*"):
-                try:
-                    if path.is_file():
-                        path.unlink()
-                    elif path.is_dir():
-                        for nested in path.rglob("*"):
-                            if nested.is_file():
-                                nested.unlink(missing_ok=True)
-                        path.rmdir()
-                except Exception:
-                    pass
+    delete_generation_assets(
+        video_file=generation.video_file,
+        video_thumbnail=generation.video_thumbnail,
+        video_run_id=generation.video_run_id,
+    )
 
 
-@router.delete("/video/{generation_id}")
 async def _delete_video_history_item_core(
     generation_id: int,
     current_user: User = Depends(get_current_user),
@@ -3110,18 +3084,34 @@ async def get_batch_status(
 @router.get("/video/download/{filename:path}")
 async def download_generated_video(
     filename: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     if not filename.lower().endswith(".mp4"):
         raise HTTPException(status_code=400, detail="Invalid file.")
     if ".." in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename.")
 
-    generated_root = Path(__file__).resolve().parents[1] / "generated_videos"
+    row = await db.execute(
+        select(Generation).where(
+            and_(
+                Generation.user_id == current_user.id,
+                Generation.input_type == "video",
+                Generation.video_file == filename,
+                Generation.status.in_(["success", "completed"]),
+            )
+        )
+    )
+    generation = row.scalar_one_or_none()
+    if not generation:
+        raise HTTPException(status_code=404, detail="Video not found.")
+
+    generated_root_path = generated_root()
     try:
-        file_path = (generated_root / filename).resolve()
+        file_path = (generated_root_path / filename).resolve()
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid filename.")
-    if generated_root.resolve() not in file_path.parents:
+    if generated_root_path.resolve() not in file_path.parents:
         raise HTTPException(status_code=400, detail="Invalid filename.")
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="Video not found.")
@@ -3136,18 +3126,34 @@ async def download_generated_video(
 @router.get("/video/thumbnail/{filename:path}")
 async def download_generated_thumbnail(
     filename: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     if not filename.lower().endswith((".jpg", ".jpeg", ".png")):
         raise HTTPException(status_code=400, detail="Invalid file.")
     if ".." in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename.")
 
-    generated_root = Path(__file__).resolve().parents[1] / "generated_videos"
+    row = await db.execute(
+        select(Generation).where(
+            and_(
+                Generation.user_id == current_user.id,
+                Generation.input_type == "video",
+                Generation.video_thumbnail == filename,
+                Generation.status.in_(["success", "completed"]),
+            )
+        )
+    )
+    generation = row.scalar_one_or_none()
+    if not generation:
+        raise HTTPException(status_code=404, detail="Thumbnail not found.")
+
+    generated_root_path = generated_root()
     try:
-        file_path = (generated_root / filename).resolve()
+        file_path = (generated_root_path / filename).resolve()
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid filename.")
-    if generated_root.resolve() not in file_path.parents:
+    if generated_root_path.resolve() not in file_path.parents:
         raise HTTPException(status_code=400, detail="Invalid filename.")
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="Thumbnail not found.")

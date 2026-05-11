@@ -3445,6 +3445,10 @@ export default function Dashboard({ mode = 'generate' }) {
           </div>
         )}
 
+        <p className="mb-3 text-xs text-amber-200 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">
+          Generated videos are temporary. Download them now. Deleted or expired videos cannot be recovered.
+        </p>
+
         {videoHistoryLoading ? (
           <div className="space-y-2">
             {[1,2,3].map(i => <div key={i} className="h-16 bg-[#09090B] rounded-xl border border-[#27272A] animate-pulse" />)}
