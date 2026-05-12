@@ -1,9 +1,14 @@
 import React, { useMemo, useState } from 'react';
+import { api } from '../utils/api';
 
 const DURATIONS = ['15s', '20s', '30s'];
 const SPORTS = ['NBA', 'EPL', 'NFL', 'Soccer', 'Other'];
 const PLATFORMS = ['All', 'YouTube Shorts', 'TikTok', 'Reels'];
 const TONES = ['cinematic', 'hype', 'emotional', 'rivalry', 'underdog', 'breaking-news'];
+const IMAGE_PROVIDERS = [
+  { value: 'huggingface', label: 'HuggingFace / fallback' },
+  { value: 'pollinations', label: 'Pollinations' },
+];
 
 const EXAMPLES = {
   nba: {
@@ -250,6 +255,22 @@ function buildPackageText(packageData) {
   ].join('\n');
 }
 
+function buildWorkflowInstructions(scenes) {
+  const imageNames = scenes.map((scene) => `scene${scene.number}.png`).join(', ');
+  const clipNames = scenes.map((scene) => `scene${scene.number}.mp4`).join(', ');
+
+  return [
+    'Sports Clip Lab image-generated workflow',
+    `1. Generate or download scene images from this page as: ${imageNames}.`,
+    '2. Review each image before creating video clips. Regenerate any weak image first.',
+    '3. Upload each image to Meta AI or your selected image-to-video tool.',
+    `4. Use the matching image-to-video prompt for each scene and export clips as: ${clipNames}.`,
+    '5. Upload the MP4 clips to Colab.',
+    '6. Run the copied stitch script.',
+    '7. Download final_vertical_short.mp4 and post with the generated metadata.',
+  ].join('\n');
+}
+
 function buildColabScript(scenes) {
   const sceneData = scenes.map((scene) => ({
     file: `scene${scene.number}.mp4`,
@@ -257,8 +278,13 @@ function buildColabScript(scenes) {
     caption: scene.caption,
   }));
 
-  return `# Threadangle Sports Clip Lab: local/Colab stitch script
-# No paid APIs. Upload files named scene1.mp4, scene2.mp4, scene3.mp4...
+  return `# Threadangle Sports Clip Lab: image-generated local/Colab stitch script
+# No Runway, ElevenLabs, paid video APIs, or production rendering.
+# Workflow:
+# 1) Generate/download images as scene1.png, scene2.png, scene3.png...
+# 2) Manually approve images, then create clips in Meta AI or another image-to-video tool.
+# 3) Export clips as scene1.mp4, scene2.mp4, scene3.mp4...
+# 4) Upload those MP4 clips here and run this stitch script.
 !pip -q install moviepy==1.0.3 pillow imageio-ffmpeg
 
 from google.colab import files
@@ -377,6 +403,115 @@ files.download(OUTPUT_FILE)
 `;
 }
 
+const CRC_TABLE = Array.from({ length: 256 }, (_, index) => {
+  let value = index;
+  for (let bit = 0; bit < 8; bit += 1) {
+    value = (value & 1) ? (0xEDB88320 ^ (value >>> 1)) : (value >>> 1);
+  }
+  return value >>> 0;
+});
+
+function crc32(bytes) {
+  let crc = 0xFFFFFFFF;
+  for (let index = 0; index < bytes.length; index += 1) {
+    crc = CRC_TABLE[(crc ^ bytes[index]) & 0xFF] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function writeUint16(bytes, value) {
+  bytes.push(value & 0xFF, (value >>> 8) & 0xFF);
+}
+
+function writeUint32(bytes, value) {
+  bytes.push(value & 0xFF, (value >>> 8) & 0xFF, (value >>> 16) & 0xFF, (value >>> 24) & 0xFF);
+}
+
+function stringToBytes(value) {
+  return Array.from(new TextEncoder().encode(value));
+}
+
+function dataUrlToBytes(dataUrl) {
+  const [, base64 = ''] = String(dataUrl || '').split(',');
+  const binary = window.atob(base64);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+function createZip(files) {
+  const output = [];
+  const centralDirectory = [];
+  let offset = 0;
+
+  files.forEach((file) => {
+    const nameBytes = stringToBytes(file.name);
+    const data = file.bytes;
+    const checksum = crc32(data);
+
+    const localHeader = [];
+    writeUint32(localHeader, 0x04034B50);
+    writeUint16(localHeader, 20);
+    writeUint16(localHeader, 0);
+    writeUint16(localHeader, 0);
+    writeUint16(localHeader, 0);
+    writeUint16(localHeader, 0);
+    writeUint32(localHeader, checksum);
+    writeUint32(localHeader, data.length);
+    writeUint32(localHeader, data.length);
+    writeUint16(localHeader, nameBytes.length);
+    writeUint16(localHeader, 0);
+    localHeader.push(...nameBytes);
+    output.push(...localHeader, ...data);
+
+    const directoryHeader = [];
+    writeUint32(directoryHeader, 0x02014B50);
+    writeUint16(directoryHeader, 20);
+    writeUint16(directoryHeader, 20);
+    writeUint16(directoryHeader, 0);
+    writeUint16(directoryHeader, 0);
+    writeUint16(directoryHeader, 0);
+    writeUint16(directoryHeader, 0);
+    writeUint32(directoryHeader, checksum);
+    writeUint32(directoryHeader, data.length);
+    writeUint32(directoryHeader, data.length);
+    writeUint16(directoryHeader, nameBytes.length);
+    writeUint16(directoryHeader, 0);
+    writeUint16(directoryHeader, 0);
+    writeUint16(directoryHeader, 0);
+    writeUint16(directoryHeader, 0);
+    writeUint32(directoryHeader, 0);
+    writeUint32(directoryHeader, offset);
+    directoryHeader.push(...nameBytes);
+    centralDirectory.push(...directoryHeader);
+
+    offset += localHeader.length + data.length;
+  });
+
+  const centralOffset = output.length;
+  output.push(...centralDirectory);
+
+  writeUint32(output, 0x06054B50);
+  writeUint16(output, 0);
+  writeUint16(output, 0);
+  writeUint16(output, files.length);
+  writeUint16(output, files.length);
+  writeUint32(output, centralDirectory.length);
+  writeUint32(output, centralOffset);
+  writeUint16(output, 0);
+
+  return new Blob([new Uint8Array(output)], { type: 'application/zip' });
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function Field({ label, children }) {
   return (
     <label className="block">
@@ -418,6 +553,11 @@ function Select({ children, ...props }) {
 export default function SportsClipLab() {
   const [form, setForm] = useState(INITIAL_FORM);
   const [generatedForm, setGeneratedForm] = useState(INITIAL_FORM);
+  const [imageProvider, setImageProvider] = useState('huggingface');
+  const [sceneImages, setSceneImages] = useState({});
+  const [generatingAll, setGeneratingAll] = useState(false);
+  const [activeScene, setActiveScene] = useState(null);
+  const [imageBatchMessage, setImageBatchMessage] = useState(null);
 
   const packageData = useMemo(() => {
     const scenes = buildScenes(generatedForm);
@@ -434,6 +574,8 @@ export default function SportsClipLab() {
   const promptText = useMemo(() => buildPromptText(packageData), [packageData]);
   const metadataText = useMemo(() => buildMetadataText(packageData.metadata), [packageData.metadata]);
   const packageText = useMemo(() => buildPackageText(packageData), [packageData]);
+  const workflowInstructions = useMemo(() => buildWorkflowInstructions(packageData.scenes), [packageData.scenes]);
+  const generatedImageCount = Object.values(sceneImages).filter((image) => image?.status === 'success' && image.imageUrl).length;
 
   const updateField = (key, value) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -441,6 +583,105 @@ export default function SportsClipLab() {
 
   const generatePackage = () => {
     setGeneratedForm({ ...form });
+    setSceneImages({});
+    setImageBatchMessage(null);
+  };
+
+  const generateSceneImage = async (scene, forceVariation = false) => {
+    const sceneKey = scene.number;
+    setActiveScene(sceneKey);
+    setSceneImages((current) => ({
+      ...current,
+      [sceneKey]: {
+        ...current[sceneKey],
+        status: 'generating',
+        error: null,
+      },
+    }));
+
+    try {
+      const data = await api.regenerateSceneImage({
+        scene_index: scene.number - 1,
+        scene_description: scene.imagePrompt,
+        character_profile: {
+          type: `${packageData.form.sport} sports scene`,
+          style: 'cinematic sports editorial',
+          event: packageData.form.eventTopic,
+          teams_players: packageData.form.teamsPlayers,
+        },
+        image_provider: imageProvider,
+        variation_token: forceVariation ? `${Date.now()}-${scene.number}` : undefined,
+      });
+
+      if (!data?.image_url) {
+        throw new Error('Image not generated by provider.');
+      }
+
+      setSceneImages((current) => ({
+        ...current,
+        [sceneKey]: {
+          status: 'success',
+          imageUrl: data.image_url,
+          provider: data.provider || imageProvider,
+          promptUsed: data.prompt_used || scene.imagePrompt,
+          filename: `scene${scene.number}.png`,
+          error: null,
+        },
+      }));
+      return { ok: true, scene: sceneKey };
+    } catch (err) {
+      const message = err?.message || 'Provider failed or image API is missing.';
+      setSceneImages((current) => ({
+        ...current,
+        [sceneKey]: {
+          ...current[sceneKey],
+          status: 'error',
+          error: message,
+          filename: `scene${scene.number}.png`,
+        },
+      }));
+      return { ok: false, scene: sceneKey, error: message };
+    } finally {
+      setActiveScene(null);
+    }
+  };
+
+  const generateAllSceneImages = async () => {
+    setGeneratingAll(true);
+    setImageBatchMessage(null);
+
+    const results = [];
+    for (const scene of packageData.scenes) {
+      const result = await generateSceneImage(scene, false);
+      results.push(result);
+    }
+
+    const failures = results.filter((result) => !result.ok);
+    if (failures.length === 0) {
+      setImageBatchMessage({ type: 'success', text: `Generated ${results.length} scene images.` });
+    } else if (failures.length === results.length) {
+      setImageBatchMessage({ type: 'error', text: 'Image API missing or provider failed for every scene. The scene package is still available.' });
+    } else {
+      setImageBatchMessage({ type: 'warning', text: `Generated ${results.length - failures.length} of ${results.length} images. Regenerate failed scenes individually.` });
+    }
+    setGeneratingAll(false);
+  };
+
+  const downloadSceneImagesZip = () => {
+    const files = packageData.scenes
+      .map((scene) => sceneImages[scene.number])
+      .filter((image) => image?.status === 'success' && image.imageUrl)
+      .map((image) => ({
+        name: image.filename,
+        bytes: dataUrlToBytes(image.imageUrl),
+      }));
+
+    if (!files.length) {
+      setImageBatchMessage({ type: 'error', text: 'No generated images are ready to download.' });
+      return;
+    }
+
+    downloadBlob(createZip(files), 'threadangle-sports-scenes.zip');
   };
 
   return (
@@ -500,6 +741,12 @@ export default function SportsClipLab() {
                   {TONES.map((tone) => <option key={tone}>{tone}</option>)}
                 </Select>
               </Field>
+              <Field label="Image provider">
+                <Select value={imageProvider} onChange={(e) => setImageProvider(e.target.value)}>
+                  {IMAGE_PROVIDERS.map((provider) => <option key={provider.value} value={provider.value}>{provider.label}</option>)}
+                </Select>
+                <p className="mt-1.5 text-[11px] leading-4 text-[#8B949E]">Uses the existing Threadangle image endpoint only. No Runway, ElevenLabs, or video render APIs are called.</p>
+              </Field>
               <Field label="Hook">
                 <TextArea rows={2} value={form.hook} onChange={(e) => updateField('hook', e.target.value)} />
               </Field>
@@ -519,6 +766,38 @@ export default function SportsClipLab() {
               <ButtonIcon type="play" />
               Generate Sports Scene Package
             </button>
+
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+              <button
+                type="button"
+                onClick={generateAllSceneImages}
+                disabled={generatingAll}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1F6FEB] px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-[#388BFD] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <ButtonIcon type="play" />
+                {generatingAll ? `Generating${activeScene ? ` Scene ${activeScene}` : ''}...` : 'Generate Scene Images'}
+              </button>
+              <button
+                type="button"
+                onClick={downloadSceneImagesZip}
+                disabled={generatedImageCount === 0}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#30363D] bg-[#161B22] px-4 py-3 text-sm font-bold text-[#C9D1D9] transition-colors hover:border-[#58A6FF] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Download Images ZIP
+              </button>
+            </div>
+
+            {imageBatchMessage && (
+              <div className={`rounded-lg border px-3 py-2 text-xs leading-5 ${
+                imageBatchMessage.type === 'success'
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                  : imageBatchMessage.type === 'warning'
+                    ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                    : 'border-red-500/30 bg-red-500/10 text-red-300'
+              }`}>
+                {imageBatchMessage.text}
+              </div>
+            )}
 
             <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
               <CopyButton text={promptText}>Copy All Scene Prompts</CopyButton>
@@ -543,21 +822,44 @@ export default function SportsClipLab() {
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div>
                         <h3 className="font-bold text-white">Scene {scene.number}: {scene.label}</h3>
-                        <p className="text-xs text-[#8B949E]">{scene.duration}s</p>
+                        <p className="text-xs text-[#8B949E]">{scene.duration}s · scene{scene.number}.png</p>
                       </div>
-                      <CopyButton
-                        text={[
-                          `Image prompt: ${scene.imagePrompt}`,
-                          `Image-to-video prompt: ${scene.videoPrompt}`,
-                          `Caption: ${scene.caption}`,
-                          `Editing note: ${scene.editingNote}`,
-                        ].join('\n')}
-                        className="shrink-0"
-                      >
-                        Copy Scene
-                      </CopyButton>
+                      <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                        <CopyButton text={scene.videoPrompt}>Copy I2V Prompt</CopyButton>
+                        <button
+                          type="button"
+                          onClick={() => generateSceneImage(scene, true)}
+                          disabled={sceneImages[scene.number]?.status === 'generating'}
+                          className="inline-flex items-center justify-center rounded-lg border border-[#30363D] bg-[#161B22] px-3 py-2 text-xs font-semibold text-[#C9D1D9] transition-colors hover:border-[#58A6FF] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {sceneImages[scene.number]?.status === 'generating' ? 'Generating' : 'Regenerate Image'}
+                        </button>
+                      </div>
                     </div>
                     <div className="space-y-3 text-sm">
+                      <div className="overflow-hidden rounded-lg border border-[#30363D] bg-[#010409]">
+                        {sceneImages[scene.number]?.status === 'success' && sceneImages[scene.number]?.imageUrl ? (
+                          <img
+                            src={sceneImages[scene.number].imageUrl}
+                            alt={`Generated scene ${scene.number}`}
+                            className="aspect-[9/16] w-full max-h-[520px] object-cover"
+                          />
+                        ) : (
+                          <div className="flex aspect-[9/16] max-h-[520px] w-full items-center justify-center px-4 text-center text-xs leading-5 text-[#8B949E]">
+                            {sceneImages[scene.number]?.status === 'generating'
+                              ? `Generating scene ${scene.number} image...`
+                              : sceneImages[scene.number]?.status === 'error'
+                                ? 'Image not generated. Regenerate this scene or continue manually.'
+                                : 'Generate scene images to preview this frame.'}
+                          </div>
+                        )}
+                      </div>
+                      {sceneImages[scene.number]?.status === 'success' && (
+                        <p className="text-xs text-emerald-300">Generated by {sceneImages[scene.number].provider || imageProvider} as {sceneImages[scene.number].filename}</p>
+                      )}
+                      {sceneImages[scene.number]?.status === 'error' && (
+                        <p className="text-xs leading-5 text-red-300">{sceneImages[scene.number].error || 'Provider failed or image was not generated.'}</p>
+                      )}
                       <div>
                         <p className="mb-1 text-xs font-bold uppercase tracking-wide text-[#8B949E]">Image prompt</p>
                         <p className="leading-6 text-[#C9D1D9]">{scene.imagePrompt}</p>
@@ -592,19 +894,15 @@ export default function SportsClipLab() {
               </div>
 
               <div className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
-                <h2 className="mb-3 text-lg font-bold text-white">Manual Workflow Checklist</h2>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h2 className="text-lg font-bold text-white">Manual Workflow Checklist</h2>
+                  <CopyButton text={workflowInstructions}>Copy</CopyButton>
+                </div>
                 <ol className="space-y-2 text-sm text-[#C9D1D9]">
-                  {[
-                    'Generate images/clips in Meta AI or another manual tool.',
-                    'Download clips as scene1.mp4, scene2.mp4, scene3.mp4...',
-                    'Upload clips to Colab.',
-                    'Run the copied script.',
-                    'Download final_vertical_short.mp4.',
-                    'Post with generated metadata.',
-                  ].map((item, index) => (
+                  {workflowInstructions.split('\n').slice(1).map((item, index) => (
                     <li key={item} className="flex gap-3">
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#21262D] text-xs font-bold text-[#58A6FF]">{index + 1}</span>
-                      <span>{item}</span>
+                      <span>{item.replace(/^\d+\.\s*/, '')}</span>
                     </li>
                   ))}
                 </ol>
