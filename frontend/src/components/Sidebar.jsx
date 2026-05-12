@@ -151,6 +151,9 @@ export default function Sidebar({ activeTab, setActiveTab }) {
     { id: 'ai-video', label: 'Video Studio', icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14m-9 4h8a2 2 0 002-2V8a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
     )},
+    { id: 'sports-workflow', label: 'Sports Clip Lab', icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.5 4.5a7 7 0 109 9m-9-9a7 7 0 019 9m-9-9l9 9m-5.75-8.25a3.5 3.5 0 014.5 4.5m-11 5.5a3.5 3.5 0 004.5 4.5M4 12h16M12 4v16" /></svg>
+    )},
     { id: 'history', label: 'History', icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
     )},

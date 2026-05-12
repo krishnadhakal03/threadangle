@@ -23,6 +23,7 @@ import History from './components/History';
 import Calendar from './components/Calendar';
 import UpgradeView from './components/UpgradeView';
 import Settings from './components/Settings';
+import SportsClipLab from './components/SportsClipLab';
 import Onboarding from './components/Onboarding';
 import AnnouncementBar from './components/AnnouncementBar';
 import { useWindowWidth } from './hooks/useWindowWidth';
@@ -144,10 +145,11 @@ const DashboardLayout = () => {
             <main className="flex-1 overflow-y-auto" style={{ paddingTop: isMobile ? '56px' : 0 }}>
               {activeTab === 'dashboard' && <Dashboard mode="generate" />}
               {activeTab === 'ai-video' && <Dashboard mode="video" />}
-                {activeTab === 'history' && <History />}
-                {activeTab === 'calendar' && <Calendar />}
-                {activeTab === 'upgrade' && <UpgradeView />}
-                {activeTab === 'settings' && <Settings />}
+              {activeTab === 'sports-workflow' && <SportsClipLab />}
+              {activeTab === 'history' && <History />}
+              {activeTab === 'calendar' && <Calendar />}
+              {activeTab === 'upgrade' && <UpgradeView />}
+              {activeTab === 'settings' && <Settings />}
             </main>
             {showOnboarding && <Onboarding onComplete={() => setShowOnboarding(false)} />}
         </div>
