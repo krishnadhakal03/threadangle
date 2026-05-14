@@ -22,8 +22,8 @@ const FOOTBALL_TEMPLATE_OPTIONS = [
   { value: 'star-player-watch', label: 'Star Player Watch' },
 ];
 const IMAGE_PROVIDERS = [
-  { value: 'huggingface', label: 'HuggingFace / fallback' },
-  { value: 'pollinations', label: 'Pollinations' },
+  { value: 'huggingface', label: 'HuggingFace / fallback', mode: 'Free image adapter', risk: 'May fail when the local API has no model configured.' },
+  { value: 'pollinations', label: 'Pollinations', mode: 'Free prompt image URL', risk: 'Remote image availability can vary by prompt.' },
 ];
 
 const FOOTBALL_TEMPLATES = {
@@ -719,6 +719,23 @@ function dataUrlToBytes(dataUrl) {
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
+async function imageUrlToBytes(imageUrl) {
+  if (String(imageUrl || '').startsWith('data:')) {
+    return dataUrlToBytes(imageUrl);
+  }
+
+  const response = await fetch(imageUrl);
+  if (!response.ok) {
+    throw new Error(`Unable to download image asset (${response.status})`);
+  }
+
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+function getImageProviderProfile(providerValue) {
+  return IMAGE_PROVIDERS.find((provider) => provider.value === providerValue) || IMAGE_PROVIDERS[0];
+}
+
 function createZip(files) {
   const output = [];
   const centralDirectory = [];
@@ -838,6 +855,7 @@ export default function SportsClipLab() {
   const [imageProvider, setImageProvider] = useState('huggingface');
   const [sceneImages, setSceneImages] = useState({});
   const [generatingAll, setGeneratingAll] = useState(false);
+  const [downloadingZip, setDownloadingZip] = useState(false);
   const [activeScene, setActiveScene] = useState(null);
   const [imageBatchMessage, setImageBatchMessage] = useState(null);
 
@@ -858,6 +876,7 @@ export default function SportsClipLab() {
   const packageText = useMemo(() => buildPackageText(packageData), [packageData]);
   const workflowInstructions = useMemo(() => buildWorkflowInstructions(packageData.scenes), [packageData.scenes]);
   const generatedImageCount = Object.values(sceneImages).filter((image) => image?.status === 'success' && image.imageUrl).length;
+  const activeImageProvider = getImageProviderProfile(imageProvider);
 
   const updateField = (key, value) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -886,6 +905,7 @@ export default function SportsClipLab() {
     }));
 
     try {
+      const providerProfile = getImageProviderProfile(imageProvider);
       const data = await api.regenerateSceneImage({
         scene_index: scene.number - 1,
         scene_description: scene.imagePrompt,
@@ -894,6 +914,8 @@ export default function SportsClipLab() {
           style: 'cinematic sports editorial',
           event: packageData.form.eventTopic,
           teams_players: packageData.form.teamsPlayers,
+          provider_mode: providerProfile.mode,
+          manual_approval_required: true,
         },
         image_provider: imageProvider,
         variation_token: forceVariation ? `${Date.now()}-${scene.number}` : undefined,
@@ -909,6 +931,7 @@ export default function SportsClipLab() {
           status: 'success',
           imageUrl: data.image_url,
           provider: data.provider || imageProvider,
+          providerMode: providerProfile.mode,
           promptUsed: data.prompt_used || scene.imagePrompt,
           filename: `scene${scene.number}.png`,
           error: null,
@@ -953,21 +976,45 @@ export default function SportsClipLab() {
     setGeneratingAll(false);
   };
 
-  const downloadSceneImagesZip = () => {
-    const files = packageData.scenes
-      .map((scene) => sceneImages[scene.number])
-      .filter((image) => image?.status === 'success' && image.imageUrl)
-      .map((image) => ({
-        name: image.filename,
-        bytes: dataUrlToBytes(image.imageUrl),
-      }));
+  const downloadSceneImagesZip = async () => {
+    const readyImages = packageData.scenes
+      .map((scene) => ({ scene, image: sceneImages[scene.number] }))
+      .filter(({ image }) => image?.status === 'success' && image.imageUrl);
 
-    if (!files.length) {
+    if (!readyImages.length) {
       setImageBatchMessage({ type: 'error', text: 'No generated images are ready to download.' });
       return;
     }
 
-    downloadBlob(createZip(files), 'threadangle-sports-scenes.zip');
+    setDownloadingZip(true);
+    try {
+      const imageFiles = [];
+      for (const { image } of readyImages) {
+        imageFiles.push({
+          name: image.filename,
+          bytes: await imageUrlToBytes(image.imageUrl),
+        });
+      }
+
+      const manifest = readyImages.map(({ scene, image }) => [
+        `Scene ${scene.number}: ${scene.label}`,
+        `Filename: ${image.filename}`,
+        `Provider: ${image.provider || imageProvider}`,
+        `Caption: ${scene.caption}`,
+        `Image prompt: ${image.promptUsed || scene.imagePrompt}`,
+        `Image-to-video prompt: ${scene.videoPrompt}`,
+      ].join('\n')).join('\n\n');
+
+      downloadBlob(createZip([
+        ...imageFiles,
+        { name: 'scene-prompts.txt', bytes: new Uint8Array(new TextEncoder().encode(manifest)) },
+      ]), 'threadangle-football-scene-images.zip');
+      setImageBatchMessage({ type: 'success', text: `Downloaded ${imageFiles.length} images with prompt manifest.` });
+    } catch (err) {
+      setImageBatchMessage({ type: 'error', text: err?.message || 'Could not package generated images. Copy prompts and download images manually.' });
+    } finally {
+      setDownloadingZip(false);
+    }
   };
 
   return (
@@ -1052,7 +1099,7 @@ export default function SportsClipLab() {
                 <Select value={imageProvider} onChange={(e) => setImageProvider(e.target.value)}>
                   {IMAGE_PROVIDERS.map((provider) => <option key={provider.value} value={provider.value}>{provider.label}</option>)}
                 </Select>
-                <p className="mt-1.5 text-[11px] leading-4 text-[#8B949E]">Uses the existing Threadangle image endpoint only. No Runway, ElevenLabs, or video render APIs are called.</p>
+                <p className="mt-1.5 text-[11px] leading-4 text-[#8B949E]">{activeImageProvider.mode}. {activeImageProvider.risk} No Runway, ElevenLabs, or video render APIs are called.</p>
               </Field>
               <Field label="Hook">
                 <TextArea rows={2} value={form.hook} onChange={(e) => updateField('hook', e.target.value)} />
@@ -1087,10 +1134,10 @@ export default function SportsClipLab() {
               <button
                 type="button"
                 onClick={downloadSceneImagesZip}
-                disabled={generatedImageCount === 0}
+                disabled={generatedImageCount === 0 || downloadingZip}
                 className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#30363D] bg-[#161B22] px-4 py-3 text-sm font-bold text-[#C9D1D9] transition-colors hover:border-[#58A6FF] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Download Images ZIP
+                {downloadingZip ? 'Packaging ZIP...' : 'Download Images ZIP'}
               </button>
             </div>
 
@@ -1148,6 +1195,7 @@ export default function SportsClipLab() {
                         <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[#F0B429]">{scene.thumbnailText}</p>
                       </div>
                       <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                        <CopyButton text={scene.imagePrompt}>Copy Image Prompt</CopyButton>
                         <CopyButton text={scene.videoPrompt}>Copy I2V Prompt</CopyButton>
                         <button
                           type="button"
@@ -1178,7 +1226,7 @@ export default function SportsClipLab() {
                         )}
                       </div>
                       {sceneImages[scene.number]?.status === 'success' && (
-                        <p className="text-xs text-emerald-300">Generated by {sceneImages[scene.number].provider || imageProvider} as {sceneImages[scene.number].filename}</p>
+                        <p className="text-xs text-emerald-300">Generated by {sceneImages[scene.number].provider || imageProvider} ({sceneImages[scene.number].providerMode || activeImageProvider.mode}) as {sceneImages[scene.number].filename}</p>
                       )}
                       {sceneImages[scene.number]?.status === 'error' && (
                         <p className="text-xs leading-5 text-red-300">{sceneImages[scene.number].error || 'Provider failed or image was not generated.'}</p>
