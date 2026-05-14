@@ -5,6 +5,11 @@ const DURATIONS = ['15s', '20s', '30s'];
 const SPORTS = ['Football', 'EPL', 'Soccer', 'NBA', 'NFL', 'Other'];
 const PLATFORMS = ['All', 'YouTube Shorts', 'TikTok', 'Reels'];
 const TONES = ['cinematic', 'hype', 'emotional', 'rivalry', 'underdog', 'breaking-news'];
+const PACING_MODES = [
+  { value: 'balanced', label: 'Balanced cuts' },
+  { value: 'hyper', label: 'Hyper fast cuts' },
+  { value: 'story', label: 'Story tension' },
+];
 const FOOTBALL_TEMPLATE_OPTIONS = [
   { value: 'el-clasico', label: 'El Clasico Rivalry' },
   { value: 'epl-title-race', label: 'EPL Title Race' },
@@ -176,6 +181,7 @@ const EXAMPLES = {
     teamsPlayers: 'San Antonio Spurs, Minnesota Timberwolves, Victor Wembanyama, Anthony Edwards',
     targetPlatform: 'All',
     duration: '20s',
+    pacingMode: 'balanced',
     tone: 'hype',
     hook: 'Wemby is back under playoff pressure tonight.',
     body: 'Game 5 is tied 2-2, the stage is in San Antonio, and one run could swing the whole series.',
@@ -190,6 +196,7 @@ const EXAMPLES = {
     teamsPlayers: 'Manchester City, Crystal Palace, Erling Haaland, Phil Foden, Eberechi Eze',
     targetPlatform: 'All',
     duration: '20s',
+    pacingMode: 'balanced',
     tone: 'cinematic',
     hook: 'City cannot blink in the title race tomorrow.',
     body: 'Crystal Palace arrive at the Etihad with spoiler energy while City chase every point under pressure.',
@@ -204,6 +211,7 @@ const EXAMPLES = {
     teamsPlayers: 'Argentina, France, Lionel Messi, Kylian Mbappe',
     targetPlatform: 'All',
     duration: '20s',
+    pacingMode: 'hyper',
     tone: 'emotional',
     hook: 'Ninety minutes from survival or heartbreak.',
     body: 'World Cup knockout football turns every touch into pressure and every miss into history.',
@@ -291,6 +299,71 @@ function getSceneDurations(totalDuration, count) {
   });
 }
 
+function getFastCutDurations(totalDuration, count, pacingMode = 'balanced') {
+  const total = Number.parseInt(totalDuration, 10) || 20;
+  const weightsByMode = {
+    hyper: [1, 1.25, 1, 1.15, 0.95, 0.9, 0.85, 0.8],
+    balanced: [1, 1.2, 1.1, 1.05, 0.95, 0.9, 0.85, 0.8],
+    story: [1, 1.35, 1.25, 1.1, 1, 0.95, 0.9, 0.85],
+  };
+  const weights = weightsByMode[pacingMode] || weightsByMode.balanced;
+  const activeWeights = Array.from({ length: count }, (_, index) => weights[index] || 1);
+  const weightTotal = activeWeights.reduce((sum, weight) => sum + weight, 0);
+  let secondsLeft = total;
+
+  return activeWeights.map((weight, index) => {
+    const remaining = count - index;
+    if (remaining === 1) return Math.max(1, secondsLeft);
+    const minForRest = remaining - 1;
+    const raw = Math.round((total * weight) / weightTotal);
+    const capped = Math.min(Math.max(1, raw), secondsLeft - minForRest);
+    secondsLeft -= capped;
+    return capped;
+  });
+}
+
+function countWords(text) {
+  return String(text || '').trim().split(/\s+/).filter(Boolean).length;
+}
+
+function captionDensityScore(caption, duration) {
+  const wordsPerSecond = countWords(caption) / Math.max(1, duration);
+  if (wordsPerSecond <= 2.4) return 92;
+  if (wordsPerSecond <= 3.1) return 78;
+  if (wordsPerSecond <= 3.8) return 62;
+  return 46;
+}
+
+function buildRetentionPlan(scene, index, totalScenes, pacingMode) {
+  const hookScene = index === 0;
+  const endingScene = index === totalScenes - 1;
+  const energyCurve = pacingMode === 'story'
+    ? [96, 76, 84, 91, 88, 94, 90, 86]
+    : pacingMode === 'hyper'
+      ? [98, 88, 94, 90, 96, 86, 92, 89]
+      : [96, 82, 88, 85, 92, 86, 90, 84];
+  const emotionalArc = hookScene
+    ? 'Instant pressure spike'
+    : endingScene
+      ? 'Open-loop comment payoff'
+      : index < totalScenes / 2
+        ? 'Stakes escalation'
+        : 'Decision tension';
+
+  return {
+    energyScore: energyCurve[index] || 84,
+    captionDensityScore: captionDensityScore(scene.caption, scene.duration),
+    emotionalArc,
+    recommendedCut: hookScene ? '0.8s visual hook before the first full caption' : `${scene.duration}s beat-matched cut`,
+    transition: hookScene ? 'smash cut from black' : endingScene ? 'snap zoom into loop frame' : 'match cut on movement',
+    beatDrop: hookScene ? '0.4s' : `${Math.max(1, Math.round(scene.duration * 0.55))}s`,
+    captionPlacement: hookScene ? 'upper-middle, 3-5 words max' : 'lower third with safe margins',
+    curiosityGap: hookScene ? 'Hide the answer until scene 4.' : endingScene ? 'Ask for a side, not a generic opinion.' : 'Delay the reveal by one more cut.',
+    patternInterrupt: hookScene ? 'Start on a face, not a wide stadium.' : index % 2 === 0 ? 'Speed-ramp into freeze frame.' : 'Cut to crowd reaction before action resolves.',
+    replayLoop: endingScene ? `End on "${scene.caption}" then hard cut back to the opening pressure frame.` : 'Keep this beat short enough that the viewer expects the next cut.',
+  };
+}
+
 function makeHashtags(form) {
   const topicTags = form.teamsPlayers
     .split(',')
@@ -311,7 +384,7 @@ function buildScenes(form) {
   const total = Number.parseInt(form.duration, 10) || 20;
   const template = getTemplate(form);
   const count = total <= 15 ? 4 : total >= 30 ? Math.min(8, template.beats.length + 1) : Math.min(6, template.beats.length);
-  const durations = getSceneDurations(form.duration, count);
+  const durations = getFastCutDurations(form.duration, count, form.pacingMode);
   const bodyLines = splitText(form.body);
   const subject = form.teamsPlayers || form.eventTopic || 'the matchup';
   const footballContext = form.worldCupMode ? 'World Cup mode, national-team stakes, knockout pressure.' : 'Football-first short-form package.';
@@ -342,26 +415,33 @@ function buildScenes(form) {
     });
   }
 
-  return beats.slice(0, count).map((beat, index) => ({
-    number: index + 1,
-    label: beat.label,
-    duration: durations[index],
-    imagePrompt: [
-      `Vertical 9:16 football short scene for "${form.eventTopic}".`,
-      footballContext,
-      `Tone: ${form.tone}. Subject: ${subject}.`,
-      `${beat.visual}.`,
-      'Cinematic sports editorial style, realistic lighting, sharp subject, readable negative space for captions, no official logos, no watermarks, no broadcast graphics.',
-    ].join(' '),
-    videoPrompt: [
-      `Animate this image as a ${durations[index]} second vertical sports clip.`,
-      `${beat.motion}.`,
-      'Keep faces and uniforms stable, avoid text artifacts, preserve 9:16 framing, leave lower third clear for captions.',
-    ].join(' '),
-    caption: beat.caption,
-    editingNote: beat.note,
-    thumbnailText: template.thumbnailText[index % template.thumbnailText.length],
-  }));
+  return beats.slice(0, count).map((beat, index) => {
+    const scene = {
+      number: index + 1,
+      label: beat.label,
+      duration: durations[index],
+      imagePrompt: [
+        `Vertical 9:16 football short scene for "${form.eventTopic}".`,
+        footballContext,
+        `Tone: ${form.tone}. Subject: ${subject}.`,
+        `${beat.visual}.`,
+        'Cinematic sports editorial style, realistic lighting, sharp subject, readable negative space for captions, no official logos, no watermarks, no broadcast graphics.',
+      ].join(' '),
+      videoPrompt: [
+        `Animate this image as a ${durations[index]} second vertical sports clip.`,
+        `${beat.motion}.`,
+        'Keep faces and uniforms stable, avoid text artifacts, preserve 9:16 framing, leave lower third clear for captions.',
+      ].join(' '),
+      caption: beat.caption,
+      editingNote: beat.note,
+      thumbnailText: template.thumbnailText[index % template.thumbnailText.length],
+    };
+
+    return {
+      ...scene,
+      retention: buildRetentionPlan(scene, index, count, form.pacingMode),
+    };
+  });
 }
 
 function buildVoiceover(form, scenes) {
@@ -414,6 +494,16 @@ function buildPromptText(packageData) {
   return packageData.scenes.map((scene) => [
     `Scene ${scene.number}: ${scene.label}`,
     `Duration: ${scene.duration}s`,
+    `Energy score: ${scene.retention.energyScore}/100`,
+    `Caption density score: ${scene.retention.captionDensityScore}/100`,
+    `Emotional arc: ${scene.retention.emotionalArc}`,
+    `Recommended cut: ${scene.retention.recommendedCut}`,
+    `Transition: ${scene.retention.transition}`,
+    `Beat drop timing: ${scene.retention.beatDrop}`,
+    `Caption placement: ${scene.retention.captionPlacement}`,
+    `Curiosity gap: ${scene.retention.curiosityGap}`,
+    `Pattern interrupt: ${scene.retention.patternInterrupt}`,
+    `Replay loop: ${scene.retention.replayLoop}`,
     `Image prompt: ${scene.imagePrompt}`,
     `Image-to-video prompt: ${scene.videoPrompt}`,
     `Caption: ${scene.caption}`,
@@ -948,6 +1038,11 @@ export default function SportsClipLab() {
                   {DURATIONS.map((duration) => <option key={duration}>{duration}</option>)}
                 </Select>
               </Field>
+              <Field label="Pacing planner">
+                <Select value={form.pacingMode || 'balanced'} onChange={(e) => updateField('pacingMode', e.target.value)}>
+                  {PACING_MODES.map((mode) => <option key={mode.value} value={mode.value}>{mode.label}</option>)}
+                </Select>
+              </Field>
               <Field label="Tone">
                 <Select value={form.tone} onChange={(e) => updateField('tone', e.target.value)}>
                   {TONES.map((tone) => <option key={tone}>{tone}</option>)}
@@ -1028,6 +1123,21 @@ export default function SportsClipLab() {
                 <CopyButton text={packageText}>Copy Full Package</CopyButton>
               </div>
 
+              <div className="mb-4 grid gap-3 md:grid-cols-3">
+                <div className="rounded-lg border border-[#21262D] bg-[#0D1117] p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">1-second hook</p>
+                  <p className="mt-1 text-sm text-white">{packageData.scenes[0]?.retention.recommendedCut}</p>
+                </div>
+                <div className="rounded-lg border border-[#21262D] bg-[#0D1117] p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Peak energy</p>
+                  <p className="mt-1 text-sm text-white">{Math.max(...packageData.scenes.map((scene) => scene.retention.energyScore))}/100</p>
+                </div>
+                <div className="rounded-lg border border-[#21262D] bg-[#0D1117] p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Replay loop</p>
+                  <p className="mt-1 text-sm text-white">{packageData.scenes.at(-1)?.retention.replayLoop}</p>
+                </div>
+              </div>
+
               <div className="grid gap-4 lg:grid-cols-2">
                 {packageData.scenes.map((scene) => (
                   <article key={scene.number} className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
@@ -1089,6 +1199,19 @@ export default function SportsClipLab() {
                         <div>
                           <p className="mb-1 text-xs font-bold uppercase tracking-wide text-[#8B949E]">Editing note</p>
                           <p className="text-[#C9D1D9]">{scene.editingNote}</p>
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-[#30363D] bg-[#010409] p-3">
+                        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-[#8B949E]">Retention engine</p>
+                        <div className="grid gap-2 text-xs leading-5 text-[#C9D1D9] sm:grid-cols-2">
+                          <p><span className="font-semibold text-white">Energy:</span> {scene.retention.energyScore}/100</p>
+                          <p><span className="font-semibold text-white">Caption density:</span> {scene.retention.captionDensityScore}/100</p>
+                          <p><span className="font-semibold text-white">Arc:</span> {scene.retention.emotionalArc}</p>
+                          <p><span className="font-semibold text-white">Cut:</span> {scene.retention.recommendedCut}</p>
+                          <p><span className="font-semibold text-white">Transition:</span> {scene.retention.transition}</p>
+                          <p><span className="font-semibold text-white">Beat:</span> {scene.retention.beatDrop}</p>
+                          <p><span className="font-semibold text-white">Caption:</span> {scene.retention.captionPlacement}</p>
+                          <p><span className="font-semibold text-white">Interrupt:</span> {scene.retention.patternInterrupt}</p>
                         </div>
                       </div>
                     </div>
