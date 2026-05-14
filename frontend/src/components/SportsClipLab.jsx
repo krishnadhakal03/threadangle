@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../utils/api';
 
 const DURATIONS = ['15s', '20s', '30s'];
@@ -26,6 +26,7 @@ const IMAGE_PROVIDERS = [
   { value: 'pollinations', label: 'Pollinations', mode: 'Free prompt image URL', risk: 'Remote image availability can vary by prompt.' },
 ];
 const PERFORMANCE_STORAGE_KEY = 'threadangle_football_performance_logs_v1';
+const SUPPORTED_EXTERNAL_CLIP_EXTENSIONS = ['.mp4', '.mov', '.webm'];
 const GENERIC_VISUAL_GUIDANCE = [
   'Use generic sports editorial visuals inspired by the story context.',
   'Do not recreate exact real-player likenesses, faces, tattoos, names on jerseys, official crests, or broadcast graphics.',
@@ -894,6 +895,12 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
+function revokeObjectUrl(value) {
+  if (typeof value === 'string' && value.startsWith('blob:')) {
+    URL.revokeObjectURL(value);
+  }
+}
+
 function Field({ label, children }) {
   return (
     <label className="block">
@@ -945,6 +952,7 @@ export default function SportsClipLab() {
   const [imageBatchMessage, setImageBatchMessage] = useState(null);
   const [finalStitch, setFinalStitch] = useState({ status: 'idle', error: null });
   const externalClipInputRefs = useRef({});
+  const objectUrlsRef = useRef(new Set());
   const [performanceLogs, setPerformanceLogs] = useState(() => loadPerformanceLogs());
   const [performanceForm, setPerformanceForm] = useState({
     platform: 'YouTube Shorts',
@@ -979,6 +987,30 @@ export default function SportsClipLab() {
   const allScenesApproved = approvedSceneCount === packageData.scenes.length;
   const activeImageProvider = getImageProviderProfile(imageProvider);
   const performanceSummary = useMemo(() => summarizePerformance(performanceLogs), [performanceLogs]);
+
+  useEffect(() => () => {
+    objectUrlsRef.current.forEach((url) => revokeObjectUrl(url));
+    objectUrlsRef.current.clear();
+  }, []);
+
+  const trackObjectUrl = (url) => {
+    if (typeof url === 'string' && url.startsWith('blob:')) {
+      objectUrlsRef.current.add(url);
+    }
+    return url;
+  };
+
+  const releaseObjectUrl = (url) => {
+    if (typeof url === 'string' && url.startsWith('blob:')) {
+      revokeObjectUrl(url);
+      objectUrlsRef.current.delete(url);
+    }
+  };
+
+  const releaseAllObjectUrls = () => {
+    objectUrlsRef.current.forEach((url) => revokeObjectUrl(url));
+    objectUrlsRef.current.clear();
+  };
 
   const updateField = (key, value) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -1031,6 +1063,7 @@ export default function SportsClipLab() {
   };
 
   const generatePackage = () => {
+    releaseAllObjectUrls();
     setGeneratedForm({ ...form });
     setSceneImages({});
     setSceneMotionPreviews({});
@@ -1042,20 +1075,28 @@ export default function SportsClipLab() {
   const generateSceneImage = async (scene, forceVariation = false) => {
     const sceneKey = scene.number;
     setActiveScene(sceneKey);
+    releaseObjectUrl(sceneMotionPreviews[sceneKey]?.videoUrl);
+    if (sceneClipDecisions[sceneKey]?.source === 'external_upload') {
+      releaseObjectUrl(sceneClipDecisions[sceneKey]?.videoUrl);
+    }
     setSceneMotionPreviews((current) => {
       const next = { ...current };
       delete next[sceneKey];
       return next;
     });
-    setSceneClipDecisions((current) => ({
-      ...current,
-      [sceneKey]: {
-        status: 'needs_decision',
-        source: null,
-        approved: false,
-        message: 'Image changed. Review motion or upload a clip again before approval.',
-      },
-    }));
+    setSceneClipDecisions((current) => {
+      return {
+        ...current,
+        [sceneKey]: {
+          status: 'needs_decision',
+          source: null,
+          approved: false,
+          message: 'Image changed. Review motion or upload a clip again before approval.',
+        },
+      };
+    });
+    releaseObjectUrl(finalStitch.videoUrl);
+    setFinalStitch({ status: 'idle', error: null });
     setSceneImages((current) => ({
       ...current,
       [sceneKey]: {
@@ -1141,6 +1182,18 @@ export default function SportsClipLab() {
         error: null,
       },
     }));
+    setSceneClipDecisions((current) => {
+      if (current[sceneKey]?.source !== 'local_motion') return current;
+      return {
+        ...current,
+        [sceneKey]: {
+          status: 'needs_decision',
+          source: null,
+          approved: false,
+          message: 'Motion preview is being regenerated. Approve the new clip before final stitch.',
+        },
+      };
+    });
 
     try {
       const data = await api.generateSportsMotionPreview({
@@ -1151,21 +1204,25 @@ export default function SportsClipLab() {
         caption: scene.caption,
       });
       const { blobUrl } = await api.fetchVideoBlob(data.preview_url || data.download_url);
-      setSceneMotionPreviews((current) => ({
-        ...current,
-        [sceneKey]: {
-          status: 'success',
-          videoUrl: blobUrl,
-          downloadUrl: data.download_url,
-          videoFile: data.video_file,
-          generationId: data.generation_id,
-          provider: data.provider,
-          duration: data.duration,
-          motionStyle: data.motion_style,
-          approvalRequired: Boolean(data.approval_required),
-          error: null,
-        },
-      }));
+      const trackedBlobUrl = trackObjectUrl(blobUrl);
+      releaseObjectUrl(sceneMotionPreviews[sceneKey]?.videoUrl);
+      setSceneMotionPreviews((current) => {
+        return {
+          ...current,
+          [sceneKey]: {
+            status: 'success',
+            videoUrl: trackedBlobUrl,
+            downloadUrl: data.download_url,
+            videoFile: data.video_file,
+            generationId: data.generation_id,
+            provider: data.provider,
+            duration: data.duration,
+            motionStyle: data.motion_style,
+            approvalRequired: Boolean(data.approval_required),
+            error: null,
+          },
+        };
+      });
     } catch (err) {
       setSceneMotionPreviews((current) => ({
         ...current,
@@ -1192,7 +1249,22 @@ export default function SportsClipLab() {
       }));
       return;
     }
+    if (!preview.videoFile) {
+      setSceneClipDecisions((current) => ({
+        ...current,
+        [sceneKey]: {
+          status: 'blocked',
+          source: 'local_motion',
+          approved: false,
+          message: 'Local motion preview is missing its backend video file. Render the preview again before approving.',
+        },
+      }));
+      return;
+    }
 
+    if (sceneClipDecisions[sceneKey]?.source === 'external_upload') {
+      releaseObjectUrl(sceneClipDecisions[sceneKey]?.videoUrl);
+    }
     setSceneClipDecisions((current) => ({
       ...current,
       [sceneKey]: {
@@ -1214,7 +1286,27 @@ export default function SportsClipLab() {
   const uploadExternalClip = (scene, file) => {
     if (!file) return;
     const sceneKey = scene.number;
-    const videoUrl = URL.createObjectURL(file);
+    const extension = `.${String(file.name || '').split('.').pop()}`.toLowerCase();
+    if (!SUPPORTED_EXTERNAL_CLIP_EXTENSIONS.includes(extension)) {
+      if (sceneClipDecisions[sceneKey]?.source === 'external_upload') {
+        releaseObjectUrl(sceneClipDecisions[sceneKey]?.videoUrl);
+      }
+      setSceneClipDecisions((current) => ({
+        ...current,
+        [sceneKey]: {
+          status: 'blocked',
+          source: 'external_upload',
+          approved: false,
+          message: 'Unsupported uploaded clip format. Use MP4, MOV, or WebM.',
+        },
+      }));
+      return;
+    }
+
+    const videoUrl = trackObjectUrl(URL.createObjectURL(file));
+    if (sceneClipDecisions[sceneKey]?.source === 'external_upload') {
+      releaseObjectUrl(sceneClipDecisions[sceneKey]?.videoUrl);
+    }
     setSceneClipDecisions((current) => ({
       ...current,
       [sceneKey]: {
@@ -1225,7 +1317,7 @@ export default function SportsClipLab() {
         file,
         fileName: file.name,
         duration: scene.duration,
-        message: 'External clip uploaded. Review and approve it before final stitch.',
+        message: 'External clip uploaded for this browser session. Review and approve it before final stitch.',
       },
     }));
   };
@@ -1252,6 +1344,18 @@ export default function SportsClipLab() {
       setFinalStitch({
         status: 'error',
         error: `Approve every scene before final stitch. Missing: ${missingScenes.map((scene) => `Scene ${scene.number}`).join(', ')}.`,
+      });
+      return;
+    }
+
+    const missingLocalFiles = packageData.scenes.filter((scene) => {
+      const decision = sceneClipDecisions[scene.number];
+      return decision?.source === 'local_motion' && !decision.videoFile;
+    });
+    if (missingLocalFiles.length) {
+      setFinalStitch({
+        status: 'error',
+        error: `Approved local preview is missing its backend video file for ${missingLocalFiles.map((scene) => `Scene ${scene.number}`).join(', ')}. Regenerate and approve that local preview.`,
       });
       return;
     }
@@ -1286,14 +1390,16 @@ export default function SportsClipLab() {
     });
     formData.append('external_scene_numbers_json', JSON.stringify(externalSceneNumbers));
 
+    releaseObjectUrl(finalStitch.videoUrl);
     setFinalStitch({ status: 'rendering', error: null });
     try {
       const data = await api.createSportsFinalStitch(formData);
       const { blobUrl } = await api.fetchVideoBlob(data.preview_url || data.download_url);
+      const trackedBlobUrl = trackObjectUrl(blobUrl);
       setFinalStitch({
         status: 'success',
         error: null,
-        videoUrl: blobUrl,
+        videoUrl: trackedBlobUrl,
         downloadUrl: data.download_url,
         generationId: data.generation_id,
         runId: data.run_id,
@@ -1388,6 +1494,7 @@ export default function SportsClipLab() {
                 key={key}
                 type="button"
                 onClick={() => {
+                  releaseAllObjectUrls();
                   setForm(example);
                   setGeneratedForm(example);
                   setSceneImages({});
