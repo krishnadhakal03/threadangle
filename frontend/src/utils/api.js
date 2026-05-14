@@ -168,7 +168,7 @@ export const api = {
             const rawMessage = err?.message || '';
             const isFetchFailure = err instanceof TypeError || /failed to fetch/i.test(rawMessage);
             const message = isFetchFailure
-                ? `Browser preview fetch failed for ${url || 'the generated video'}. In local development this is usually caused by an untrusted HTTPS certificate, mixed frontend/backend protocols, or a backend server that is not reachable. Use the direct download link or trust the local HTTPS certificate.`
+                ? `Final video was generated, but browser preview failed for ${url || 'the generated video'}. This can happen with local HTTPS certificates, dev-server proxy issues, mixed frontend/backend protocols, or an unreachable backend. Use the direct download link or check backend download route.`
                 : rawMessage || 'Unable to fetch video preview.';
             const previewErr = new Error(message);
             previewErr.cause = err;

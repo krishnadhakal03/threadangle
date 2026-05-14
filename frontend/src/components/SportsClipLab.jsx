@@ -42,10 +42,98 @@ const SUPPORTED_EXTERNAL_CLIP_EXTENSIONS = ['.mp4', '.mov', '.webm'];
 const GENERIC_VISUAL_GUIDANCE = [
   'Use generic sports editorial visuals inspired by the story context.',
   'Treat any named players as story labels only, not likeness targets.',
-  'Do not recreate exact real-player likenesses, Messi-like faces, celebrity facial structure, tattoos, jersey names, kit logos, official badges, official crests, sponsor marks, or broadcast graphics.',
-  'Prefer back view, silhouette, cropped hands, cropped boots, crowd reaction, stadium atmosphere, anonymous player angles, team-color energy, tactical details, and clean caption space.',
-  'Use plain unbranded kits and invented visual motifs that cannot be mistaken for official club or national-team marks.',
+  'Do not recreate exact real-person likeness, imitate a recognizable athlete face, use official team crests, league logos, broadcast graphics, sponsor marks, player names on jerseys, tattoos, or unique identifying marks.',
+  'Prefer anonymous athletes, silhouettes, back-view angles, cropped hands, cropped boots, ball details, crowd shots, stadium or arena atmosphere, tactical boards, trophy silhouettes, tunnel shots, and emotion-first visuals.',
+  'Use plain unbranded uniforms and invented visual motifs that cannot be mistaken for official team, league, club, or national-team marks.',
 ].join(' ');
+const PREVIEW_FETCH_PARTIAL_SUCCESS_MESSAGE = 'Final video was generated, but browser preview failed. This can happen with local HTTPS certificates or dev-server proxy issues. Use the direct download link or check backend download route.';
+const SPORT_VISUAL_PROFILES = {
+  nba: {
+    label: 'basketball',
+    shortLabel: 'basketball',
+    surface: 'hardwood court',
+    ballDetail: 'basketball and sneakers',
+    venue: 'packed basketball arena',
+    tunnel: 'arena tunnel',
+    tactics: 'basketball play diagram board',
+    uniform: 'plain unbranded basketball uniforms',
+    tags: ['#NBA', '#Basketball'],
+    mismatchTerms: ['football', 'soccer', 'world cup', 'epl', 'nfl', 'touchdown', 'quarterback'],
+  },
+  nfl: {
+    label: 'American football',
+    shortLabel: 'NFL',
+    surface: 'gridiron field',
+    ballDetail: 'football, gloves, and cleats',
+    venue: 'packed football stadium',
+    tunnel: 'stadium tunnel',
+    tactics: 'football playbook board',
+    uniform: 'plain unbranded football uniforms and helmets',
+    tags: ['#NFL', '#Football'],
+    mismatchTerms: ['soccer', 'world cup', 'epl', 'basketball', 'nba'],
+  },
+  football: {
+    label: 'football/soccer',
+    shortLabel: 'football',
+    surface: 'grass pitch',
+    ballDetail: 'football boots and ball',
+    venue: 'packed football stadium',
+    tunnel: 'stadium tunnel',
+    tactics: 'football tactical board',
+    uniform: 'plain unbranded football kits',
+    tags: ['#Football', '#Soccer'],
+    mismatchTerms: ['nba', 'basketball', 'timberwolves', 'spurs', 'nfl', 'touchdown', 'quarterback'],
+  },
+  other: {
+    label: 'sports',
+    shortLabel: 'sports',
+    surface: 'competition floor or field',
+    ballDetail: 'sporting equipment close-up',
+    venue: 'packed sports venue',
+    tunnel: 'venue tunnel',
+    tactics: 'strategy board',
+    uniform: 'plain unbranded athletic uniforms',
+    tags: ['#Sports', '#GameDay'],
+    mismatchTerms: [],
+  },
+};
+const CAMERA_ANGLES = [
+  'back-view athlete walking into frame',
+  'low angle cropped footwear and ball detail',
+  'wide crowd and venue reaction shot',
+  'over-shoulder tactical board view',
+  'silhouette in tunnel light',
+  'hands gripping equipment in close-up',
+  'bench reaction with faces turned away or obscured',
+  'anonymous action silhouette from behind',
+];
+const LIGHTING_MOODS = [
+  'cool blue arena lights',
+  'warm tunnel spotlight',
+  'high-contrast night-game floodlights',
+  'soft pregame locker-room glow',
+  'dramatic rim light through smoke',
+  'bright broadcast-safe editorial lighting without broadcast graphics',
+];
+const EMOTIONAL_BEATS = [
+  'pressure rising',
+  'rivalry tension',
+  'late-game urgency',
+  'underdog belief',
+  'legacy debate energy',
+  'crowd anticipation',
+];
+const CATEGORY_HASHTAGS = {
+  'title-race': '#TitleRace',
+  'world-cup': '#WorldCup',
+  'champions-night': '#GameDay',
+  penalties: '#PenaltyDrama',
+  legacy: '#LegacyTalk',
+  comeback: '#Comeback',
+  underdog: '#Underdog',
+  spotlight: '#StarWatch',
+  rivalry: '#Rivalry',
+};
 
 const FOOTBALL_TEMPLATES = {
   'el-clasico': {
@@ -355,6 +443,89 @@ function captionDensityScore(caption, duration) {
   return 46;
 }
 
+function getSportProfile(sport) {
+  const normalized = String(sport || '').toLowerCase();
+  if (normalized.includes('nba') || normalized.includes('basketball')) return SPORT_VISUAL_PROFILES.nba;
+  if (normalized.includes('nfl')) return SPORT_VISUAL_PROFILES.nfl;
+  if (normalized.includes('football') || normalized.includes('soccer') || normalized.includes('epl')) return SPORT_VISUAL_PROFILES.football;
+  return SPORT_VISUAL_PROFILES.other;
+}
+
+function detectSportMismatch(form) {
+  const profile = getSportProfile(form.sport);
+  const context = `${form.eventTopic || ''} ${form.teamsPlayers || ''} ${form.body || ''}`.toLowerCase();
+  if (!context || !profile.mismatchTerms?.length) return null;
+  const matchedTerm = profile.mismatchTerms.find((term) => context.includes(term));
+  if (!matchedTerm) return null;
+  return `Selected sport is ${form.sport}, but the topic/context mentions "${matchedTerm}". Scene prompts will respect the selected sport; switch Sport if that context is intentional.`;
+}
+
+function buildVisualDiversityCue(index, beat, profile, tone) {
+  const cameraAngle = CAMERA_ANGLES[index % CAMERA_ANGLES.length];
+  const lightingMood = LIGHTING_MOODS[(index + String(tone || '').length) % LIGHTING_MOODS.length];
+  const emotionalBeat = EMOTIONAL_BEATS[index % EMOTIONAL_BEATS.length];
+  const subjectActions = [
+    `anonymous athlete in ${profile.uniform}`,
+    `cropped ${profile.ballDetail}`,
+    `supporters reacting inside a ${profile.venue}`,
+    `coach hands near a ${profile.tactics}`,
+    `trophy silhouette and venue lights`,
+    `team entering through a ${profile.tunnel}`,
+  ];
+  const subjectAction = subjectActions[index % subjectActions.length];
+  return [
+    `Scene role: ${beat.label}.`,
+    `Camera angle: ${cameraAngle}.`,
+    `Emotional beat: ${emotionalBeat}.`,
+    `Lighting/color mood: ${lightingMood}.`,
+    `Subject/action: ${subjectAction}.`,
+    `Background/environment: ${profile.surface}, ${profile.venue}, no official signage.`,
+  ].join(' ');
+}
+
+function toTitleCaseCompact(text) {
+  return String(text || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-zA-Z0-9 ]/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join('');
+}
+
+function toReadableHashtag(text) {
+  const words = String(text || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-zA-Z0-9 ]/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!words.length || words.length > 4) return null;
+  const tag = toTitleCaseCompact(words.join(' '));
+  if (!tag || tag.length < 3 || tag.length > 28) return null;
+  return `#${tag}`;
+}
+
+function cleanTitleText(text) {
+  return String(text || 'Sports short')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*[:|-]\s*$/g, '')
+    .replace(/\s+([:;,.!?])/g, '$1')
+    .trim();
+}
+
+function truncateTitle(text, maxLength = 70) {
+  const clean = cleanTitleText(text);
+  if (clean.length <= maxLength) return clean;
+  const clipped = clean.slice(0, maxLength).replace(/\s+\S*$/, '');
+  return cleanTitleText(clipped || clean.slice(0, maxLength));
+}
+
 function buildRetentionPlan(scene, index, totalScenes, pacingMode) {
   const hookScene = index === 0;
   const endingScene = index === totalScenes - 1;
@@ -380,25 +551,24 @@ function buildRetentionPlan(scene, index, totalScenes, pacingMode) {
     beatDrop: hookScene ? '0.4s' : `${Math.max(1, Math.round(scene.duration * 0.55))}s`,
     captionPlacement: hookScene ? 'upper-middle, 3-5 words max' : 'lower third with safe margins',
     curiosityGap: hookScene ? 'Hide the answer until scene 4.' : endingScene ? 'Ask for a side, not a generic opinion.' : 'Delay the reveal by one more cut.',
-    patternInterrupt: hookScene ? 'Start on a face, not a wide stadium.' : index % 2 === 0 ? 'Speed-ramp into freeze frame.' : 'Cut to crowd reaction before action resolves.',
+    patternInterrupt: hookScene ? 'Start on an anonymous detail shot, not a wide venue.' : index % 2 === 0 ? 'Speed-ramp into freeze frame.' : 'Cut to crowd reaction before action resolves.',
     replayLoop: endingScene ? `End on "${scene.caption}" then hard cut back to the opening pressure frame.` : 'Keep this beat short enough that the viewer expects the next cut.',
   };
 }
 
 function makeHashtags(form) {
-  const topicTags = form.teamsPlayers
+  const profile = getSportProfile(form.sport);
+  const topicTags = String(form.teamsPlayers || '')
     .split(',')
-    .map((item) => item.trim().replace(/[^a-zA-Z0-9]/g, ''))
+    .map((item) => toReadableHashtag(item))
     .filter(Boolean)
-    .slice(0, 4)
-    .map((item) => `#${item}`);
+    .slice(0, 4);
 
-  const sportTag = `#${form.sport.replace(/[^a-zA-Z0-9]/g, '') || 'Sports'}`;
   const template = getTemplate(form);
-  const footballTags = ['#Football', '#Soccer', '#Shorts'];
+  const sportTags = profile.tags || ['#Sports'];
   const worldCupTags = form.worldCupMode ? ['#WorldCup', '#WorldCup2026'] : [];
-  const categoryTag = template.topicCategory ? [`#${template.topicCategory.replace(/[^a-zA-Z0-9]/g, '')}`] : [];
-  return [...new Set([...footballTags, sportTag, ...worldCupTags, '#GameDay', ...categoryTag, ...topicTags])].slice(0, 10);
+  const categoryTag = CATEGORY_HASHTAGS[template.topicCategory] ? [CATEGORY_HASHTAGS[template.topicCategory]] : [];
+  return [...new Set([...sportTags, ...worldCupTags, '#GameDay', ...categoryTag, ...topicTags])].slice(0, 10);
 }
 
 function buildScenes(form) {
@@ -407,8 +577,11 @@ function buildScenes(form) {
   const count = total <= 15 ? 4 : total >= 30 ? Math.min(8, template.beats.length + 1) : Math.min(6, template.beats.length);
   const durations = getFastCutDurations(form.duration, count, form.pacingMode);
   const bodyLines = splitText(form.body);
+  const sportProfile = getSportProfile(form.sport);
   const storyContext = form.teamsPlayers || form.eventTopic || 'the matchup';
-  const footballContext = form.worldCupMode ? 'World Cup mode, national-team stakes, knockout pressure.' : 'Football-first short-form package.';
+  const sportContext = form.worldCupMode
+    ? `World Cup or international stakes expressed through ${sportProfile.label} visuals only when that matches the selected sport.`
+    : `Selected sport: ${form.sport}. Visuals must strictly use ${sportProfile.label} environments, equipment, and action.`;
 
   const beats = template.beats.map(([label, fallbackCaption, visual], index) => ({
     label,
@@ -430,23 +603,25 @@ function buildScenes(form) {
     beats.push({
       label: 'Final punch',
       caption: form.cta || template.cta,
-      visual: 'vertical football debate poster with stadium lights, supporter emotion, and clean caption space',
+      visual: `vertical ${sportProfile.shortLabel} debate poster with venue lights, supporter emotion, and clean caption space`,
       motion: 'quick zoom out to final frame, subtle crowd pulse, hard cut back to the opener',
       note: 'Use only when the 30 second version needs a stronger final CTA.',
     });
   }
 
   return beats.slice(0, count).map((beat, index) => {
+    const diversityCue = buildVisualDiversityCue(index, beat, sportProfile, form.tone);
     const scene = {
       number: index + 1,
       label: beat.label,
       duration: durations[index],
       imagePrompt: [
-        `Vertical 9:16 football short scene for "${form.eventTopic}".`,
-        footballContext,
-        `Tone: ${form.tone}. Story context: ${storyContext}.`,
+        `Vertical 9:16 ${sportProfile.label} short scene for "${form.eventTopic}".`,
+        sportContext,
+        `Tone: ${form.tone}. Story context for captions and emotional direction only: ${storyContext}. Do not use story names as exact face, identity, jersey-name, tattoo, logo, or uniform instructions.`,
         GENERIC_VISUAL_GUIDANCE,
-        `${beat.visual}.`,
+        diversityCue,
+        `Story beat inspiration, adapted to ${sportProfile.label} if needed: ${beat.visual}.`,
         'Cinematic sports editorial style, realistic lighting, sharp anonymous subjects, readable negative space for captions.',
       ].join(' '),
       videoPrompt: [
@@ -478,15 +653,16 @@ function buildVoiceover(form, scenes) {
 
 function buildMetadata(form) {
   const hashtags = makeHashtags(form);
-  const titleCore = form.eventTopic || 'Sports short';
-  const question = form.cta || 'Who wins this one?';
+  const titleCore = cleanTitleText(form.eventTopic || 'Sports short');
+  const question = cleanTitleText(form.cta || 'Who wins this one?');
   const template = getTemplate(form);
-  const shortTitle = `${titleCore}: ${template.topicCategory.replace(/-/g, ' ')}`;
+  const titleSuffix = template.topicCategory ? template.topicCategory.replace(/-/g, ' ') : '';
+  const shortTitle = cleanTitleText(titleSuffix ? `${titleCore}: ${titleSuffix}` : titleCore);
   const caption = `${form.hook || titleCore} ${question}`;
 
   return {
     youtube: {
-      title: shortTitle.slice(0, 70),
+      title: truncateTitle(shortTitle, 70),
       description: `${form.body}\n\n${question}\n\nMade with a local-first Threadangle Sports Clip Lab workflow.\n${hashtags.join(' ')}`,
       hashtags: hashtags.join(' '),
     },
@@ -1017,6 +1193,8 @@ export default function SportsClipLab() {
   const metadataText = useMemo(() => buildMetadataText(packageData.metadata), [packageData.metadata]);
   const packageText = useMemo(() => buildPackageText(packageData), [packageData]);
   const workflowInstructions = useMemo(() => buildWorkflowInstructions(packageData.scenes), [packageData.scenes]);
+  const sportMismatchWarning = useMemo(() => detectSportMismatch(form), [form]);
+  const generatedSportMismatchWarning = useMemo(() => detectSportMismatch(generatedForm), [generatedForm]);
   const generatedImageCount = Object.values(sceneImages).filter((image) => image?.status === 'success' && image.imageUrl).length;
   const approvedSceneCount = packageData.scenes.filter((scene) => sceneClipDecisions[scene.number]?.approved).length;
   const allScenesApproved = approvedSceneCount === packageData.scenes.length;
@@ -1157,7 +1335,7 @@ export default function SportsClipLab() {
           style: 'cinematic sports editorial',
           event: packageData.form.eventTopic,
           story_context: packageData.form.teamsPlayers,
-          likeness_policy: 'generic anonymous athletes only; named players are context labels, not face targets; no Messi-like faces, exact real-player likeness, jersey names, logos, tattoos, official badges, crests, sponsor marks, or broadcast graphics; prefer back views, silhouettes, cropped hands/boots, crowd, stadium, and anonymous player angles',
+          likeness_policy: 'generic anonymous athletes only; named players are context labels, not face targets; do not imitate recognizable athlete faces or use exact real-person likeness, jersey names, logos, tattoos, official badges, crests, sponsor marks, league marks, or broadcast graphics; prefer back views, silhouettes, cropped hands/boots/equipment, crowd, venue atmosphere, and anonymous player angles',
           provider_mode: providerProfile.mode,
           manual_approval_required: true,
         },
@@ -1466,7 +1644,7 @@ export default function SportsClipLab() {
         const { blobUrl } = await api.fetchVideoBlob(data.preview_url || data.download_url);
         trackedBlobUrl = trackObjectUrl(blobUrl);
       } catch (previewErr) {
-        previewFetchError = previewErr?.message || 'Browser preview fetch failed. Use the direct download link or check the local HTTPS certificate.';
+        previewFetchError = previewErr?.message || PREVIEW_FETCH_PARTIAL_SUCCESS_MESSAGE;
       }
       setFinalStitch({
         status: 'success',
@@ -1543,7 +1721,7 @@ export default function SportsClipLab() {
       downloadBlob(createZip([
         ...imageFiles,
         { name: 'scene-prompts.txt', bytes: new Uint8Array(new TextEncoder().encode(manifest)) },
-      ]), 'threadangle-football-scene-images.zip');
+      ]), 'threadangle-sports-scene-images.zip');
       setImageBatchMessage({ type: 'success', text: `Downloaded ${imageFiles.length} images with prompt manifest.` });
     } catch (err) {
       setImageBatchMessage({ type: 'error', text: err?.message || 'Could not package generated images. Copy prompts and download images manually.' });
@@ -1598,7 +1776,7 @@ export default function SportsClipLab() {
                   {SPORTS.map((sport) => <option key={sport}>{sport}</option>)}
                 </Select>
               </Field>
-              <Field label="Football template">
+              <Field label="Story template">
                 <Select value={form.template || 'star-player-watch'} onChange={(e) => updateTemplate(e.target.value)}>
                   {FOOTBALL_TEMPLATE_OPTIONS.map((template) => <option key={template.value} value={template.value}>{template.label}</option>)}
                 </Select>
@@ -1655,13 +1833,19 @@ export default function SportsClipLab() {
               </Field>
             </div>
 
+            {sportMismatchWarning && (
+              <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-300">
+                {sportMismatchWarning}
+              </p>
+            )}
+
             <button
               type="button"
               onClick={generatePackage}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#238636] px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-[#2EA043]"
             >
               <ButtonIcon type="play" />
-              Generate Football Scene Package
+              Generate Sports Scene Package
             </button>
 
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
@@ -1712,6 +1896,12 @@ export default function SportsClipLab() {
                 </div>
                 <CopyButton text={packageText}>Copy Full Package</CopyButton>
               </div>
+
+              {generatedSportMismatchWarning && (
+                <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-300">
+                  {generatedSportMismatchWarning}
+                </p>
+              )}
 
               <div className="mb-4 grid gap-3 md:grid-cols-3">
                 <div className="rounded-lg border border-[#21262D] bg-[#0D1117] p-3">
@@ -1778,7 +1968,7 @@ export default function SportsClipLab() {
                         <div className="flex flex-col gap-3">
                           <div>
                             <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Local motion preview</p>
-                            <p className="mt-1 text-xs leading-5 text-[#8B949E]">Creates a short local football-edit MP4 from the approved still. No Runway, ElevenLabs, or paid credits.</p>
+                            <p className="mt-1 text-xs leading-5 text-[#8B949E]">Creates a short local sports-edit MP4 from the approved still. No Runway, ElevenLabs, or paid credits.</p>
                           </div>
                           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                             <Select
@@ -2011,14 +2201,14 @@ export default function SportsClipLab() {
                     />
                   ) : (
                     <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-xs leading-5 text-amber-200">
-                      <p className="font-semibold">Video generated, but browser preview fetch failed. Use direct download or check local HTTPS certificate.</p>
+                      <p className="font-semibold">{PREVIEW_FETCH_PARTIAL_SUCCESS_MESSAGE}</p>
                       {finalStitch.previewFetchError && <p className="mt-1 text-amber-100/90">{finalStitch.previewFetchError}</p>}
                     </div>
                   )}
                   <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs leading-5 text-emerald-300">
                     <p className="font-semibold">Final local stitch ready. Nothing was posted.</p>
                     {finalStitch.previewFetchError && (
-                      <p>Video generated, but browser preview fetch failed. Use direct download or check local HTTPS certificate.</p>
+                      <p>{PREVIEW_FETCH_PARTIAL_SUCCESS_MESSAGE}</p>
                     )}
                     <p>Generation ID: {finalStitch.generationId || 'n/a'}</p>
                     <p>Run ID: {finalStitch.runId || 'n/a'}</p>
