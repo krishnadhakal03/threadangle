@@ -90,6 +90,10 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(payload),
     }),
+    generateSportsMotionPreview: (payload) => request('/generate/sports/motion-preview', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    }),
     getCharacterPresets: () => request('/generate/video/characters/presets'),
     regenerateThumbnail: (payload) => request('/generate/regenerate-thumbnail', {
         method: 'POST',

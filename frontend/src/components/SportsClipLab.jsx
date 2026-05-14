@@ -937,6 +937,7 @@ export default function SportsClipLab() {
   const [generatedForm, setGeneratedForm] = useState(INITIAL_FORM);
   const [imageProvider, setImageProvider] = useState('huggingface');
   const [sceneImages, setSceneImages] = useState({});
+  const [sceneMotionPreviews, setSceneMotionPreviews] = useState({});
   const [generatingAll, setGeneratingAll] = useState(false);
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [activeScene, setActiveScene] = useState(null);
@@ -1027,12 +1028,18 @@ export default function SportsClipLab() {
   const generatePackage = () => {
     setGeneratedForm({ ...form });
     setSceneImages({});
+    setSceneMotionPreviews({});
     setImageBatchMessage(null);
   };
 
   const generateSceneImage = async (scene, forceVariation = false) => {
     const sceneKey = scene.number;
     setActiveScene(sceneKey);
+    setSceneMotionPreviews((current) => {
+      const next = { ...current };
+      delete next[sceneKey];
+      return next;
+    });
     setSceneImages((current) => ({
       ...current,
       [sceneKey]: {
@@ -1091,6 +1098,65 @@ export default function SportsClipLab() {
       return { ok: false, scene: sceneKey, error: message };
     } finally {
       setActiveScene(null);
+    }
+  };
+
+  const generateMotionPreview = async (scene) => {
+    const sceneKey = scene.number;
+    const image = sceneImages[sceneKey];
+    if (image?.status !== 'success' || !image.imageUrl) {
+      setSceneMotionPreviews((current) => ({
+        ...current,
+        [sceneKey]: {
+          status: 'error',
+          error: 'Generate an image for this scene before creating a local motion preview.',
+        },
+      }));
+      return;
+    }
+
+    const motionStyles = ['slow_zoom', 'pan_right', 'pan_left', 'hold'];
+    const motionStyle = motionStyles[(scene.number - 1) % motionStyles.length];
+    setSceneMotionPreviews((current) => ({
+      ...current,
+      [sceneKey]: {
+        ...current[sceneKey],
+        status: 'generating',
+        error: null,
+      },
+    }));
+
+    try {
+      const data = await api.generateSportsMotionPreview({
+        scene_index: scene.number - 1,
+        image_url: image.imageUrl,
+        duration: Math.max(1, Math.min(6, Number(scene.duration) || 3)),
+        motion_style: motionStyle,
+        caption: scene.caption,
+      });
+      const { blobUrl } = await api.fetchVideoBlob(data.preview_url || data.download_url);
+      setSceneMotionPreviews((current) => ({
+        ...current,
+        [sceneKey]: {
+          status: 'success',
+          videoUrl: blobUrl,
+          downloadUrl: data.download_url,
+          generationId: data.generation_id,
+          provider: data.provider,
+          duration: data.duration,
+          motionStyle: data.motion_style,
+          approvalRequired: Boolean(data.approval_required),
+          error: null,
+        },
+      }));
+    } catch (err) {
+      setSceneMotionPreviews((current) => ({
+        ...current,
+        [sceneKey]: {
+          status: 'error',
+          error: err?.message || 'Local motion preview failed.',
+        },
+      }));
     }
   };
 
@@ -1176,6 +1242,7 @@ export default function SportsClipLab() {
                   setForm(example);
                   setGeneratedForm(example);
                   setSceneImages({});
+                  setSceneMotionPreviews({});
                   setImageBatchMessage(null);
                 }}
                 className="rounded-lg border border-[#30363D] bg-[#161B22] px-3 py-2 text-xs font-semibold text-[#C9D1D9] transition-colors hover:border-[#58A6FF] hover:text-white"
@@ -1373,6 +1440,39 @@ export default function SportsClipLab() {
                       {sceneImages[scene.number]?.status === 'error' && (
                         <p className="text-xs leading-5 text-red-300">{sceneImages[scene.number].error || 'Provider failed or image was not generated.'}</p>
                       )}
+                      <div className="rounded-lg border border-[#30363D] bg-[#010409] p-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Local motion preview</p>
+                            <p className="mt-1 text-xs leading-5 text-[#8B949E]">Creates a short local pan/zoom MP4 from the approved still. No Runway, ElevenLabs, or paid credits.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => generateMotionPreview(scene)}
+                            disabled={sceneMotionPreviews[scene.number]?.status === 'generating' || sceneImages[scene.number]?.status !== 'success'}
+                            className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-[#30363D] bg-[#161B22] px-3 py-2 text-xs font-semibold text-[#C9D1D9] transition-colors hover:border-[#58A6FF] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {sceneMotionPreviews[scene.number]?.status === 'generating' ? 'Rendering Preview' : 'Preview Motion'}
+                          </button>
+                        </div>
+                        {sceneMotionPreviews[scene.number]?.status === 'success' && (
+                          <div className="mt-3 space-y-2">
+                            <video
+                              src={sceneMotionPreviews[scene.number].videoUrl}
+                              controls
+                              muted
+                              playsInline
+                              className="aspect-[9/16] w-full max-h-[420px] rounded-lg border border-[#30363D] bg-black object-cover"
+                            />
+                            <p className="text-xs text-emerald-300">
+                              Local preview ready: {sceneMotionPreviews[scene.number].duration}s {sceneMotionPreviews[scene.number].motionStyle?.replace(/_/g, ' ')}. Manual approval is still required before final use.
+                            </p>
+                          </div>
+                        )}
+                        {sceneMotionPreviews[scene.number]?.status === 'error' && (
+                          <p className="mt-2 text-xs leading-5 text-red-300">{sceneMotionPreviews[scene.number].error || 'Local motion preview failed.'}</p>
+                        )}
+                      </div>
                       <div>
                         <p className="mb-1 text-xs font-bold uppercase tracking-wide text-[#8B949E]">Image prompt</p>
                         <p className="leading-6 text-[#C9D1D9]">{scene.imagePrompt}</p>

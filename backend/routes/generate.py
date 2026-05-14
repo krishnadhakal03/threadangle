@@ -505,6 +505,14 @@ class RegenerateSceneImageRequest(BaseModel):
     variation_token: Optional[str] = None
 
 
+class SportsMotionPreviewRequest(BaseModel):
+    scene_index: int = Field(ge=0)
+    image_url: str = Field(min_length=12)
+    duration: int = Field(default=3, ge=1, le=8)
+    motion_style: str = Field(default="slow_zoom", pattern="^(slow_zoom|pan_left|pan_right|hold)$")
+    caption: Optional[str] = None
+
+
 class RegenerateThumbnailRequest(BaseModel):
     video_id: int
     thumbnail_text: str
@@ -1781,6 +1789,179 @@ async def regenerate_scene_image(
         "image_url": result["image_url"],
         "provider": result.get("provider"),
         "prompt_used": result.get("prompt_used"),
+    }
+
+
+async def _load_motion_preview_image_bytes(image_url: str) -> bytes:
+    value = (image_url or "").strip()
+    if value.startswith("data:image/"):
+        try:
+            _, encoded = value.split(",", 1)
+            return base64.b64decode(encoded)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid image data URL.") from exc
+
+    if value.startswith("http://") or value.startswith("https://"):
+        try:
+            async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+                response = await client.get(value)
+                response.raise_for_status()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Could not fetch scene image for local motion preview.") from exc
+
+        content_type = response.headers.get("content-type", "")
+        if "image" not in content_type.lower():
+            raise HTTPException(status_code=400, detail="Motion preview source must be an image.")
+        if len(response.content) > 12 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Scene image is too large for local motion preview.")
+        return response.content
+
+    raise HTTPException(status_code=400, detail="Motion preview requires a generated image URL.")
+
+
+def _render_local_motion_preview(
+    *,
+    image_bytes: bytes,
+    run_dir: Path,
+    scene_index: int,
+    duration: int,
+    motion_style: str,
+) -> Path:
+    from PIL import Image, ImageOps
+    import numpy as np
+    from moviepy.editor import VideoClip
+
+    target_size = (1080, 1920)
+    source = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    base = ImageOps.fit(source, target_size, method=Image.Resampling.LANCZOS)
+    source.close()
+
+    source_path = run_dir / f"scene{scene_index + 1}_source.jpg"
+    output_path = run_dir / f"scene{scene_index + 1}_motion_preview.mp4"
+    base.save(source_path, quality=92)
+
+    def make_frame(t: float):
+        progress = min(1.0, max(0.0, float(t) / max(0.1, float(duration))))
+        if motion_style == "hold":
+            zoom = 1.0
+            x_bias = 0.0
+        else:
+            zoom = 1.02 + (0.08 * progress)
+            if motion_style == "pan_left":
+                x_bias = 0.5 - progress
+            elif motion_style == "pan_right":
+                x_bias = progress - 0.5
+            else:
+                x_bias = 0.0
+
+        scaled_size = (
+            max(target_size[0], int(target_size[0] * zoom)),
+            max(target_size[1], int(target_size[1] * zoom)),
+        )
+        frame = base.resize(scaled_size, Image.Resampling.LANCZOS)
+        max_x = scaled_size[0] - target_size[0]
+        max_y = scaled_size[1] - target_size[1]
+        left = int((max_x / 2) + (x_bias * max_x * 0.45))
+        top = int(max_y * (0.35 + (0.15 * progress)))
+        left = max(0, min(max_x, left))
+        top = max(0, min(max_y, top))
+        return np.array(frame.crop((left, top, left + target_size[0], top + target_size[1])))
+
+    clip = VideoClip(make_frame, duration=float(duration))
+    try:
+        clip.write_videofile(
+            str(output_path),
+            fps=15,
+            codec="libx264",
+            audio=False,
+            preset="ultrafast",
+            threads=2,
+            logger=None,
+            ffmpeg_params=["-pix_fmt", "yuv420p", "-movflags", "+faststart"],
+        )
+    finally:
+        clip.close()
+        base.close()
+
+    if not output_path.exists() or output_path.stat().st_size < 1000:
+        raise RuntimeError("Motion preview render did not produce a valid MP4.")
+    return output_path
+
+
+@router.post("/sports/motion-preview")
+async def create_sports_motion_preview(
+    request: SportsMotionPreviewRequest,
+    current_user: User = Depends(require_full_access_user),
+    db: AsyncSession = Depends(get_db),
+):
+    image_bytes = await _load_motion_preview_image_bytes(request.image_url)
+    run_id = f"sports-motion-{uuid.uuid4().hex[:12]}"
+    run_dir = generated_root() / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        output_path = await asyncio.to_thread(
+            _render_local_motion_preview,
+            image_bytes=image_bytes,
+            run_dir=run_dir,
+            scene_index=request.scene_index,
+            duration=request.duration,
+            motion_style=request.motion_style,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Local sports motion preview failed")
+        raise HTTPException(status_code=500, detail=f"Local motion preview failed: {exc}") from exc
+
+    relative_path = relative_generated_path(output_path)
+    generation = Generation(
+        user_id=current_user.id,
+        input_type="video",
+        input_content=f"sports-motion-preview:scene-{request.scene_index + 1}",
+        status="success",
+        video_run_id=run_id,
+        video_file=relative_path,
+        video_duration_seconds=request.duration,
+        video_plan_json=json.dumps({
+            "source": "sports_clip_lab_motion_preview",
+            "scene_index": request.scene_index,
+            "motion_style": request.motion_style,
+            "local_dev_first": True,
+            "paid_credits_used": 0,
+            "manual_approval_required": True,
+        }),
+        video_scenes_json=json.dumps([{
+            "scene_index": request.scene_index,
+            "duration": request.duration,
+            "caption": request.caption,
+            "motion_style": request.motion_style,
+            "source": "local_image_motion_preview",
+        }]),
+        runway_credits_used=0,
+        elevenlabs_credits_used=0,
+        total_cost_usd=0,
+        topic="Sports Clip Lab local motion preview",
+    )
+    db.add(generation)
+    await db.commit()
+    await db.refresh(generation)
+
+    return {
+        "generation_id": generation.id,
+        "scene_index": request.scene_index,
+        "duration": request.duration,
+        "motion_style": request.motion_style,
+        "video_file": relative_path,
+        "preview_url": f"/api/generate/video/download/{quote(str(relative_path), safe='/')}",
+        "download_url": f"/api/generate/video/download/{quote(str(relative_path), safe='/')}",
+        "provider": "local_ffmpeg_moviepy",
+        "costs": {
+            "runway_credits_used": 0,
+            "elevenlabs_credits_used": 0,
+            "total_cost_usd": 0,
+        },
+        "approval_required": True,
     }
 
 
