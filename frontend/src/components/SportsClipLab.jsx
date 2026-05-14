@@ -26,6 +26,11 @@ const IMAGE_PROVIDERS = [
   { value: 'pollinations', label: 'Pollinations', mode: 'Free prompt image URL', risk: 'Remote image availability can vary by prompt.' },
 ];
 const PERFORMANCE_STORAGE_KEY = 'threadangle_football_performance_logs_v1';
+const GENERIC_VISUAL_GUIDANCE = [
+  'Use generic sports editorial visuals inspired by the story context.',
+  'Do not recreate exact real-player likenesses, faces, tattoos, names on jerseys, official crests, or broadcast graphics.',
+  'Show anonymous athletes, team-color energy, stadium emotion, tactical details, and clean caption space.',
+].join(' ');
 
 const FOOTBALL_TEMPLATES = {
   'el-clasico': {
@@ -387,7 +392,7 @@ function buildScenes(form) {
   const count = total <= 15 ? 4 : total >= 30 ? Math.min(8, template.beats.length + 1) : Math.min(6, template.beats.length);
   const durations = getFastCutDurations(form.duration, count, form.pacingMode);
   const bodyLines = splitText(form.body);
-  const subject = form.teamsPlayers || form.eventTopic || 'the matchup';
+  const storyContext = form.teamsPlayers || form.eventTopic || 'the matchup';
   const footballContext = form.worldCupMode ? 'World Cup mode, national-team stakes, knockout pressure.' : 'Football-first short-form package.';
 
   const beats = template.beats.map(([label, fallbackCaption, visual], index) => ({
@@ -424,9 +429,10 @@ function buildScenes(form) {
       imagePrompt: [
         `Vertical 9:16 football short scene for "${form.eventTopic}".`,
         footballContext,
-        `Tone: ${form.tone}. Subject: ${subject}.`,
+        `Tone: ${form.tone}. Story context: ${storyContext}.`,
+        GENERIC_VISUAL_GUIDANCE,
         `${beat.visual}.`,
-        'Cinematic sports editorial style, realistic lighting, sharp subject, readable negative space for captions, no official logos, no watermarks, no broadcast graphics.',
+        'Cinematic sports editorial style, realistic lighting, sharp anonymous subjects, readable negative space for captions.',
       ].join(' '),
       videoPrompt: [
         `Animate this image as a ${durations[index]} second vertical sports clip.`,
@@ -1045,7 +1051,8 @@ export default function SportsClipLab() {
           type: `${packageData.form.sport} sports scene`,
           style: 'cinematic sports editorial',
           event: packageData.form.eventTopic,
-          teams_players: packageData.form.teamsPlayers,
+          story_context: packageData.form.teamsPlayers,
+          likeness_policy: 'generic anonymous athletes only; no exact real-player likeness or official team marks',
           provider_mode: providerProfile.mode,
           manual_approval_required: true,
         },
@@ -1204,8 +1211,11 @@ export default function SportsClipLab() {
                 />
                 <span>World Cup mode</span>
               </label>
-              <Field label="Teams/players">
+              <Field label="Teams/players story context">
                 <TextArea rows={3} value={form.teamsPlayers} onChange={(e) => updateField('teamsPlayers', e.target.value)} placeholder="Teams, players, rivalry angle" />
+                <p className="mt-1.5 text-[11px] leading-4 text-[#8B949E]">
+                  Used for story context only. Generated images should use generic athletes, team-color energy, and matchup emotion instead of exact player likeness.
+                </p>
               </Field>
               <Field label="Target platform">
                 <Select value={form.targetPlatform} onChange={(e) => updateField('targetPlatform', e.target.value)}>
@@ -1320,20 +1330,20 @@ export default function SportsClipLab() {
               <div className="grid gap-4 lg:grid-cols-2">
                 {packageData.scenes.map((scene) => (
                   <article key={scene.number} className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div>
+                    <div className="mb-3 space-y-3">
+                      <div className="min-w-0">
                         <h3 className="font-bold text-white">Scene {scene.number}: {scene.label}</h3>
                         <p className="text-xs text-[#8B949E]">{scene.duration}s · scene{scene.number}.png</p>
                         <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[#F0B429]">{scene.thumbnailText}</p>
                       </div>
-                      <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                        <CopyButton text={scene.imagePrompt}>Copy Image Prompt</CopyButton>
-                        <CopyButton text={scene.videoPrompt}>Copy I2V Prompt</CopyButton>
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <CopyButton text={scene.imagePrompt} className="w-full whitespace-nowrap">Copy Image Prompt</CopyButton>
+                        <CopyButton text={scene.videoPrompt} className="w-full whitespace-nowrap">Copy I2V Prompt</CopyButton>
                         <button
                           type="button"
                           onClick={() => generateSceneImage(scene, true)}
                           disabled={sceneImages[scene.number]?.status === 'generating'}
-                          className="inline-flex items-center justify-center rounded-lg border border-[#30363D] bg-[#161B22] px-3 py-2 text-xs font-semibold text-[#C9D1D9] transition-colors hover:border-[#58A6FF] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                          className="inline-flex w-full items-center justify-center whitespace-nowrap rounded-lg border border-[#30363D] bg-[#161B22] px-3 py-2 text-xs font-semibold text-[#C9D1D9] transition-colors hover:border-[#58A6FF] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {sceneImages[scene.number]?.status === 'generating' ? 'Generating' : 'Regenerate Image'}
                         </button>
