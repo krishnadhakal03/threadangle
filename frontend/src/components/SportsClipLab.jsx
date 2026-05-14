@@ -25,6 +25,7 @@ const IMAGE_PROVIDERS = [
   { value: 'huggingface', label: 'HuggingFace / fallback', mode: 'Free image adapter', risk: 'May fail when the local API has no model configured.' },
   { value: 'pollinations', label: 'Pollinations', mode: 'Free prompt image URL', risk: 'Remote image availability can vary by prompt.' },
 ];
+const PERFORMANCE_STORAGE_KEY = 'threadangle_football_performance_logs_v1';
 
 const FOOTBALL_TEMPLATES = {
   'el-clasico': {
@@ -736,6 +737,82 @@ function getImageProviderProfile(providerValue) {
   return IMAGE_PROVIDERS.find((provider) => provider.value === providerValue) || IMAGE_PROVIDERS[0];
 }
 
+function loadPerformanceLogs() {
+  try {
+    const raw = window.localStorage.getItem(PERFORMANCE_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function scorePerformance(log) {
+  const views = Number(log.views) || 0;
+  const likes = Number(log.likes) || 0;
+  const comments = Number(log.comments) || 0;
+  const shares = Number(log.shares) || 0;
+  const subscribers = Number(log.subscribers) || 0;
+  return views + likes * 5 + comments * 25 + shares * 35 + subscribers * 120;
+}
+
+function classifyPerformance(log) {
+  const views = Number(log.views) || 0;
+  const comments = Number(log.comments) || 0;
+  const subscribers = Number(log.subscribers) || 0;
+  if (views >= 2000 || comments >= 12 || subscribers >= 3) return 'winner';
+  if (views < 250 && comments === 0 && subscribers === 0) return 'loser';
+  return 'watch';
+}
+
+function splitTrackedTerms(value) {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function summarizePerformance(logs) {
+  const buckets = {
+    template: new Map(),
+    topic: new Map(),
+    platform: new Map(),
+    team: new Map(),
+  };
+
+  logs.forEach((log) => {
+    const score = scorePerformance(log);
+    const add = (bucket, key) => {
+      if (!key) return;
+      const current = bucket.get(key) || { key, posts: 0, score: 0, views: 0, comments: 0, subscribers: 0, winners: 0, losers: 0 };
+      current.posts += 1;
+      current.score += score;
+      current.views += Number(log.views) || 0;
+      current.comments += Number(log.comments) || 0;
+      current.subscribers += Number(log.subscribers) || 0;
+      current.winners += log.resultTag === 'winner' ? 1 : 0;
+      current.losers += log.resultTag === 'loser' ? 1 : 0;
+      bucket.set(key, current);
+    };
+
+    add(buckets.template, log.template);
+    add(buckets.topic, log.topicCategory);
+    add(buckets.platform, log.platform);
+    splitTrackedTerms(log.teamsPlayers).forEach((term) => add(buckets.team, term));
+  });
+
+  const rank = (bucket) => Array.from(bucket.values())
+    .sort((a, b) => (b.score / b.posts) - (a.score / a.posts))
+    .slice(0, 4);
+
+  return {
+    templates: rank(buckets.template),
+    topics: rank(buckets.topic),
+    platforms: rank(buckets.platform),
+    teams: rank(buckets.team),
+  };
+}
+
 function createZip(files) {
   const output = [];
   const centralDirectory = [];
@@ -858,6 +935,18 @@ export default function SportsClipLab() {
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [activeScene, setActiveScene] = useState(null);
   const [imageBatchMessage, setImageBatchMessage] = useState(null);
+  const [performanceLogs, setPerformanceLogs] = useState(() => loadPerformanceLogs());
+  const [performanceForm, setPerformanceForm] = useState({
+    platform: 'YouTube Shorts',
+    views: '',
+    likes: '',
+    comments: '',
+    shares: '',
+    subscribers: '',
+    postingTime: '',
+    retentionNotes: '',
+    replayabilityNotes: '',
+  });
 
   const packageData = useMemo(() => {
     const scenes = buildScenes(generatedForm);
@@ -877,6 +966,7 @@ export default function SportsClipLab() {
   const workflowInstructions = useMemo(() => buildWorkflowInstructions(packageData.scenes), [packageData.scenes]);
   const generatedImageCount = Object.values(sceneImages).filter((image) => image?.status === 'success' && image.imageUrl).length;
   const activeImageProvider = getImageProviderProfile(imageProvider);
+  const performanceSummary = useMemo(() => summarizePerformance(performanceLogs), [performanceLogs]);
 
   const updateField = (key, value) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -884,6 +974,48 @@ export default function SportsClipLab() {
 
   const updateTemplate = (templateKey) => {
     setForm((current) => applyTemplateToForm(current, templateKey, false));
+  };
+
+  const updatePerformanceField = (key, value) => {
+    setPerformanceForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const savePerformanceLog = () => {
+    const nextLog = {
+      id: `${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      eventTopic: packageData.form.eventTopic,
+      platform: performanceForm.platform,
+      postingTime: performanceForm.postingTime,
+      template: packageData.metadata.template.name,
+      hookType: packageData.metadata.template.hookType,
+      topicCategory: packageData.metadata.template.topicCategory,
+      teamsPlayers: packageData.form.teamsPlayers,
+      hook: packageData.form.hook,
+      views: Number(performanceForm.views) || 0,
+      likes: Number(performanceForm.likes) || 0,
+      comments: Number(performanceForm.comments) || 0,
+      shares: Number(performanceForm.shares) || 0,
+      subscribers: Number(performanceForm.subscribers) || 0,
+      retentionNotes: performanceForm.retentionNotes,
+      replayabilityNotes: performanceForm.replayabilityNotes,
+    };
+    nextLog.resultTag = classifyPerformance(nextLog);
+    nextLog.score = scorePerformance(nextLog);
+
+    const nextLogs = [nextLog, ...performanceLogs].slice(0, 80);
+    setPerformanceLogs(nextLogs);
+    window.localStorage.setItem(PERFORMANCE_STORAGE_KEY, JSON.stringify(nextLogs));
+    setPerformanceForm((current) => ({
+      ...current,
+      views: '',
+      likes: '',
+      comments: '',
+      shares: '',
+      subscribers: '',
+      retentionNotes: '',
+      replayabilityNotes: '',
+    }));
   };
 
   const generatePackage = () => {
@@ -1329,6 +1461,106 @@ export default function SportsClipLab() {
                   </div>
                 </article>
               ))}
+            </section>
+
+            <section className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
+              <div className="mb-4">
+                <h2 className="text-lg font-bold text-white">Performance Intelligence</h2>
+                <p className="text-xs text-[#8B949E]">Log results after posting and use winners/losers to tune football topics, templates, teams, and platforms.</p>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
+                <div className="space-y-3 rounded-lg border border-[#30363D] bg-[#010409] p-3">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                    <Field label="Platform">
+                      <Select value={performanceForm.platform} onChange={(e) => updatePerformanceField('platform', e.target.value)}>
+                        {PLATFORMS.filter((platform) => platform !== 'All').map((platform) => <option key={platform}>{platform}</option>)}
+                        <option>Facebook Reels</option>
+                      </Select>
+                    </Field>
+                    <Field label="Posting time">
+                      <TextInput type="datetime-local" value={performanceForm.postingTime} onChange={(e) => updatePerformanceField('postingTime', e.target.value)} />
+                    </Field>
+                    <Field label="Views">
+                      <TextInput type="number" min="0" value={performanceForm.views} onChange={(e) => updatePerformanceField('views', e.target.value)} />
+                    </Field>
+                    <Field label="Likes">
+                      <TextInput type="number" min="0" value={performanceForm.likes} onChange={(e) => updatePerformanceField('likes', e.target.value)} />
+                    </Field>
+                    <Field label="Comments">
+                      <TextInput type="number" min="0" value={performanceForm.comments} onChange={(e) => updatePerformanceField('comments', e.target.value)} />
+                    </Field>
+                    <Field label="Shares">
+                      <TextInput type="number" min="0" value={performanceForm.shares} onChange={(e) => updatePerformanceField('shares', e.target.value)} />
+                    </Field>
+                    <Field label="Subscribers gained">
+                      <TextInput type="number" min="0" value={performanceForm.subscribers} onChange={(e) => updatePerformanceField('subscribers', e.target.value)} />
+                    </Field>
+                  </div>
+                  <Field label="Retention notes">
+                    <TextArea rows={3} value={performanceForm.retentionNotes} onChange={(e) => updatePerformanceField('retentionNotes', e.target.value)} placeholder="Where did viewers likely stay or drop?" />
+                  </Field>
+                  <Field label="Replayability notes">
+                    <TextArea rows={3} value={performanceForm.replayabilityNotes} onChange={(e) => updatePerformanceField('replayabilityNotes', e.target.value)} placeholder="Did the ending invite replay or comments?" />
+                  </Field>
+                  <button
+                    type="button"
+                    onClick={savePerformanceLog}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#238636] px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-[#2EA043]"
+                  >
+                    Log Performance Result
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="grid gap-3 md:grid-cols-4">
+                    {[
+                      ['Templates', performanceSummary.templates],
+                      ['Topics', performanceSummary.topics],
+                      ['Platforms', performanceSummary.platforms],
+                      ['Teams/players', performanceSummary.teams],
+                    ].map(([label, rows]) => (
+                      <div key={label} className="rounded-lg border border-[#30363D] bg-[#010409] p-3">
+                        <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">{label}</p>
+                        {rows.length ? (
+                          <div className="mt-2 space-y-2">
+                            {rows.slice(0, 3).map((row) => (
+                              <div key={row.key}>
+                                <p className="truncate text-sm font-semibold text-white">{row.key}</p>
+                                <p className="text-[11px] text-[#8B949E]">{row.posts} posts · {row.views} views · {row.comments} comments · {row.subscribers} subs</p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-xs leading-5 text-[#8B949E]">No logs yet.</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="overflow-hidden rounded-lg border border-[#30363D]">
+                    <div className="grid grid-cols-[1.2fr_0.8fr_0.6fr_0.6fr] gap-2 border-b border-[#30363D] bg-[#161B22] px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#8B949E]">
+                      <span>Video</span>
+                      <span>Template</span>
+                      <span>Result</span>
+                      <span className="text-right">Score</span>
+                    </div>
+                    {performanceLogs.length ? performanceLogs.slice(0, 8).map((log) => (
+                      <div key={log.id} className="grid grid-cols-[1.2fr_0.8fr_0.6fr_0.6fr] gap-2 border-b border-[#21262D] px-3 py-2 text-xs text-[#C9D1D9] last:border-b-0">
+                        <div>
+                          <p className="font-semibold text-white">{log.eventTopic}</p>
+                          <p className="text-[#8B949E]">{log.platform} · {log.views} views · {log.comments} comments · +{log.subscribers} subs</p>
+                        </div>
+                        <span className="self-center truncate">{log.template}</span>
+                        <span className={`self-center font-bold uppercase ${log.resultTag === 'winner' ? 'text-emerald-300' : log.resultTag === 'loser' ? 'text-red-300' : 'text-amber-300'}`}>{log.resultTag}</span>
+                        <span className="self-center text-right font-semibold text-white">{log.score}</span>
+                      </div>
+                    )) : (
+                      <div className="px-3 py-6 text-center text-sm text-[#8B949E]">No performance logs yet. Log the first posted football short after manual publishing.</div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </section>
           </div>
         </section>
