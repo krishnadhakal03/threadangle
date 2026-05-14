@@ -94,6 +94,30 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(payload),
     }),
+    createSportsFinalStitch: async (formData) => {
+        const headers = {};
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(`${API_URL}/generate/sports/final-stitch`, {
+            method: 'POST',
+            headers,
+            body: formData,
+        });
+
+        const data = await parseResponseBody(response);
+        if (!response.ok) {
+            const message = typeof data === 'string'
+                ? data
+                : (typeof data?.detail === 'object' ? data.detail?.message : data?.detail) || response.statusText || 'Something went wrong';
+            const err = new Error(message);
+            err.status = response.status;
+            err.detail = typeof data === 'object' && data !== null ? data.detail : data;
+            throw err;
+        }
+        return data;
+    },
     getCharacterPresets: () => request('/generate/video/characters/presets'),
     regenerateThumbnail: (payload) => request('/generate/regenerate-thumbnail', {
         method: 'POST',

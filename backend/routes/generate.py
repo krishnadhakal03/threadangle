@@ -14,7 +14,7 @@ from urllib.parse import quote
 
 import httpx
 
-from fastapi import APIRouter, Depends, HTTPException, Body, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Body, BackgroundTasks, File, Form, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1962,6 +1962,319 @@ async def create_sports_motion_preview(
             "total_cost_usd": 0,
         },
         "approval_required": True,
+    }
+
+
+def _safe_generated_video_path(filename: str) -> Path:
+    value = (filename or "").strip()
+    if not value.lower().endswith(".mp4") or ".." in value or "\\" in value:
+        raise HTTPException(status_code=400, detail="Invalid approved clip path.")
+    root = generated_root().resolve()
+    try:
+        resolved = (root / value).resolve()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid approved clip path.") from exc
+    if root not in resolved.parents:
+        raise HTTPException(status_code=400, detail="Invalid approved clip path.")
+    if not resolved.exists() or not resolved.is_file():
+        raise HTTPException(status_code=404, detail="Approved local clip not found.")
+    return resolved
+
+
+async def _verified_user_video_path(db: AsyncSession, current_user: User, filename: str) -> Path:
+    path = _safe_generated_video_path(filename)
+    row = await db.execute(
+        select(Generation).where(
+            and_(
+                Generation.user_id == current_user.id,
+                Generation.input_type == "video",
+                Generation.video_file == filename,
+                Generation.status.in_(["success", "completed"]),
+            )
+        )
+    )
+    if not row.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Approved local clip is not available for this user.")
+    return path
+
+
+async def _save_uploaded_scene_clips(
+    *,
+    run_dir: Path,
+    external_files: Optional[list[UploadFile]],
+    external_scene_numbers_json: str,
+) -> dict[int, Path]:
+    try:
+        scene_numbers = json.loads(external_scene_numbers_json or "[]")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid uploaded scene mapping.") from exc
+    if not isinstance(scene_numbers, list):
+        raise HTTPException(status_code=400, detail="Invalid uploaded scene mapping.")
+
+    files = external_files or []
+    if len(files) != len(scene_numbers):
+        raise HTTPException(status_code=400, detail="Uploaded clip count does not match scene mapping.")
+
+    uploads_dir = run_dir / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    saved: dict[int, Path] = {}
+    for raw_scene_number, upload in zip(scene_numbers, files):
+        try:
+            scene_number = int(raw_scene_number)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid uploaded scene number.") from exc
+        suffix = Path(upload.filename or "").suffix.lower()
+        if suffix not in {".mp4", ".mov", ".webm"}:
+            raise HTTPException(status_code=400, detail="Uploaded clips must be MP4, MOV, or WebM.")
+        target = uploads_dir / f"scene{scene_number}_external{suffix}"
+        data = await upload.read()
+        if len(data) > 200 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Uploaded clip is too large for local stitch.")
+        target.write_bytes(data)
+        saved[scene_number] = target
+    return saved
+
+
+def _render_caption_overlay(text: str, duration: float, target_size: tuple[int, int]):
+    from PIL import Image, ImageDraw, ImageFont
+    import numpy as np
+    from moviepy.editor import ImageClip
+
+    width, height = target_size
+    overlay = Image.new("RGBA", target_size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    try:
+        font = ImageFont.truetype("DejaVuSans-Bold.ttf", 58)
+    except Exception:
+        font = ImageFont.load_default()
+
+    words = str(text or "").split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        bbox = draw.textbbox((0, 0), candidate, font=font)
+        if bbox[2] - bbox[0] <= width - 180:
+            current = candidate
+        else:
+            if current:
+                lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    lines = lines[:3] or [""]
+
+    line_height = 72
+    box_height = 64 + (len(lines) * line_height)
+    box_top = height - box_height - 170
+    box_left = 70
+    box_right = width - 70
+    box_bottom = box_top + box_height
+    draw.rounded_rectangle((box_left, box_top, box_right, box_bottom), radius=28, fill=(0, 0, 0, 178))
+
+    y = box_top + 34
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=font)
+        x = int((width - (bbox[2] - bbox[0])) / 2)
+        draw.text((x + 3, y + 3), line, font=font, fill=(0, 0, 0, 210))
+        draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
+        y += line_height
+
+    return ImageClip(np.array(overlay)).set_duration(duration)
+
+
+def _resize_vertical_clip(clip, target_size: tuple[int, int]):
+    target_w, target_h = target_size
+    scale = max(target_w / clip.w, target_h / clip.h)
+    resized = clip.resize(scale)
+    return resized.crop(
+        x_center=resized.w / 2,
+        y_center=resized.h / 2,
+        width=target_w,
+        height=target_h,
+    )
+
+
+def _render_sports_final_stitch(
+    *,
+    scenes: list[dict[str, Any]],
+    clip_paths: dict[int, Path],
+    output_path: Path,
+    metadata_path: Path,
+    metadata: dict[str, Any],
+    voiceover_text: str,
+) -> None:
+    import numpy as np
+    from moviepy.audio.AudioClip import AudioClip
+    from moviepy.editor import CompositeVideoClip, VideoFileClip, concatenate_videoclips
+
+    target_size = (1080, 1920)
+    source_clips = []
+    rendered_clips = []
+    audio = None
+    final = None
+    try:
+        for scene in scenes:
+            scene_number = int(scene["scene_number"])
+            source_clip = VideoFileClip(str(clip_paths[scene_number]))
+            source_clips.append(source_clip)
+            planned_duration = max(1.0, float(scene.get("duration") or source_clip.duration or 3))
+            duration = min(planned_duration, float(source_clip.duration or planned_duration))
+            resized = _resize_vertical_clip(source_clip.subclip(0, duration), target_size)
+            caption = _render_caption_overlay(scene.get("caption", ""), duration, target_size)
+            composed = CompositeVideoClip([resized, caption], size=target_size).set_duration(duration)
+            rendered_clips.append(composed)
+
+        final = concatenate_videoclips(rendered_clips, method="compose")
+        total_duration = float(final.duration or sum(float(scene.get("duration") or 0) for scene in scenes))
+
+        def make_music(t):
+            return (
+                0.025 * np.sin(2 * np.pi * 110 * t)
+                + 0.018 * np.sin(2 * np.pi * 220 * t)
+                + 0.012 * np.sin(2 * np.pi * 330 * t)
+            )
+
+        audio = AudioClip(make_music, duration=total_duration, fps=44100)
+        final = final.set_audio(audio)
+        final.write_videofile(
+            str(output_path),
+            fps=24,
+            codec="libx264",
+            audio_codec="aac",
+            preset="ultrafast",
+            threads=2,
+            logger=None,
+            ffmpeg_params=["-pix_fmt", "yuv420p", "-movflags", "+faststart"],
+        )
+        metadata_path.write_text(json.dumps({
+            "metadata": metadata,
+            "voiceover_text": voiceover_text,
+            "scenes": scenes,
+            "local_dev_first": True,
+            "paid_credits_used": 0,
+            "manual_approval_required": True,
+            "auto_posted": False,
+        }, indent=2), encoding="utf-8")
+    finally:
+        if audio:
+            audio.close()
+        if final:
+            final.close()
+        for clip in rendered_clips:
+            clip.close()
+        for clip in source_clips:
+            clip.close()
+
+
+@router.post("/sports/final-stitch")
+async def create_sports_final_stitch(
+    scenes_json: str = Form(...),
+    metadata_json: str = Form("{}"),
+    voiceover_text: str = Form(""),
+    external_scene_numbers_json: str = Form("[]"),
+    external_files: Optional[list[UploadFile]] = File(default=None),
+    current_user: User = Depends(require_full_access_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        scenes = json.loads(scenes_json)
+        metadata = json.loads(metadata_json or "{}")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid final stitch payload.") from exc
+    if not isinstance(scenes, list) or not scenes:
+        raise HTTPException(status_code=400, detail="Final stitch requires approved scenes.")
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    run_id = f"sports-final-{uuid.uuid4().hex[:12]}"
+    run_dir = generated_root() / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    uploaded_paths = await _save_uploaded_scene_clips(
+        run_dir=run_dir,
+        external_files=external_files,
+        external_scene_numbers_json=external_scene_numbers_json,
+    )
+
+    clip_paths: dict[int, Path] = {}
+    for scene in scenes:
+        if not scene.get("approved"):
+            raise HTTPException(status_code=400, detail=f"Scene {scene.get('scene_number')} is not approved.")
+        scene_number = int(scene.get("scene_number") or 0)
+        if scene_number <= 0:
+            raise HTTPException(status_code=400, detail="Invalid approved scene number.")
+        source = scene.get("source")
+        if source == "local_motion":
+            video_file = scene.get("video_file")
+            if not video_file:
+                raise HTTPException(status_code=400, detail=f"Scene {scene_number} is missing a local clip file.")
+            clip_paths[scene_number] = await _verified_user_video_path(db, current_user, video_file)
+        elif source == "external_upload":
+            if scene_number not in uploaded_paths:
+                raise HTTPException(status_code=400, detail=f"Scene {scene_number} is missing its uploaded clip.")
+            clip_paths[scene_number] = uploaded_paths[scene_number]
+        else:
+            raise HTTPException(status_code=400, detail=f"Scene {scene_number} has an unsupported clip source.")
+
+    output_path = run_dir / "sports_clip_lab_final.mp4"
+    metadata_path = run_dir / "metadata.json"
+    try:
+        await asyncio.to_thread(
+            _render_sports_final_stitch,
+            scenes=scenes,
+            clip_paths=clip_paths,
+            output_path=output_path,
+            metadata_path=metadata_path,
+            metadata=metadata,
+            voiceover_text=voiceover_text,
+        )
+    except Exception as exc:
+        logger.exception("Sports final stitch failed")
+        raise HTTPException(status_code=500, detail=f"Final stitch failed: {exc}") from exc
+
+    relative_path = relative_generated_path(output_path)
+    generation = Generation(
+        user_id=current_user.id,
+        input_type="video",
+        input_content="sports-clip-lab-final-stitch",
+        status="success",
+        video_run_id=run_id,
+        video_file=relative_path,
+        video_duration_seconds=int(sum(float(scene.get("duration") or 0) for scene in scenes)),
+        video_plan_json=json.dumps({
+            "source": "sports_clip_lab_final_stitch",
+            "approved_scene_count": len(scenes),
+            "local_dev_first": True,
+            "paid_credits_used": 0,
+            "manual_approval_required": True,
+            "auto_posted": False,
+        }),
+        video_scenes_json=json.dumps(scenes),
+        video_platform_meta_json=json.dumps(metadata),
+        runway_credits_used=0,
+        elevenlabs_credits_used=0,
+        total_cost_usd=0,
+        topic="Sports Clip Lab final stitch",
+    )
+    db.add(generation)
+    await db.commit()
+    await db.refresh(generation)
+
+    return {
+        "generation_id": generation.id,
+        "run_id": run_id,
+        "video_file": relative_path,
+        "preview_url": f"/api/generate/video/download/{quote(str(relative_path), safe='/')}",
+        "download_url": f"/api/generate/video/download/{quote(str(relative_path), safe='/')}",
+        "metadata_file": relative_generated_path(metadata_path),
+        "scene_count": len(scenes),
+        "costs": {
+            "runway_credits_used": 0,
+            "elevenlabs_credits_used": 0,
+            "total_cost_usd": 0,
+        },
+        "auto_posted": False,
+        "approval_source": "manual_scene_clip_decisions",
     }
 
 

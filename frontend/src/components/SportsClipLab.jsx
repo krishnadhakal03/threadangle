@@ -943,6 +943,7 @@ export default function SportsClipLab() {
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [activeScene, setActiveScene] = useState(null);
   const [imageBatchMessage, setImageBatchMessage] = useState(null);
+  const [finalStitch, setFinalStitch] = useState({ status: 'idle', error: null });
   const externalClipInputRefs = useRef({});
   const [performanceLogs, setPerformanceLogs] = useState(() => loadPerformanceLogs());
   const [performanceForm, setPerformanceForm] = useState({
@@ -974,6 +975,8 @@ export default function SportsClipLab() {
   const packageText = useMemo(() => buildPackageText(packageData), [packageData]);
   const workflowInstructions = useMemo(() => buildWorkflowInstructions(packageData.scenes), [packageData.scenes]);
   const generatedImageCount = Object.values(sceneImages).filter((image) => image?.status === 'success' && image.imageUrl).length;
+  const approvedSceneCount = packageData.scenes.filter((scene) => sceneClipDecisions[scene.number]?.approved).length;
+  const allScenesApproved = approvedSceneCount === packageData.scenes.length;
   const activeImageProvider = getImageProviderProfile(imageProvider);
   const performanceSummary = useMemo(() => summarizePerformance(performanceLogs), [performanceLogs]);
 
@@ -1032,6 +1035,7 @@ export default function SportsClipLab() {
     setSceneImages({});
     setSceneMotionPreviews({});
     setSceneClipDecisions({});
+    setFinalStitch({ status: 'idle', error: null });
     setImageBatchMessage(null);
   };
 
@@ -1153,6 +1157,7 @@ export default function SportsClipLab() {
           status: 'success',
           videoUrl: blobUrl,
           downloadUrl: data.download_url,
+          videoFile: data.video_file,
           generationId: data.generation_id,
           provider: data.provider,
           duration: data.duration,
@@ -1196,6 +1201,7 @@ export default function SportsClipLab() {
         approved: true,
         videoUrl: preview.videoUrl,
         downloadUrl: preview.downloadUrl,
+        videoFile: preview.videoFile,
         generationId: preview.generationId,
         duration: preview.duration,
         motionStyle: preview.motionStyle,
@@ -1238,6 +1244,69 @@ export default function SportsClipLab() {
         message: 'Approved uploaded external clip for final stitch.',
       },
     }));
+  };
+
+  const createFinalStitch = async () => {
+    const missingScenes = packageData.scenes.filter((scene) => !sceneClipDecisions[scene.number]?.approved);
+    if (missingScenes.length) {
+      setFinalStitch({
+        status: 'error',
+        error: `Approve every scene before final stitch. Missing: ${missingScenes.map((scene) => `Scene ${scene.number}`).join(', ')}.`,
+      });
+      return;
+    }
+
+    const approvedScenes = packageData.scenes.map((scene) => {
+      const decision = sceneClipDecisions[scene.number];
+      return {
+        scene_number: scene.number,
+        label: scene.label,
+        caption: scene.caption,
+        duration: Number(decision.duration || scene.duration || 3),
+        source: decision.source,
+        approved: true,
+        video_file: decision.videoFile || null,
+        file_name: decision.fileName || null,
+        motion_style: decision.motionStyle || null,
+      };
+    });
+
+    const formData = new FormData();
+    formData.append('scenes_json', JSON.stringify(approvedScenes));
+    formData.append('metadata_json', JSON.stringify(packageData.metadata));
+    formData.append('voiceover_text', packageData.voiceover);
+
+    const externalSceneNumbers = [];
+    packageData.scenes.forEach((scene) => {
+      const decision = sceneClipDecisions[scene.number];
+      if (decision?.source === 'external_upload' && decision.file) {
+        externalSceneNumbers.push(scene.number);
+        formData.append('external_files', decision.file, decision.fileName || `scene${scene.number}.mp4`);
+      }
+    });
+    formData.append('external_scene_numbers_json', JSON.stringify(externalSceneNumbers));
+
+    setFinalStitch({ status: 'rendering', error: null });
+    try {
+      const data = await api.createSportsFinalStitch(formData);
+      const { blobUrl } = await api.fetchVideoBlob(data.preview_url || data.download_url);
+      setFinalStitch({
+        status: 'success',
+        error: null,
+        videoUrl: blobUrl,
+        downloadUrl: data.download_url,
+        generationId: data.generation_id,
+        runId: data.run_id,
+        metadataFile: data.metadata_file,
+        sceneCount: data.scene_count,
+        costs: data.costs,
+      });
+    } catch (err) {
+      setFinalStitch({
+        status: 'error',
+        error: err?.message || 'Final stitch failed.',
+      });
+    }
   };
 
   const generateAllSceneImages = async () => {
@@ -1324,6 +1393,7 @@ export default function SportsClipLab() {
                   setSceneImages({});
                   setSceneMotionPreviews({});
                   setSceneClipDecisions({});
+                  setFinalStitch({ status: 'idle', error: null });
                   setImageBatchMessage(null);
                 }}
                 className="rounded-lg border border-[#30363D] bg-[#161B22] px-3 py-2 text-xs font-semibold text-[#C9D1D9] transition-colors hover:border-[#58A6FF] hover:text-white"
@@ -1693,6 +1763,64 @@ export default function SportsClipLab() {
                   ))}
                 </ol>
               </div>
+            </section>
+
+            <section className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-white">Final Stitch</h2>
+                  <p className="mt-1 text-xs leading-5 text-[#8B949E]">
+                    Builds one local MP4 from approved scene clips with captions, a simple local music bed, and metadata. It never auto-posts.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={createFinalStitch}
+                  disabled={!allScenesApproved || finalStitch.status === 'rendering'}
+                  className="inline-flex shrink-0 items-center justify-center rounded-lg bg-[#238636] px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-[#2EA043] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {finalStitch.status === 'rendering' ? 'Stitching Final Video...' : 'Stitch Approved Clips'}
+                </button>
+              </div>
+
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <div className="rounded-lg border border-[#30363D] bg-[#010409] p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Approved scenes</p>
+                  <p className="mt-1 text-lg font-bold text-white">{approvedSceneCount}/{packageData.scenes.length}</p>
+                </div>
+                <div className="rounded-lg border border-[#30363D] bg-[#010409] p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Audio</p>
+                  <p className="mt-1 text-sm text-[#C9D1D9]">Local music bed, no ElevenLabs</p>
+                </div>
+                <div className="rounded-lg border border-[#30363D] bg-[#010409] p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Publishing</p>
+                  <p className="mt-1 text-sm text-[#C9D1D9]">Manual export only</p>
+                </div>
+              </div>
+
+              {!allScenesApproved && (
+                <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-300">
+                  Final stitch is blocked until every scene has an approved local motion clip or approved uploaded clip.
+                </p>
+              )}
+              {finalStitch.status === 'error' && (
+                <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs leading-5 text-red-300">{finalStitch.error}</p>
+              )}
+              {finalStitch.status === 'success' && (
+                <div className="mt-4 space-y-3">
+                  <video
+                    src={finalStitch.videoUrl}
+                    controls
+                    playsInline
+                    className="aspect-[9/16] w-full max-h-[620px] rounded-lg border border-[#30363D] bg-black object-cover"
+                  />
+                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs leading-5 text-emerald-300">
+                    <p className="font-semibold">Final local stitch ready. Nothing was posted.</p>
+                    <p>Run ID: {finalStitch.runId} · Metadata: {finalStitch.metadataFile}</p>
+                    <p>Cost: ${Number(finalStitch.costs?.total_cost_usd || 0).toFixed(2)} · Runway credits: {finalStitch.costs?.runway_credits_used || 0} · ElevenLabs credits: {finalStitch.costs?.elevenlabs_credits_used || 0}</p>
+                  </div>
+                </div>
+              )}
             </section>
 
             <section className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
