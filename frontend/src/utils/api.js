@@ -13,6 +13,12 @@ const parseResponseBody = async (response) => {
     }
 };
 
+const resolveApiAssetUrl = (downloadPath) => {
+    const base = import.meta.env.VITE_API_URL || '';
+    if (!downloadPath) return '';
+    return downloadPath.startsWith('http') ? downloadPath : `${base}${downloadPath}`;
+};
+
 export const setAuthToken = (newToken) => {
     token = newToken;
 };
@@ -149,14 +155,27 @@ export const api = {
     },
     getVideoProgress: (generationId) => request(`/generate/video/progress/${encodeURIComponent(generationId)}`),
     getVideoDownloadUrl: (filename) => `${API_URL}/generate/video/download/${encodeURIComponent(filename)}`,
+    getVideoAssetUrl: resolveApiAssetUrl,
     fetchVideoBlob: async (downloadPath) => {
         const headers = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        const base = import.meta.env.VITE_API_URL || '';
-        const url = (downloadPath || '').startsWith('http') ? downloadPath : `${base}${downloadPath}`;
+        const url = resolveApiAssetUrl(downloadPath);
+        let response;
+        try {
+            response = await fetch(url, { headers });
+        } catch (err) {
+            const rawMessage = err?.message || '';
+            const isFetchFailure = err instanceof TypeError || /failed to fetch/i.test(rawMessage);
+            const message = isFetchFailure
+                ? `Browser preview fetch failed for ${url || 'the generated video'}. In local development this is usually caused by an untrusted HTTPS certificate, mixed frontend/backend protocols, or a backend server that is not reachable. Use the direct download link or trust the local HTTPS certificate.`
+                : rawMessage || 'Unable to fetch video preview.';
+            const previewErr = new Error(message);
+            previewErr.cause = err;
+            previewErr.url = url;
+            throw previewErr;
+        }
 
-        const response = await fetch(url, { headers });
         if (!response.ok) {
             let message = 'Unable to fetch video file';
             try {

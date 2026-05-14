@@ -41,8 +41,10 @@ const PERFORMANCE_STORAGE_KEY = 'threadangle_football_performance_logs_v1';
 const SUPPORTED_EXTERNAL_CLIP_EXTENSIONS = ['.mp4', '.mov', '.webm'];
 const GENERIC_VISUAL_GUIDANCE = [
   'Use generic sports editorial visuals inspired by the story context.',
-  'Do not recreate exact real-player likenesses, faces, tattoos, names on jerseys, official crests, or broadcast graphics.',
-  'Show anonymous athletes, team-color energy, stadium emotion, tactical details, and clean caption space.',
+  'Treat any named players as story labels only, not likeness targets.',
+  'Do not recreate exact real-player likenesses, Messi-like faces, celebrity facial structure, tattoos, jersey names, kit logos, official badges, official crests, sponsor marks, or broadcast graphics.',
+  'Prefer back view, silhouette, cropped hands, cropped boots, crowd reaction, stadium atmosphere, anonymous player angles, team-color energy, tactical details, and clean caption space.',
+  'Use plain unbranded kits and invented visual motifs that cannot be mistaken for official club or national-team marks.',
 ].join(' ');
 
 const FOOTBALL_TEMPLATES = {
@@ -1155,7 +1157,7 @@ export default function SportsClipLab() {
           style: 'cinematic sports editorial',
           event: packageData.form.eventTopic,
           story_context: packageData.form.teamsPlayers,
-          likeness_policy: 'generic anonymous athletes only; no exact real-player likeness or official team marks',
+          likeness_policy: 'generic anonymous athletes only; named players are context labels, not face targets; no Messi-like faces, exact real-player likeness, jersey names, logos, tattoos, official badges, crests, sponsor marks, or broadcast graphics; prefer back views, silhouettes, cropped hands/boots, crowd, stadium, and anonymous player angles',
           provider_mode: providerProfile.mode,
           manual_approval_required: true,
         },
@@ -1458,15 +1460,24 @@ export default function SportsClipLab() {
     setFinalStitch({ status: 'rendering', error: null });
     try {
       const data = await api.createSportsFinalStitch(formData);
-      const { blobUrl } = await api.fetchVideoBlob(data.preview_url || data.download_url);
-      const trackedBlobUrl = trackObjectUrl(blobUrl);
+      let trackedBlobUrl = null;
+      let previewFetchError = null;
+      try {
+        const { blobUrl } = await api.fetchVideoBlob(data.preview_url || data.download_url);
+        trackedBlobUrl = trackObjectUrl(blobUrl);
+      } catch (previewErr) {
+        previewFetchError = previewErr?.message || 'Browser preview fetch failed. Use the direct download link or check the local HTTPS certificate.';
+      }
       setFinalStitch({
         status: 'success',
         error: null,
         videoUrl: trackedBlobUrl,
+        previewFetchError,
         downloadUrl: data.download_url,
+        directDownloadUrl: api.getVideoAssetUrl(data.download_url),
         generationId: data.generation_id,
         runId: data.run_id,
+        videoFile: data.video_file,
         metadataFile: data.metadata_file,
         sceneCount: data.scene_count,
         costs: data.costs,
@@ -1991,16 +2002,42 @@ export default function SportsClipLab() {
               )}
               {finalStitch.status === 'success' && (
                 <div className="mt-4 space-y-3">
-                  <video
-                    src={finalStitch.videoUrl}
-                    controls
-                    playsInline
-                    className="aspect-[9/16] w-full max-h-[620px] rounded-lg border border-[#30363D] bg-black object-cover"
-                  />
+                  {finalStitch.videoUrl ? (
+                    <video
+                      src={finalStitch.videoUrl}
+                      controls
+                      playsInline
+                      className="aspect-[9/16] w-full max-h-[620px] rounded-lg border border-[#30363D] bg-black object-cover"
+                    />
+                  ) : (
+                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-xs leading-5 text-amber-200">
+                      <p className="font-semibold">Video generated, but browser preview fetch failed. Use direct download or check local HTTPS certificate.</p>
+                      {finalStitch.previewFetchError && <p className="mt-1 text-amber-100/90">{finalStitch.previewFetchError}</p>}
+                    </div>
+                  )}
                   <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs leading-5 text-emerald-300">
                     <p className="font-semibold">Final local stitch ready. Nothing was posted.</p>
-                    <p>Run ID: {finalStitch.runId} · Metadata: {finalStitch.metadataFile}</p>
-                    <p>Cost: ${Number(finalStitch.costs?.total_cost_usd || 0).toFixed(2)} · Runway credits: {finalStitch.costs?.runway_credits_used || 0} · ElevenLabs credits: {finalStitch.costs?.elevenlabs_credits_used || 0}</p>
+                    {finalStitch.previewFetchError && (
+                      <p>Video generated, but browser preview fetch failed. Use direct download or check local HTTPS certificate.</p>
+                    )}
+                    <p>Generation ID: {finalStitch.generationId || 'n/a'}</p>
+                    <p>Run ID: {finalStitch.runId || 'n/a'}</p>
+                    <p>Video file: {finalStitch.videoFile || finalStitch.downloadUrl || 'n/a'}</p>
+                    <p>Metadata file: {finalStitch.metadataFile || 'n/a'}</p>
+                    {finalStitch.downloadUrl && (
+                      <p>
+                        Direct download:{' '}
+                        <a
+                          href={finalStitch.directDownloadUrl || finalStitch.downloadUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-semibold text-[#58A6FF] underline decoration-[#58A6FF]/40 underline-offset-2 hover:text-white"
+                        >
+                          Open MP4
+                        </a>
+                      </p>
+                    )}
+                    <p>Cost: ${Number(finalStitch.costs?.total_cost_usd || 0).toFixed(2)} | Runway credits: {finalStitch.costs?.runway_credits_used || 0} | ElevenLabs credits: {finalStitch.costs?.elevenlabs_credits_used || 0}</p>
                   </div>
                 </div>
               )}
