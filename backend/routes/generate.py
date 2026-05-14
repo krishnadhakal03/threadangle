@@ -509,7 +509,10 @@ class SportsMotionPreviewRequest(BaseModel):
     scene_index: int = Field(ge=0)
     image_url: str = Field(min_length=12)
     duration: int = Field(default=3, ge=1, le=8)
-    motion_style: str = Field(default="slow_zoom", pattern="^(slow_zoom|pan_left|pan_right|hold)$")
+    motion_style: str = Field(
+        default="slow_zoom",
+        pattern="^(slow_zoom|pan_left|pan_right|hold|dramatic_push|crowd_shake|rivalry_faceoff_push|penalty_pressure_zoom|trophy_reveal|stadium_flash)$",
+    )
     caption: Optional[str] = None
 
 
@@ -1842,17 +1845,49 @@ def _render_local_motion_preview(
 
     def make_frame(t: float):
         progress = min(1.0, max(0.0, float(t) / max(0.1, float(duration))))
+        pulse = np.sin(progress * np.pi)
+        flash = 1.0
+        y_bias = 0.0
+        shake_x = 0.0
+        shake_y = 0.0
+
         if motion_style == "hold":
             zoom = 1.0
             x_bias = 0.0
+        elif motion_style == "pan_left":
+            zoom = 1.02 + (0.08 * progress)
+            x_bias = 0.5 - progress
+        elif motion_style == "pan_right":
+            zoom = 1.02 + (0.08 * progress)
+            x_bias = progress - 0.5
+        elif motion_style == "dramatic_push":
+            zoom = 1.03 + (0.16 * (progress ** 0.75))
+            x_bias = 0.0
+            y_bias = -0.12 * progress
+        elif motion_style == "crowd_shake":
+            zoom = 1.08 + (0.03 * pulse)
+            x_bias = 0.0
+            shake_x = np.sin(t * 34.0) * 9.0
+            shake_y = np.cos(t * 29.0) * 6.0
+        elif motion_style == "rivalry_faceoff_push":
+            zoom = 1.04 + (0.12 * progress)
+            x_bias = np.sin((progress - 0.5) * np.pi) * 0.28
+        elif motion_style == "penalty_pressure_zoom":
+            zoom = 1.02 + (0.18 * (progress ** 1.35))
+            x_bias = 0.0
+            y_bias = 0.08 * progress
+        elif motion_style == "trophy_reveal":
+            zoom = 1.14 - (0.09 * progress)
+            x_bias = 0.0
+            y_bias = -0.18 + (0.22 * progress)
+            flash = 1.0 + (0.10 * pulse)
+        elif motion_style == "stadium_flash":
+            zoom = 1.05 + (0.06 * progress)
+            x_bias = np.sin(progress * np.pi * 2.0) * 0.18
+            flash = 1.0 + (0.18 if 0.18 < progress < 0.28 or 0.62 < progress < 0.72 else 0.0)
         else:
             zoom = 1.02 + (0.08 * progress)
-            if motion_style == "pan_left":
-                x_bias = 0.5 - progress
-            elif motion_style == "pan_right":
-                x_bias = progress - 0.5
-            else:
-                x_bias = 0.0
+            x_bias = 0.0
 
         scaled_size = (
             max(target_size[0], int(target_size[0] * zoom)),
@@ -1861,11 +1896,14 @@ def _render_local_motion_preview(
         frame = base.resize(scaled_size, Image.Resampling.LANCZOS)
         max_x = scaled_size[0] - target_size[0]
         max_y = scaled_size[1] - target_size[1]
-        left = int((max_x / 2) + (x_bias * max_x * 0.45))
-        top = int(max_y * (0.35 + (0.15 * progress)))
+        left = int((max_x / 2) + (x_bias * max_x * 0.45) + shake_x)
+        top = int(max_y * (0.35 + (0.15 * progress) + y_bias) + shake_y)
         left = max(0, min(max_x, left))
         top = max(0, min(max_y, top))
-        return np.array(frame.crop((left, top, left + target_size[0], top + target_size[1])))
+        cropped = np.array(frame.crop((left, top, left + target_size[0], top + target_size[1]))).astype(np.float32)
+        if flash != 1.0:
+            cropped = np.clip(cropped * flash, 0, 255)
+        return cropped.astype(np.uint8)
 
     clip = VideoClip(make_frame, duration=float(duration))
     try:

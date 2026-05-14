@@ -10,6 +10,18 @@ const PACING_MODES = [
   { value: 'hyper', label: 'Hyper fast cuts' },
   { value: 'story', label: 'Story tension' },
 ];
+const MOTION_PRESETS = [
+  { value: 'dramatic_push', label: 'Dramatic Push' },
+  { value: 'crowd_shake', label: 'Crowd Shake' },
+  { value: 'rivalry_faceoff_push', label: 'Rivalry Faceoff' },
+  { value: 'penalty_pressure_zoom', label: 'Penalty Pressure' },
+  { value: 'trophy_reveal', label: 'Trophy Reveal' },
+  { value: 'stadium_flash', label: 'Stadium Flash' },
+  { value: 'slow_zoom', label: 'Slow Zoom' },
+  { value: 'pan_right', label: 'Pan Right' },
+  { value: 'pan_left', label: 'Pan Left' },
+  { value: 'hold', label: 'Hold' },
+];
 const FOOTBALL_TEMPLATE_OPTIONS = [
   { value: 'el-clasico', label: 'El Clasico Rivalry' },
   { value: 'epl-title-race', label: 'EPL Title Race' },
@@ -939,12 +951,33 @@ function Select({ children, ...props }) {
   );
 }
 
+function motionPresetLabel(value) {
+  return MOTION_PRESETS.find((preset) => preset.value === value)?.label || String(value || 'Motion').replace(/_/g, ' ');
+}
+
+function inferMotionPreset(scene) {
+  const haystack = [
+    scene?.label,
+    scene?.caption,
+    scene?.imagePrompt,
+    scene?.thumbnailText,
+  ].join(' ').toLowerCase();
+
+  if (/(rivalry|faceoff|face-off|duel|staring|split-screen|legacy)/.test(haystack)) return 'rivalry_faceoff_push';
+  if (/(penalty|spot|keeper|shootout)/.test(haystack)) return 'penalty_pressure_zoom';
+  if (/(trophy|final|winner|champion|legacy close|payoff)/.test(haystack)) return 'trophy_reveal';
+  if (/(crowd|supporter|fans|erupts|stadium loses|celebration)/.test(haystack)) return 'crowd_shake';
+  if (/(stadium|lights|flash|anthem|night)/.test(haystack)) return 'stadium_flash';
+  return scene?.number === 1 ? 'dramatic_push' : 'slow_zoom';
+}
+
 export default function SportsClipLab() {
   const [form, setForm] = useState(INITIAL_FORM);
   const [generatedForm, setGeneratedForm] = useState(INITIAL_FORM);
   const [imageProvider, setImageProvider] = useState('huggingface');
   const [sceneImages, setSceneImages] = useState({});
   const [sceneMotionPreviews, setSceneMotionPreviews] = useState({});
+  const [sceneMotionStyles, setSceneMotionStyles] = useState({});
   const [sceneClipDecisions, setSceneClipDecisions] = useState({});
   const [generatingAll, setGeneratingAll] = useState(false);
   const [downloadingZip, setDownloadingZip] = useState(false);
@@ -1067,6 +1100,7 @@ export default function SportsClipLab() {
     setGeneratedForm({ ...form });
     setSceneImages({});
     setSceneMotionPreviews({});
+    setSceneMotionStyles({});
     setSceneClipDecisions({});
     setFinalStitch({ status: 'idle', error: null });
     setImageBatchMessage(null);
@@ -1080,6 +1114,11 @@ export default function SportsClipLab() {
       releaseObjectUrl(sceneClipDecisions[sceneKey]?.videoUrl);
     }
     setSceneMotionPreviews((current) => {
+      const next = { ...current };
+      delete next[sceneKey];
+      return next;
+    });
+    setSceneMotionStyles((current) => {
       const next = { ...current };
       delete next[sceneKey];
       return next;
@@ -1172,8 +1211,7 @@ export default function SportsClipLab() {
       return;
     }
 
-    const motionStyles = ['slow_zoom', 'pan_right', 'pan_left', 'hold'];
-    const motionStyle = motionStyles[(scene.number - 1) % motionStyles.length];
+    const motionStyle = sceneMotionStyles[sceneKey] || inferMotionPreset(scene);
     setSceneMotionPreviews((current) => ({
       ...current,
       [sceneKey]: {
@@ -1182,6 +1220,10 @@ export default function SportsClipLab() {
         error: null,
       },
     }));
+    if (sceneClipDecisions[sceneKey]?.source === 'local_motion') {
+      releaseObjectUrl(finalStitch.videoUrl);
+      setFinalStitch({ status: 'idle', error: null });
+    }
     setSceneClipDecisions((current) => {
       if (current[sceneKey]?.source !== 'local_motion') return current;
       return {
@@ -1231,6 +1273,28 @@ export default function SportsClipLab() {
           error: err?.message || 'Local motion preview failed.',
         },
       }));
+    }
+  };
+
+  const updateMotionStyle = (scene, motionStyle) => {
+    const sceneKey = scene.number;
+    setSceneMotionStyles((current) => ({
+      ...current,
+      [sceneKey]: motionStyle,
+    }));
+
+    if (sceneClipDecisions[sceneKey]?.source === 'local_motion') {
+      setSceneClipDecisions((current) => ({
+        ...current,
+        [sceneKey]: {
+          status: 'needs_decision',
+          source: null,
+          approved: false,
+          message: 'Motion preset changed. Regenerate and approve the new local preview before final stitch.',
+        },
+      }));
+      releaseObjectUrl(finalStitch.videoUrl);
+      setFinalStitch({ status: 'idle', error: null });
     }
   };
 
@@ -1499,6 +1563,7 @@ export default function SportsClipLab() {
                   setGeneratedForm(example);
                   setSceneImages({});
                   setSceneMotionPreviews({});
+                  setSceneMotionStyles({});
                   setSceneClipDecisions({});
                   setFinalStitch({ status: 'idle', error: null });
                   setImageBatchMessage(null);
@@ -1699,19 +1764,30 @@ export default function SportsClipLab() {
                         <p className="text-xs leading-5 text-red-300">{sceneImages[scene.number].error || 'Provider failed or image was not generated.'}</p>
                       )}
                       <div className="rounded-lg border border-[#30363D] bg-[#010409] p-3">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex flex-col gap-3">
                           <div>
                             <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Local motion preview</p>
-                            <p className="mt-1 text-xs leading-5 text-[#8B949E]">Creates a short local pan/zoom MP4 from the approved still. No Runway, ElevenLabs, or paid credits.</p>
+                            <p className="mt-1 text-xs leading-5 text-[#8B949E]">Creates a short local football-edit MP4 from the approved still. No Runway, ElevenLabs, or paid credits.</p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => generateMotionPreview(scene)}
-                            disabled={sceneMotionPreviews[scene.number]?.status === 'generating' || sceneImages[scene.number]?.status !== 'success'}
-                            className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-[#30363D] bg-[#161B22] px-3 py-2 text-xs font-semibold text-[#C9D1D9] transition-colors hover:border-[#58A6FF] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {sceneMotionPreviews[scene.number]?.status === 'generating' ? 'Rendering Preview' : 'Preview Motion'}
-                          </button>
+                          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                            <Select
+                              value={sceneMotionStyles[scene.number] || inferMotionPreset(scene)}
+                              onChange={(event) => updateMotionStyle(scene, event.target.value)}
+                              aria-label={`Motion preset for scene ${scene.number}`}
+                            >
+                              {MOTION_PRESETS.map((preset) => (
+                                <option key={preset.value} value={preset.value}>{preset.label}</option>
+                              ))}
+                            </Select>
+                            <button
+                              type="button"
+                              onClick={() => generateMotionPreview(scene)}
+                              disabled={sceneMotionPreviews[scene.number]?.status === 'generating' || sceneImages[scene.number]?.status !== 'success'}
+                              className="inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-[#30363D] bg-[#161B22] px-3 py-2 text-xs font-semibold text-[#C9D1D9] transition-colors hover:border-[#58A6FF] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {sceneMotionPreviews[scene.number]?.status === 'generating' ? 'Rendering Preview' : 'Preview Motion'}
+                            </button>
+                          </div>
                         </div>
                         {sceneMotionPreviews[scene.number]?.status === 'success' && (
                           <div className="mt-3 space-y-2">
@@ -1723,7 +1799,7 @@ export default function SportsClipLab() {
                               className="aspect-[9/16] w-full max-h-[420px] rounded-lg border border-[#30363D] bg-black object-cover"
                             />
                             <p className="text-xs text-emerald-300">
-                              Local preview ready: {sceneMotionPreviews[scene.number].duration}s {sceneMotionPreviews[scene.number].motionStyle?.replace(/_/g, ' ')}. Manual approval is still required before final use.
+                              Local preview ready: {sceneMotionPreviews[scene.number].duration}s {motionPresetLabel(sceneMotionPreviews[scene.number].motionStyle)}. Manual approval is still required before final use.
                             </p>
                             <button
                               type="button"
