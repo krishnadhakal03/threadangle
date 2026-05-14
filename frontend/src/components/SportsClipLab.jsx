@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { api } from '../utils/api';
 
 const DURATIONS = ['15s', '20s', '30s'];
@@ -938,10 +938,12 @@ export default function SportsClipLab() {
   const [imageProvider, setImageProvider] = useState('huggingface');
   const [sceneImages, setSceneImages] = useState({});
   const [sceneMotionPreviews, setSceneMotionPreviews] = useState({});
+  const [sceneClipDecisions, setSceneClipDecisions] = useState({});
   const [generatingAll, setGeneratingAll] = useState(false);
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [activeScene, setActiveScene] = useState(null);
   const [imageBatchMessage, setImageBatchMessage] = useState(null);
+  const externalClipInputRefs = useRef({});
   const [performanceLogs, setPerformanceLogs] = useState(() => loadPerformanceLogs());
   const [performanceForm, setPerformanceForm] = useState({
     platform: 'YouTube Shorts',
@@ -1029,6 +1031,7 @@ export default function SportsClipLab() {
     setGeneratedForm({ ...form });
     setSceneImages({});
     setSceneMotionPreviews({});
+    setSceneClipDecisions({});
     setImageBatchMessage(null);
   };
 
@@ -1040,6 +1043,15 @@ export default function SportsClipLab() {
       delete next[sceneKey];
       return next;
     });
+    setSceneClipDecisions((current) => ({
+      ...current,
+      [sceneKey]: {
+        status: 'needs_decision',
+        source: null,
+        approved: false,
+        message: 'Image changed. Review motion or upload a clip again before approval.',
+      },
+    }));
     setSceneImages((current) => ({
       ...current,
       [sceneKey]: {
@@ -1160,6 +1172,74 @@ export default function SportsClipLab() {
     }
   };
 
+  const approveLocalMotionClip = (scene) => {
+    const sceneKey = scene.number;
+    const preview = sceneMotionPreviews[sceneKey];
+    if (preview?.status !== 'success' || !preview.videoUrl) {
+      setSceneClipDecisions((current) => ({
+        ...current,
+        [sceneKey]: {
+          status: 'blocked',
+          source: 'local_motion',
+          approved: false,
+          message: 'Render a local motion preview before approving it.',
+        },
+      }));
+      return;
+    }
+
+    setSceneClipDecisions((current) => ({
+      ...current,
+      [sceneKey]: {
+        status: 'approved',
+        source: 'local_motion',
+        approved: true,
+        videoUrl: preview.videoUrl,
+        downloadUrl: preview.downloadUrl,
+        generationId: preview.generationId,
+        duration: preview.duration,
+        motionStyle: preview.motionStyle,
+        fileName: `scene${scene.number}_local_motion.mp4`,
+        message: 'Approved local motion preview for final stitch.',
+      },
+    }));
+  };
+
+  const uploadExternalClip = (scene, file) => {
+    if (!file) return;
+    const sceneKey = scene.number;
+    const videoUrl = URL.createObjectURL(file);
+    setSceneClipDecisions((current) => ({
+      ...current,
+      [sceneKey]: {
+        status: 'needs_review',
+        source: 'external_upload',
+        approved: false,
+        videoUrl,
+        file,
+        fileName: file.name,
+        duration: scene.duration,
+        message: 'External clip uploaded. Review and approve it before final stitch.',
+      },
+    }));
+  };
+
+  const approveExternalClip = (scene) => {
+    const sceneKey = scene.number;
+    const decision = sceneClipDecisions[sceneKey];
+    if (decision?.source !== 'external_upload' || !decision.videoUrl) return;
+
+    setSceneClipDecisions((current) => ({
+      ...current,
+      [sceneKey]: {
+        ...current[sceneKey],
+        status: 'approved',
+        approved: true,
+        message: 'Approved uploaded external clip for final stitch.',
+      },
+    }));
+  };
+
   const generateAllSceneImages = async () => {
     setGeneratingAll(true);
     setImageBatchMessage(null);
@@ -1243,6 +1323,7 @@ export default function SportsClipLab() {
                   setGeneratedForm(example);
                   setSceneImages({});
                   setSceneMotionPreviews({});
+                  setSceneClipDecisions({});
                   setImageBatchMessage(null);
                 }}
                 className="rounded-lg border border-[#30363D] bg-[#161B22] px-3 py-2 text-xs font-semibold text-[#C9D1D9] transition-colors hover:border-[#58A6FF] hover:text-white"
@@ -1467,11 +1548,90 @@ export default function SportsClipLab() {
                             <p className="text-xs text-emerald-300">
                               Local preview ready: {sceneMotionPreviews[scene.number].duration}s {sceneMotionPreviews[scene.number].motionStyle?.replace(/_/g, ' ')}. Manual approval is still required before final use.
                             </p>
+                            <button
+                              type="button"
+                              onClick={() => approveLocalMotionClip(scene)}
+                              className="inline-flex w-full items-center justify-center rounded-lg bg-[#238636] px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-[#2EA043]"
+                            >
+                              Approve Local Motion Clip
+                            </button>
                           </div>
                         )}
                         {sceneMotionPreviews[scene.number]?.status === 'error' && (
                           <p className="mt-2 text-xs leading-5 text-red-300">{sceneMotionPreviews[scene.number].error || 'Local motion preview failed.'}</p>
                         )}
+                      </div>
+                      <div className="rounded-lg border border-[#30363D] bg-[#010409] p-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Scene clip decision</p>
+                            <p className="mt-1 text-xs leading-5 text-[#8B949E]">Approve a local preview, regenerate the image, or upload an external clip. Nothing advances without approval.</p>
+                          </div>
+                          <div className="flex shrink-0 flex-wrap gap-2">
+                            <input
+                              ref={(node) => {
+                                if (node) externalClipInputRefs.current[scene.number] = node;
+                              }}
+                              type="file"
+                              accept="video/mp4,video/quicktime,video/webm"
+                              className="hidden"
+                              onChange={(event) => {
+                                uploadExternalClip(scene, event.target.files?.[0]);
+                                event.target.value = '';
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => externalClipInputRefs.current[scene.number]?.click()}
+                              className="inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-[#30363D] bg-[#161B22] px-3 py-2 text-xs font-semibold text-[#C9D1D9] transition-colors hover:border-[#58A6FF] hover:text-white"
+                            >
+                              Upload External Clip
+                            </button>
+                          </div>
+                        </div>
+
+                        {sceneClipDecisions[scene.number]?.videoUrl && (
+                          <div className="mt-3 space-y-2">
+                            {sceneClipDecisions[scene.number].source === 'external_upload' && (
+                              <video
+                                src={sceneClipDecisions[scene.number].videoUrl}
+                                controls
+                                muted
+                                playsInline
+                                className="aspect-[9/16] w-full max-h-[420px] rounded-lg border border-[#30363D] bg-black object-cover"
+                              />
+                            )}
+                            {sceneClipDecisions[scene.number].source === 'external_upload' && sceneClipDecisions[scene.number].status !== 'approved' && (
+                              <button
+                                type="button"
+                                onClick={() => approveExternalClip(scene)}
+                                className="inline-flex w-full items-center justify-center rounded-lg bg-[#238636] px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-[#2EA043]"
+                              >
+                                Approve Uploaded Clip
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        <div className={`mt-3 rounded-lg border px-3 py-2 text-xs leading-5 ${
+                          sceneClipDecisions[scene.number]?.status === 'approved'
+                            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                            : sceneClipDecisions[scene.number]?.status === 'blocked'
+                              ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                              : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                        }`}>
+                          <span className="font-semibold">
+                            {sceneClipDecisions[scene.number]?.status === 'approved'
+                              ? `Approved: ${sceneClipDecisions[scene.number]?.source === 'external_upload' ? 'uploaded external clip' : 'local motion clip'}`
+                              : 'Awaiting approval'}
+                          </span>
+                          <span className="block">
+                            {sceneClipDecisions[scene.number]?.message || 'Choose one approved clip source for this scene before final stitching.'}
+                          </span>
+                          {sceneClipDecisions[scene.number]?.fileName && (
+                            <span className="block text-[#C9D1D9]">File: {sceneClipDecisions[scene.number].fileName}</span>
+                          )}
+                        </div>
                       </div>
                       <div>
                         <p className="mb-1 text-xs font-bold uppercase tracking-wide text-[#8B949E]">Image prompt</p>
