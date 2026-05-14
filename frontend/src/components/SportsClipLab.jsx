@@ -2,13 +2,171 @@ import React, { useMemo, useState } from 'react';
 import { api } from '../utils/api';
 
 const DURATIONS = ['15s', '20s', '30s'];
-const SPORTS = ['NBA', 'EPL', 'NFL', 'Soccer', 'Other'];
+const SPORTS = ['Football', 'EPL', 'Soccer', 'NBA', 'NFL', 'Other'];
 const PLATFORMS = ['All', 'YouTube Shorts', 'TikTok', 'Reels'];
 const TONES = ['cinematic', 'hype', 'emotional', 'rivalry', 'underdog', 'breaking-news'];
+const FOOTBALL_TEMPLATE_OPTIONS = [
+  { value: 'el-clasico', label: 'El Clasico Rivalry' },
+  { value: 'epl-title-race', label: 'EPL Title Race' },
+  { value: 'ucl-night', label: 'UCL Night' },
+  { value: 'world-cup-knockout', label: 'World Cup Knockout Drama' },
+  { value: 'penalty-shootout', label: 'Penalty Shootout Pressure' },
+  { value: 'goat-debate', label: 'GOAT Debate' },
+  { value: 'last-minute-comeback', label: 'Last-Minute Comeback' },
+  { value: 'upset-alert', label: 'Upset Alert' },
+  { value: 'star-player-watch', label: 'Star Player Watch' },
+];
 const IMAGE_PROVIDERS = [
   { value: 'huggingface', label: 'HuggingFace / fallback' },
   { value: 'pollinations', label: 'Pollinations' },
 ];
+
+const FOOTBALL_TEMPLATES = {
+  'el-clasico': {
+    hookType: 'rivalry',
+    topicCategory: 'rivalry',
+    defaultTone: 'rivalry',
+    hook: 'This rivalry still feels personal before kickoff.',
+    body: 'Two giant clubs, one pressure cooker, and a result that can rewrite the week.',
+    cta: 'Who owns this rivalry right now?',
+    thumbnailText: ['RIVALRY NIGHT', 'WHO BLINKS FIRST?', 'CLASICO PRESSURE'],
+    beats: [
+      ['Cold open', 'The rivalry starts before the whistle.', 'two football captains staring each other down in a packed tunnel, scarf colors in the crowd, no official crests'],
+      ['History flash', 'This fixture is never just another match.', 'split memory wall of past celebrations, tackles, and roaring supporters in generic red, white, and blue colors'],
+      ['Star duel', 'One star moment can flip the story.', 'two elite footballers in opposing generic kits sprinting under stadium lights, ball between them'],
+      ['Pressure spike', 'Every loose touch feels dangerous.', 'tight midfield duel, boots near the ball, crowd blurred into a wall of pressure'],
+      ['Comment trigger', 'Tell me who has the bigger legacy.', 'dramatic split-screen poster with two fan sections facing each other'],
+    ],
+  },
+  'epl-title-race': {
+    hookType: 'stakes',
+    topicCategory: 'title-race',
+    defaultTone: 'hype',
+    hook: 'The title race cannot survive a slip here.',
+    body: 'Every point matters now, and this fixture has trap-game written all over it.',
+    cta: 'Is this a title statement or a title collapse?',
+    thumbnailText: ['TITLE RACE', 'NO ROOM TO SLIP', 'POINTS OR PANIC'],
+    beats: [
+      ['1-sec stakes', 'One mistake changes the table.', 'glowing league table graphic style background without real logos, anxious fans, floodlit pitch'],
+      ['Contender focus', 'The favorite has to play like a champion.', 'football squad walking out under rain and floodlights, focused faces, generic kits'],
+      ['Spoiler threat', 'The underdog only needs one clean chance.', 'counterattack forming with one forward breaking into open grass'],
+      ['Final stretch', 'This is where champions separate.', 'clock near stoppage time, players shouting, crowd rising behind the goal'],
+      ['Comment trigger', 'Would you trust them with the season on the line?', 'bold football debate poster with table pressure and empty space for captions'],
+    ],
+  },
+  'ucl-night': {
+    hookType: 'atmosphere',
+    topicCategory: 'champions-night',
+    defaultTone: 'cinematic',
+    hook: 'European nights turn good teams into legends.',
+    body: 'The lights, the anthem energy, and one mistake can change the entire tie.',
+    cta: 'Who is built for this stage?',
+    thumbnailText: ['EUROPEAN NIGHT', 'LEGEND OR EXIT?', 'UNDER THE LIGHTS'],
+    beats: [
+      ['Atmosphere', 'This is the night reputations are made.', 'massive European football stadium at night, blue-white lights, smoke, roaring stands'],
+      ['First pressure', 'The first ten minutes will tell us everything.', 'players lining up before kickoff with intense faces and cinematic tunnel haze'],
+      ['Tie breaker', 'One away goal feeling can shake the stadium.', 'striker winding up near the box, goalkeeper set, crowd frozen in anticipation'],
+      ['Chaos beat', 'Nobody survives this level by playing safe.', 'scramble in the penalty area, bodies turning, ball loose near the spot'],
+      ['Legacy close', 'This is how legends get remembered.', 'hero player silhouette facing the lights with fans behind them'],
+    ],
+  },
+  'world-cup-knockout': {
+    hookType: 'survival',
+    topicCategory: 'world-cup',
+    defaultTone: 'emotional',
+    hook: 'Ninety minutes from survival or heartbreak.',
+    body: 'World Cup knockout football turns every pass into pressure and every miss into a memory.',
+    cta: 'Who survives this knockout night?',
+    thumbnailText: ['SURVIVE OR GO HOME', 'WORLD CUP PRESSURE', 'KNOCKOUT NIGHT'],
+    beats: [
+      ['Survival hook', 'There is no tomorrow after this.', 'international football knockout match, packed stadium, flags without official emblems, players under pressure'],
+      ['Nation stakes', 'A whole country is holding its breath.', 'supporters with face paint and flags, emotional close-ups, cinematic stadium glow'],
+      ['Hero watch', 'This is where stars have to become leaders.', 'captain in generic national colors standing over the ball before a decisive play'],
+      ['Turning point', 'One deflection can send you home.', 'ball flying through a crowded penalty area with goalkeeper diving'],
+      ['Replay loop', 'Would you play brave or play safe?', 'final whistle tension, two benches reacting in opposite emotions'],
+    ],
+  },
+  'penalty-shootout': {
+    hookType: 'pressure',
+    topicCategory: 'penalties',
+    defaultTone: 'emotional',
+    hook: 'A penalty shootout is football with nowhere to hide.',
+    body: 'Five steps, one ball, one keeper, and a stadium loud enough to break legs.',
+    cta: 'Who are you trusting from the spot?',
+    thumbnailText: ['PENALTY PRESSURE', 'NO HIDING', 'FROM THE SPOT'],
+    beats: [
+      ['Spotlight', 'The walk from halfway feels endless.', 'footballer walking alone toward the penalty spot, crowd lights blurred, dramatic shadows'],
+      ['Keeper mind game', 'The keeper only needs one read.', 'goalkeeper on the line, arms wide, intense eyes, net behind'],
+      ['Contact beat', 'One strike can silence everything.', 'boot striking ball from the penalty spot, turf flying, high tension'],
+      ['Reaction', 'This is where heroes and villains are made.', 'bench and fans reacting in emotional split frame'],
+      ['Question close', 'Name your first penalty taker.', 'empty penalty spot under floodlights with bold negative space'],
+    ],
+  },
+  'goat-debate': {
+    hookType: 'debate',
+    topicCategory: 'legacy',
+    defaultTone: 'rivalry',
+    hook: 'This debate never actually ends.',
+    body: 'Goals, trophies, moments, longevity, aura: every side has receipts.',
+    cta: 'Drop your GOAT and defend it.',
+    thumbnailText: ['GOAT DEBATE', 'SETTLE THIS', 'LEGACY WAR'],
+    beats: [
+      ['Debate hook', 'Say the name and the comments explode.', 'football legacy debate poster with two anonymous superstar silhouettes and trophy light'],
+      ['Receipts', 'Numbers tell one story.', 'stat-board inspired scene with football boots, trophies, and abstract numbers without real data claims'],
+      ['Aura', 'Moments tell another.', 'packed stadium erupting after a bicycle-kick style silhouette, cinematic realism'],
+      ['Counterpoint', 'But legacy depends on what you value.', 'split-screen of trophies, clutch goals, and captain leadership imagery'],
+      ['Comment close', 'No fence-sitting: pick one.', 'bold social debate frame with comment space and football pitch texture'],
+    ],
+  },
+  'last-minute-comeback': {
+    hookType: 'comeback',
+    topicCategory: 'comeback',
+    defaultTone: 'hype',
+    hook: 'The match is not dead until the last attack.',
+    body: 'One chance, one cross, one bounce, and suddenly the impossible starts breathing.',
+    cta: 'Have you seen a crazier comeback?',
+    thumbnailText: ['LAST MINUTE', 'COMEBACK LOADING', 'NOT OVER'],
+    beats: [
+      ['Clock hook', 'Stoppage time changes everything.', 'stadium clock in stoppage time, players rushing forward, intense crowd'],
+      ['Desperation', 'They are throwing everyone into the box.', 'goalkeeper and defenders in the opponent box for a final corner'],
+      ['The chance', 'One touch can rewrite the result.', 'cross dropping into a crowded penalty area, dramatic motion blur'],
+      ['Explosion', 'This is the moment the stadium loses it.', 'players sprinting to celebrate, crowd erupting, lights shaking'],
+      ['Replay close', 'You have to watch the final attack again.', 'freeze-frame inspired comeback poster with time and score pressure'],
+    ],
+  },
+  'upset-alert': {
+    hookType: 'upset',
+    topicCategory: 'underdog',
+    defaultTone: 'underdog',
+    hook: 'This has upset written all over it.',
+    body: 'The favorite has the names, but the matchup pressure is quietly dangerous.',
+    cta: 'Are you calling the upset before kickoff?',
+    thumbnailText: ['UPSET ALERT', 'TRAP GAME', 'FAVORITE IN DANGER'],
+    beats: [
+      ['Warning hook', 'The favorite should be nervous.', 'underdog football team walking into hostile stadium, focused and fearless'],
+      ['Mismatch twist', 'The trap is hiding in the details.', 'tactical board style image showing pressing lanes and open space, no real logos'],
+      ['Danger player', 'One runner can ruin the script.', 'fast winger sprinting into space behind a defensive line'],
+      ['Pressure swing', 'The crowd can feel the momentum changing.', 'favorite team under pressure near their own box, fans rising'],
+      ['Prediction close', 'Would you bet the upset?', 'dramatic upset poster with giant-versus-underdog framing'],
+    ],
+  },
+  'star-player-watch': {
+    hookType: 'player-watch',
+    topicCategory: 'spotlight',
+    defaultTone: 'cinematic',
+    hook: 'All eyes are on one player tonight.',
+    body: 'The matchup is bigger than one name, but the story follows every touch they take.',
+    cta: 'Is this a statement game?',
+    thumbnailText: ['STAR WATCH', 'STATEMENT GAME', 'ALL EYES ON HIM'],
+    beats: [
+      ['Spotlight hook', 'Every touch is going to be judged.', 'star footballer silhouette tying boots under locker-room light, generic kit'],
+      ['Role', 'The team needs more than highlights.', 'player scanning the pitch before receiving the ball, teammates moving around them'],
+      ['Pressure test', 'The defense knows the whole plan.', 'two defenders closing down a dribbler near the touchline'],
+      ['Signature moment', 'One signature play can own the timeline.', 'footballer striking or assisting in cinematic action with stadium lights'],
+      ['Comment close', 'What counts as a good game for him?', 'player spotlight poster with room for stat overlays and captions'],
+    ],
+  },
+};
 
 const EXAMPLES = {
   nba: {
@@ -22,6 +180,8 @@ const EXAMPLES = {
     hook: 'Wemby is back under playoff pressure tonight.',
     body: 'Game 5 is tied 2-2, the stage is in San Antonio, and one run could swing the whole series.',
     cta: 'Who owns Game 5: Wemby or Ant?',
+    template: 'star-player-watch',
+    worldCupMode: false,
   },
   city: {
     label: 'Manchester City game tomorrow',
@@ -34,10 +194,44 @@ const EXAMPLES = {
     hook: 'City cannot blink in the title race tomorrow.',
     body: 'Crystal Palace arrive at the Etihad with spoiler energy while City chase every point under pressure.',
     cta: 'Will City handle the pressure or slip?',
+    template: 'epl-title-race',
+    worldCupMode: false,
+  },
+  knockout: {
+    label: 'World Cup knockout preset',
+    eventTopic: 'Argentina vs France knockout rematch',
+    sport: 'Football',
+    teamsPlayers: 'Argentina, France, Lionel Messi, Kylian Mbappe',
+    targetPlatform: 'All',
+    duration: '20s',
+    tone: 'emotional',
+    hook: 'Ninety minutes from survival or heartbreak.',
+    body: 'World Cup knockout football turns every touch into pressure and every miss into history.',
+    cta: 'Who survives this knockout night?',
+    template: 'world-cup-knockout',
+    worldCupMode: true,
   },
 };
 
 const INITIAL_FORM = EXAMPLES.nba;
+
+function getTemplate(form) {
+  return FOOTBALL_TEMPLATES[form.template] || FOOTBALL_TEMPLATES['star-player-watch'];
+}
+
+function applyTemplateToForm(form, templateKey, keepTopic = true) {
+  const template = FOOTBALL_TEMPLATES[templateKey] || FOOTBALL_TEMPLATES['star-player-watch'];
+  return {
+    ...form,
+    sport: form.sport === 'NBA' || form.sport === 'NFL' ? 'Football' : form.sport,
+    template: templateKey,
+    tone: template.defaultTone || form.tone,
+    hook: keepTopic && form.hook ? form.hook : template.hook,
+    body: keepTopic && form.body ? form.body : template.body,
+    cta: keepTopic && form.cta ? form.cta : template.cta,
+    worldCupMode: templateKey === 'world-cup-knockout' ? true : Boolean(form.worldCupMode),
+  };
+}
 
 const ButtonIcon = ({ type }) => {
   const paths = {
@@ -106,67 +300,55 @@ function makeHashtags(form) {
     .map((item) => `#${item}`);
 
   const sportTag = `#${form.sport.replace(/[^a-zA-Z0-9]/g, '') || 'Sports'}`;
-  return [...new Set(['#Sports', sportTag, '#Shorts', '#GameDay', ...topicTags])].slice(0, 8);
+  const template = getTemplate(form);
+  const footballTags = ['#Football', '#Soccer', '#Shorts'];
+  const worldCupTags = form.worldCupMode ? ['#WorldCup', '#WorldCup2026'] : [];
+  const categoryTag = template.topicCategory ? [`#${template.topicCategory.replace(/[^a-zA-Z0-9]/g, '')}`] : [];
+  return [...new Set([...footballTags, sportTag, ...worldCupTags, '#GameDay', ...categoryTag, ...topicTags])].slice(0, 10);
 }
 
 function buildScenes(form) {
   const total = Number.parseInt(form.duration, 10) || 20;
-  const count = total <= 15 ? 4 : total >= 30 ? 6 : 5;
+  const template = getTemplate(form);
+  const count = total <= 15 ? 4 : total >= 30 ? Math.min(8, template.beats.length + 1) : Math.min(6, template.beats.length);
   const durations = getSceneDurations(form.duration, count);
   const bodyLines = splitText(form.body);
   const subject = form.teamsPlayers || form.eventTopic || 'the matchup';
+  const footballContext = form.worldCupMode ? 'World Cup mode, national-team stakes, knockout pressure.' : 'Football-first short-form package.';
 
-  const beats = [
-    {
-      label: 'Cold open',
-      caption: form.hook || `The pressure is on for ${form.eventTopic}.`,
-      visual: 'a dramatic close-up with arena lights, tense faces, and rising crowd energy',
-      motion: 'slow push-in, light camera shake, flashes from the crowd, high-contrast reveal',
-      note: 'Open with the strongest image. Cut on the first beat drop.',
-    },
-    {
-      label: 'Stakes',
-      caption: bodyLines[0] || 'Everything changes after this matchup.',
-      visual: 'a wide vertical scene showing the stadium, scoreboard glow, and players warming up',
-      motion: 'vertical parallax move from crowd to court or pitch, quick scoreboard rack focus',
-      note: 'Use a fast whoosh transition from scene 1.',
-    },
-    {
-      label: 'Star focus',
-      caption: `${subject.split(',')[0]?.trim() || 'The star'} has to set the tone.`,
-      visual: 'a star player silhouette in generic team colors, sweat, tunnel smoke, no official logos',
-      motion: 'hero walk-in, shallow depth of field, jersey fabric movement, lens flare sweep',
-      note: 'Hold the player in center frame for caption readability.',
-    },
-    {
-      label: 'Turning point',
-      caption: bodyLines[1] || 'One moment can flip the entire story.',
-      visual: 'a decisive sports action moment frozen at peak tension, defenders closing in, crowd blurred',
-      motion: 'speed ramp into a freeze-frame, slight zoom, impact shake on the imagined play',
-      note: 'Trim tightly. Keep only the most energetic 3 to 5 seconds.',
-    },
-    {
-      label: 'Prediction',
-      caption: form.cta || 'Who wins this one?',
-      visual: 'split-screen rivalry poster with both sides facing off under bright arena lights',
-      motion: 'split-screen slide together, sparks of light, final title card reveal',
-      note: 'End with a clean CTA and leave half a second of breathing room.',
-    },
-    {
+  const beats = template.beats.map(([label, fallbackCaption, visual], index) => ({
+    label,
+    caption: index === 0 ? (form.hook || fallbackCaption) : index === template.beats.length - 1 ? (form.cta || fallbackCaption) : (bodyLines[index - 1] || fallbackCaption),
+    visual,
+    motion: index === 0
+      ? 'hard cut in under one second, fast push, crowd flash, immediate caption pop'
+      : index === template.beats.length - 1
+        ? 'snap zoom into final frame, half-second hold for comments, clean loop back to opening image'
+        : 'fast handheld push, speed ramp, match cut on beat, keep motion readable in 9:16',
+    note: index === 0
+      ? 'Hook must land in the first second. Use the shortest caption on the strongest frame.'
+      : index === template.beats.length - 1
+        ? 'End as a comment prompt and make the final frame loop naturally into scene 1.'
+        : 'Keep the cut tight and caption short enough to read on mobile.',
+  }));
+
+  if (count > beats.length) {
+    beats.push({
       label: 'Final punch',
-      caption: form.cta || 'Drop your pick before tip-off.',
-      visual: 'vertical social-ready final frame with empty lower third for comments and reactions',
-      motion: 'quick zoom out to final frame, subtle crowd pulse, hard cut to black',
-      note: 'Use this only for 30 second versions or if the story needs a stronger ending.',
-    },
-  ];
+      caption: form.cta || template.cta,
+      visual: 'vertical football debate poster with stadium lights, supporter emotion, and clean caption space',
+      motion: 'quick zoom out to final frame, subtle crowd pulse, hard cut back to the opener',
+      note: 'Use only when the 30 second version needs a stronger final CTA.',
+    });
+  }
 
   return beats.slice(0, count).map((beat, index) => ({
     number: index + 1,
     label: beat.label,
     duration: durations[index],
     imagePrompt: [
-      `Vertical 9:16 ${form.sport} short scene for "${form.eventTopic}".`,
+      `Vertical 9:16 football short scene for "${form.eventTopic}".`,
+      footballContext,
       `Tone: ${form.tone}. Subject: ${subject}.`,
       `${beat.visual}.`,
       'Cinematic sports editorial style, realistic lighting, sharp subject, readable negative space for captions, no official logos, no watermarks, no broadcast graphics.',
@@ -178,6 +360,7 @@ function buildScenes(form) {
     ].join(' '),
     caption: beat.caption,
     editingNote: beat.note,
+    thumbnailText: template.thumbnailText[index % template.thumbnailText.length],
   }));
 }
 
@@ -195,7 +378,8 @@ function buildMetadata(form) {
   const hashtags = makeHashtags(form);
   const titleCore = form.eventTopic || 'Sports short';
   const question = form.cta || 'Who wins this one?';
-  const shortTitle = `${titleCore}: pressure moment`;
+  const template = getTemplate(form);
+  const shortTitle = `${titleCore}: ${template.topicCategory.replace(/-/g, ' ')}`;
   const caption = `${form.hook || titleCore} ${question}`;
 
   return {
@@ -216,6 +400,13 @@ function buildMetadata(form) {
       caption: `${caption}\n\n${form.body}\n\n${hashtags.slice(0, 6).join(' ')}`,
       hashtags: hashtags.slice(0, 6).join(' '),
     },
+    template: {
+      name: FOOTBALL_TEMPLATE_OPTIONS.find((option) => option.value === form.template)?.label || 'Football Template',
+      hookType: template.hookType,
+      topicCategory: template.topicCategory,
+      thumbnailText: template.thumbnailText.join(' | '),
+      worldCupMode: form.worldCupMode ? 'Enabled' : 'Off',
+    },
   };
 }
 
@@ -232,6 +423,7 @@ function buildPromptText(packageData) {
 
 function buildMetadataText(metadata) {
   return [
+    `Template\nName: ${metadata.template.name}\nHook type: ${metadata.template.hookType}\nTopic category: ${metadata.template.topicCategory}\nThumbnail text options: ${metadata.template.thumbnailText}\nWorld Cup mode: ${metadata.template.worldCupMode}`,
     `YouTube Shorts\nTitle: ${metadata.youtube.title}\nDescription:\n${metadata.youtube.description}\nHashtags: ${metadata.youtube.hashtags}`,
     `TikTok\nCaption: ${metadata.tiktok.caption}\nHashtags: ${metadata.tiktok.hashtags}`,
     `Instagram Reels\nCaption: ${metadata.reels.caption}\nHashtags: ${metadata.reels.hashtags}`,
@@ -581,6 +773,10 @@ export default function SportsClipLab() {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
+  const updateTemplate = (templateKey) => {
+    setForm((current) => applyTemplateToForm(current, templateKey, false));
+  };
+
   const generatePackage = () => {
     setGeneratedForm({ ...form });
     setSceneImages({});
@@ -703,6 +899,8 @@ export default function SportsClipLab() {
                 onClick={() => {
                   setForm(example);
                   setGeneratedForm(example);
+                  setSceneImages({});
+                  setImageBatchMessage(null);
                 }}
                 className="rounded-lg border border-[#30363D] bg-[#161B22] px-3 py-2 text-xs font-semibold text-[#C9D1D9] transition-colors hover:border-[#58A6FF] hover:text-white"
               >
@@ -723,6 +921,20 @@ export default function SportsClipLab() {
                   {SPORTS.map((sport) => <option key={sport}>{sport}</option>)}
                 </Select>
               </Field>
+              <Field label="Football template">
+                <Select value={form.template || 'star-player-watch'} onChange={(e) => updateTemplate(e.target.value)}>
+                  {FOOTBALL_TEMPLATE_OPTIONS.map((template) => <option key={template.value} value={template.value}>{template.label}</option>)}
+                </Select>
+              </Field>
+              <label className="flex items-center gap-3 rounded-lg border border-[#30363D] bg-[#0D1117] px-3 py-2.5 text-sm text-[#C9D1D9]">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.worldCupMode)}
+                  onChange={(e) => updateField('worldCupMode', e.target.checked)}
+                  className="h-4 w-4 accent-[#1F6FEB]"
+                />
+                <span>World Cup mode</span>
+              </label>
               <Field label="Teams/players">
                 <TextArea rows={3} value={form.teamsPlayers} onChange={(e) => updateField('teamsPlayers', e.target.value)} placeholder="Teams, players, rivalry angle" />
               </Field>
@@ -764,7 +976,7 @@ export default function SportsClipLab() {
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#238636] px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-[#2EA043]"
             >
               <ButtonIcon type="play" />
-              Generate Sports Scene Package
+              Generate Football Scene Package
             </button>
 
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
@@ -811,7 +1023,7 @@ export default function SportsClipLab() {
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-bold text-white">Scene Package</h2>
-                  <p className="text-xs text-[#8B949E]">{packageData.scenes.length} scenes for {packageData.form.duration}</p>
+                  <p className="text-xs text-[#8B949E]">{packageData.scenes.length} scenes for {packageData.form.duration} using {packageData.metadata.template.name}</p>
                 </div>
                 <CopyButton text={packageText}>Copy Full Package</CopyButton>
               </div>
@@ -823,6 +1035,7 @@ export default function SportsClipLab() {
                       <div>
                         <h3 className="font-bold text-white">Scene {scene.number}: {scene.label}</h3>
                         <p className="text-xs text-[#8B949E]">{scene.duration}s · scene{scene.number}.png</p>
+                        <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[#F0B429]">{scene.thumbnailText}</p>
                       </div>
                       <div className="flex shrink-0 flex-wrap justify-end gap-2">
                         <CopyButton text={scene.videoPrompt}>Copy I2V Prompt</CopyButton>
@@ -923,7 +1136,7 @@ export default function SportsClipLab() {
             </section>
 
             <section className="grid gap-4 lg:grid-cols-2">
-              {Object.entries(packageData.metadata).map(([platform, data]) => (
+              {Object.entries(packageData.metadata).filter(([platform]) => platform !== 'template').map(([platform, data]) => (
                 <article key={platform} className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <h2 className="text-lg font-bold capitalize text-white">{platform === 'youtube' ? 'YouTube Shorts' : platform === 'reels' ? 'Instagram Reels' : platform === 'facebook' ? 'Facebook Reels' : 'TikTok'}</h2>
