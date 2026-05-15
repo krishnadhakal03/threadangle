@@ -8,6 +8,20 @@ const WORKFLOWS = [
   'World Cup group or round prediction',
   'Fantasy quick picks',
 ];
+const INITIAL_MATCH = {
+  teamA: 'Arsenal',
+  teamB: 'Manchester City',
+  competition: 'Premier League',
+  matchDate: '',
+  tone: 'analytical',
+  platform: 'All',
+  recentFormA: 'W-W-D-W-L',
+  recentFormB: 'W-W-W-D-W',
+  injuriesNews: 'Manual notes only; verify before export.',
+  headToHead: 'Recent meetings are tight, but pressure changes the matchup.',
+  keyPlayers: 'Saka, Odegaard, Haaland, Foden',
+  context: 'Title race pressure, home advantage, fixture congestion.',
+};
 
 function CopyButton({ text, children }) {
   const [copied, setCopied] = useState(false);
@@ -29,6 +43,27 @@ function CopyButton({ text, children }) {
 
 export default function PredictionStudio() {
   const [workflow, setWorkflow] = useState(WORKFLOWS[0]);
+  const [matchForm, setMatchForm] = useState(INITIAL_MATCH);
+  const updateMatch = (key, value) => setMatchForm((current) => ({ ...current, [key]: value }));
+  const predictionPackage = useMemo(() => {
+    const predictedScore = `${matchForm.teamA} 2-2 ${matchForm.teamB}`;
+    return {
+      hook: `${matchForm.teamA} vs ${matchForm.teamB}: who wins?`,
+      formSummary: `${matchForm.teamA}: ${matchForm.recentFormA} | ${matchForm.teamB}: ${matchForm.recentFormB}`,
+      headToHead: matchForm.headToHead,
+      keyPlayers: matchForm.keyPlayers.split(',').map((item) => item.trim()).filter(Boolean),
+      pressureFactors: matchForm.context.split(',').map((item) => item.trim()).filter(Boolean),
+      predictedScore,
+      confidence: 'medium',
+      cta: 'Drop your score prediction. Agree or disagree?',
+      disclaimer: 'Prediction is for entertainment and football discussion only, not betting advice.',
+      metadata: {
+        title: `${matchForm.teamA} vs ${matchForm.teamB} Prediction`,
+        caption: `${matchForm.teamA} vs ${matchForm.teamB}: form, pressure, key players, and a cautious score prediction. Not betting advice.`,
+        hashtags: '#Football #Prediction #MatchPreview #GameDay',
+      },
+    };
+  }, [matchForm]);
   const modulePlan = useMemo(() => [
     'Own fixture and prediction schemas here, separate from cinematic scene prompts.',
     'Use low-animation data cards, comparison panels, and stat layouts.',
@@ -36,6 +71,16 @@ export default function PredictionStudio() {
     'Use manual-first data until approved providers are configured.',
     'Reuse shared metadata/export ideas only after manual review.',
   ], []);
+  const predictionText = [
+    predictionPackage.hook,
+    predictionPackage.formSummary,
+    predictionPackage.headToHead,
+    `Key players: ${predictionPackage.keyPlayers.join(', ')}`,
+    `Pressure: ${predictionPackage.pressureFactors.join(', ')}`,
+    `Pick: ${predictionPackage.predictedScore} (${predictionPackage.confidence})`,
+    predictionPackage.cta,
+    predictionPackage.disclaimer,
+  ].join('\n');
 
   return (
     <div className="min-h-screen bg-[#010409] text-[#C9D1D9]">
@@ -64,6 +109,62 @@ export default function PredictionStudio() {
           </aside>
 
           <main className="space-y-4">
+            <section className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
+              <div className="mb-3">
+                <h2 className="text-lg font-bold text-white">Single Match Prediction</h2>
+                <p className="text-xs text-[#8B949E]">Manual-first football analysis. No betting advice, no live paid data API, no guarantees.</p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                {[
+                  ['teamA', 'Team A'],
+                  ['teamB', 'Team B'],
+                  ['competition', 'Competition'],
+                  ['matchDate', 'Match date'],
+                  ['recentFormA', 'Team A form'],
+                  ['recentFormB', 'Team B form'],
+                  ['keyPlayers', 'Key players'],
+                  ['context', 'Pressure/context'],
+                ].map(([key, label]) => (
+                  <label key={key} className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">
+                    {label}
+                    <input
+                      value={matchForm[key]}
+                      onChange={(event) => updateMatch(key, event.target.value)}
+                      className="mt-1 w-full rounded-lg border border-[#30363D] bg-[#010409] px-3 py-2 text-sm normal-case tracking-normal text-white outline-none focus:border-[#58A6FF]"
+                    />
+                  </label>
+                ))}
+                <label className="text-xs font-bold uppercase tracking-wide text-[#8B949E] md:col-span-2">
+                  Head-to-head notes
+                  <textarea
+                    value={matchForm.headToHead}
+                    onChange={(event) => updateMatch('headToHead', event.target.value)}
+                    rows={3}
+                    className="mt-1 w-full rounded-lg border border-[#30363D] bg-[#010409] px-3 py-2 text-sm normal-case tracking-normal text-white outline-none focus:border-[#58A6FF]"
+                  />
+                </label>
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold text-white">Prediction Package</h2>
+                  <p className="text-xs text-[#8B949E]">Cautious analysis framing for debate and comments.</p>
+                </div>
+                <CopyButton text={predictionText}>Copy Package</CopyButton>
+              </div>
+              <div className="space-y-2 text-sm leading-6">
+                <p className="text-white font-semibold">{predictionPackage.hook}</p>
+                <p>{predictionPackage.formSummary}</p>
+                <p>{predictionPackage.headToHead}</p>
+                <p>Key players: {predictionPackage.keyPlayers.join(', ')}</p>
+                <p>Prediction framing: {predictionPackage.predictedScore} · {predictionPackage.confidence} confidence</p>
+                <p>{predictionPackage.cta}</p>
+                <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">{predictionPackage.disclaimer}</p>
+              </div>
+            </section>
+
             <section className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
