@@ -2298,6 +2298,36 @@ async def create_sports_final_stitch(
     await db.commit()
     await db.refresh(generation)
 
+    render_manifest = {
+        "run_id": run_id,
+        "final_video": relative_path,
+        "metadata_file": relative_generated_path(metadata_path),
+        "approved_scene_count": len(scenes),
+        "scene_sources": [
+            {
+                "scene_number": int(scene.get("scene_number") or 0),
+                "source": scene.get("source"),
+                "duration": scene.get("duration"),
+                "motion_style": scene.get("motion_style"),
+            }
+            for scene in scenes
+        ],
+        "audio": {
+            "voiceover_text_present": bool(voiceover_text.strip()),
+            "provider": "local_silent_or_embedded_clip_audio",
+        },
+        "captions": {
+            "source": "approved_scene_captions",
+            "burned_in": True,
+        },
+        "costs": {
+            "runway_credits_used": 0,
+            "elevenlabs_credits_used": 0,
+            "total_cost_usd": 0,
+        },
+        "auto_posted": False,
+    }
+
     return {
         "generation_id": generation.id,
         "run_id": run_id,
@@ -2305,6 +2335,7 @@ async def create_sports_final_stitch(
         "preview_url": f"/api/generate/video/download/{quote(str(relative_path), safe='/')}",
         "download_url": f"/api/generate/video/download/{quote(str(relative_path), safe='/')}",
         "metadata_file": relative_generated_path(metadata_path),
+        "render_manifest": render_manifest,
         "scene_count": len(scenes),
         "costs": {
             "runway_credits_used": 0,

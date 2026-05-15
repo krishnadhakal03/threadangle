@@ -1657,6 +1657,7 @@ export default function SportsClipLab() {
         runId: data.run_id,
         videoFile: data.video_file,
         metadataFile: data.metadata_file,
+        renderManifest: data.render_manifest,
         sceneCount: data.scene_count,
         costs: data.costs,
       });
@@ -2224,6 +2225,9 @@ export default function SportsClipLab() {
                     <p>Run ID: {finalStitch.runId || 'n/a'}</p>
                     <p>Video file: {finalStitch.videoFile || finalStitch.downloadUrl || 'n/a'}</p>
                     <p>Metadata file: {finalStitch.metadataFile || 'n/a'}</p>
+                    {finalStitch.renderManifest && (
+                      <p>Render manifest: {finalStitch.renderManifest.approved_scene_count || finalStitch.sceneCount || 0} approved scenes, captions burned in, auto-post disabled.</p>
+                    )}
                     {finalStitch.downloadUrl && (
                       <p>
                         Direct download:{' '}
