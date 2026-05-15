@@ -45,6 +45,12 @@ const PAID_PROVIDER_OPTIONS = [
 ];
 const PERFORMANCE_STORAGE_KEY = 'threadangle_football_performance_logs_v1';
 const SUPPORTED_EXTERNAL_CLIP_EXTENSIONS = ['.mp4', '.mov', '.webm'];
+const VISUAL_QUALITY_OPTIONS = [
+  { value: 'approved', label: 'Approved', risk: 'low' },
+  { value: 'needs_regeneration', label: 'Needs regeneration', risk: 'medium' },
+  { value: 'use_only_as_thumbnail', label: 'Thumbnail only', risk: 'medium' },
+  { value: 'reject', label: 'Reject', risk: 'high' },
+];
 const GENERIC_VISUAL_GUIDANCE = [
   'Use generic sports editorial visuals inspired by the story context.',
   'Treat any named players as story labels only, not likeness targets.',
@@ -1305,6 +1311,16 @@ function buildFirstSecondHookQA(packageData) {
   };
 }
 
+function buildVisualQualityWarnings(scene) {
+  const text = [scene?.imagePrompt, scene?.videoPrompt, scene?.caption, scene?.label].join(' ').toLowerCase();
+  return [
+    /(logo|crest|badge|sponsor|official)/.test(text) && 'Official logo/badge/sponsor risk: use generic team-color cues.',
+    /(broadcast|scorebug|lower third|watermark|meta ai)/.test(text) && 'Watermark or broadcast overlay risk: regenerate or crop before Instagram.',
+    /(face|likeness|real player|tattoo)/.test(text) && 'Exact player likeness risk: prefer anonymous silhouettes or back-view shots.',
+    /(poster|static)/.test(text) && !/(motion|zoom|pan|shake|cut)/.test(text) && 'Poster-like visual needs a motion plan before final stitch.',
+  ].filter(Boolean);
+}
+
 export default function SportsClipLab() {
   const [form, setForm] = useState(INITIAL_FORM);
   const [generatedForm, setGeneratedForm] = useState(INITIAL_FORM);
@@ -1313,6 +1329,7 @@ export default function SportsClipLab() {
   const [sceneMotionPreviews, setSceneMotionPreviews] = useState({});
   const [sceneMotionStyles, setSceneMotionStyles] = useState({});
   const [sceneClipDecisions, setSceneClipDecisions] = useState({});
+  const [sceneVisualQuality, setSceneVisualQuality] = useState({});
   const [generatingAll, setGeneratingAll] = useState(false);
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [activeScene, setActiveScene] = useState(null);
@@ -1355,6 +1372,9 @@ export default function SportsClipLab() {
   const packageText = useMemo(() => buildPackageText(packageData), [packageData]);
   const workflowInstructions = useMemo(() => buildWorkflowInstructions(packageData.scenes), [packageData.scenes]);
   const firstSecondHookQA = useMemo(() => buildFirstSecondHookQA(packageData), [packageData]);
+  const visualQualityWarnings = useMemo(() => Object.fromEntries(
+    packageData.scenes.map((scene) => [scene.number, buildVisualQualityWarnings(scene)])
+  ), [packageData.scenes]);
   const assetSuggestions = useMemo(() => Object.fromEntries(
     packageData.scenes.map((scene) => [scene.number, buildFreeFirstAssetSuggestions(scene, generatedForm)])
   ), [packageData.scenes, generatedForm]);
@@ -1646,6 +1666,31 @@ export default function SportsClipLab() {
     }
   };
 
+  const updateVisualQuality = (scene, status) => {
+    const option = VISUAL_QUALITY_OPTIONS.find((item) => item.value === status) || VISUAL_QUALITY_OPTIONS[0];
+    setSceneVisualQuality((current) => ({
+      ...current,
+      [scene.number]: {
+        status,
+        label: option.label,
+        risk: option.risk,
+        warnings: visualQualityWarnings[scene.number] || [],
+        instagramReminder: status !== 'approved' ? 'Instagram needs clean, watermark-free creative before export.' : 'Approved for clean platform variants.',
+      },
+    }));
+    if (status === 'reject' || status === 'needs_regeneration') {
+      setSceneClipDecisions((current) => ({
+        ...current,
+        [scene.number]: {
+          ...(current[scene.number] || {}),
+          approved: false,
+          status: 'blocked',
+          message: 'Visual quality gate requires regeneration or rejection review before final stitch.',
+        },
+      }));
+    }
+  };
+
   const approveLocalMotionClip = (scene) => {
     const sceneKey = scene.number;
     const preview = sceneMotionPreviews[sceneKey];
@@ -1784,6 +1829,12 @@ export default function SportsClipLab() {
         video_file: decision.videoFile || null,
         file_name: decision.fileName || null,
         motion_style: decision.motionStyle || null,
+        visual_quality: sceneVisualQuality[scene.number] || {
+          status: 'approved',
+          label: 'Approved',
+          risk: 'low',
+          warnings: visualQualityWarnings[scene.number] || [],
+        },
       };
     });
 
@@ -2196,6 +2247,29 @@ export default function SportsClipLab() {
                       {sceneImages[scene.number]?.status === 'error' && (
                         <p className="text-xs leading-5 text-red-300">{sceneImages[scene.number].error || 'Provider failed or image was not generated.'}</p>
                       )}
+                      <div className="rounded-lg border border-[#30363D] bg-[#010409] p-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Visual quality gate</p>
+                            <p className="mt-1 text-xs leading-5 text-[#8B949E]">Check watermark, logo, clutter, low contrast, and caption space before approval.</p>
+                          </div>
+                          <Select
+                            value={sceneVisualQuality[scene.number]?.status || 'approved'}
+                            onChange={(event) => updateVisualQuality(scene, event.target.value)}
+                            aria-label={`Visual quality status for scene ${scene.number}`}
+                          >
+                            {VISUAL_QUALITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                          </Select>
+                        </div>
+                        {(visualQualityWarnings[scene.number] || []).length > 0 && (
+                          <div className="mt-3 space-y-1 text-xs leading-5 text-amber-200">
+                            {visualQualityWarnings[scene.number].map((warning) => <p key={warning}>{warning}</p>)}
+                          </div>
+                        )}
+                        <p className="mt-2 text-xs leading-5 text-[#C9D1D9]">
+                          Instagram polish: no visible Meta AI watermark, no official crests, clean cover frame, high contrast text.
+                        </p>
+                      </div>
                       <div className="rounded-lg border border-[#30363D] bg-[#010409] p-3">
                         <div className="flex flex-col gap-3">
                           <div>
