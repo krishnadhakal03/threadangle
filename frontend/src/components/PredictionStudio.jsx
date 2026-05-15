@@ -60,11 +60,11 @@ const MATCH_SCENARIOS = {
   },
 };
 const GAMEWEEK_SAMPLE = [
-  'Arsenal 2-1 Newcastle',
-  'Chelsea 1-2 Manchester City',
-  'Liverpool 3-1 Tottenham',
-  'Aston Villa 1-1 Manchester United',
-  'West Ham 0-2 Brighton',
+  { home: 'Arsenal', away: 'Newcastle', score: '2-1', implication: 'title race pressure' },
+  { home: 'Chelsea', away: 'Manchester City', score: '1-2', implication: 'top-four and title implications' },
+  { home: 'Liverpool', away: 'Tottenham', score: '3-1', implication: 'high-scoring contender' },
+  { home: 'Aston Villa', away: 'Manchester United', score: '1-1', implication: 'European race tension' },
+  { home: 'West Ham', away: 'Brighton', score: '0-2', implication: 'clean-sheet pick' },
 ];
 const PREDICTION_QA_ITEMS = [
   { id: 'single-match', label: 'Single match inputs generate hook, analysis, metadata, prediction package, and data cards.' },
@@ -96,7 +96,13 @@ function CopyButton({ text, children }) {
 export default function PredictionStudio() {
   const [workflow, setWorkflow] = useState(WORKFLOWS[0]);
   const [matchForm, setMatchForm] = useState(INITIAL_MATCH);
+  const [gameweekMatches, setGameweekMatches] = useState(GAMEWEEK_SAMPLE);
   const updateMatch = (key, value) => setMatchForm((current) => ({ ...current, [key]: value }));
+  const updateGameweekMatch = (index, key, value) => {
+    setGameweekMatches((current) => current.map((match, matchIndex) => (
+      matchIndex === index ? { ...match, [key]: value } : match
+    )));
+  };
   const predictionPackage = useMemo(() => {
     const predictedScore = `${matchForm.teamA} 2-2 ${matchForm.teamB}`;
     return {
@@ -171,6 +177,33 @@ export default function PredictionStudio() {
     },
   ], [matchForm, predictionPackage]);
   const cardsText = predictionCards.map((card, index) => `Card ${index + 1}: ${card.label}\n${card.title}\n${card.body}`).join('\n\n');
+  const gameweekSummary = useMemo(() => {
+    const usable = gameweekMatches.slice(0, 10).filter((match) => match.home && match.away);
+    const highScoring = usable.find((match) => {
+      const nums = String(match.score).match(/\d+/g)?.map(Number) || [];
+      return nums.reduce((sum, value) => sum + value, 0) >= 4;
+    }) || usable[0];
+    const cleanSheet = usable.find((match) => /\b0-|-\s*0\b/.test(String(match.score))) || usable[0];
+    const upset = usable.find((match) => /upset|away|shock/i.test(match.implication)) || usable[1] || usable[0];
+    return {
+      matches: usable,
+      upsetPick: upset ? `${upset.away} at ${upset.home}` : 'n/a',
+      highScoringGame: highScoring ? `${highScoring.home} vs ${highScoring.away}` : 'n/a',
+      cleanSheetPick: cleanSheet ? `${cleanSheet.home} vs ${cleanSheet.away}` : 'n/a',
+      implications: usable.map((match) => match.implication).filter(Boolean).join(' | '),
+    };
+  }, [gameweekMatches]);
+  const gameweekCards = useMemo(() => [
+    {
+      title: 'GAMEWEEK PREDICTIONS',
+      body: gameweekSummary.matches.map((match) => `${match.home} ${match.score} ${match.away}`).join('\n'),
+    },
+    { title: 'UPSET PICK', body: gameweekSummary.upsetPick },
+    { title: 'HIGH-SCORING GAME', body: gameweekSummary.highScoringGame },
+    { title: 'CLEAN SHEET PICK', body: gameweekSummary.cleanSheetPick },
+    { title: 'TABLE IMPLICATIONS', body: gameweekSummary.implications || 'Manual review required before export.' },
+  ], [gameweekSummary]);
+  const gameweekText = gameweekCards.map((card) => `${card.title}\n${card.body}`).join('\n\n');
 
   return (
     <div className="min-h-screen bg-[#010409] text-[#C9D1D9]">
@@ -216,7 +249,7 @@ export default function PredictionStudio() {
             {workflow === 'Gameweek prediction batch' && (
               <div className="mt-3 rounded-lg border border-[#30363D] bg-[#010409] p-3 text-xs leading-5 text-[#C9D1D9]">
                 <p className="font-semibold text-white">Sample matches</p>
-                {GAMEWEEK_SAMPLE.map((item) => <p key={item}>{item}</p>)}
+                {GAMEWEEK_SAMPLE.map((item) => <p key={`${item.home}-${item.away}`}>{item.home} {item.score} {item.away}</p>)}
               </div>
             )}
             <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-5 text-amber-200">
@@ -225,6 +258,36 @@ export default function PredictionStudio() {
           </aside>
 
           <main className="min-w-0 space-y-4">
+            {workflow === 'Gameweek prediction batch' && (
+              <section className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
+                <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Gameweek Batch Prediction</h2>
+                    <p className="text-xs text-[#8B949E]">Supports 5-10 manual matches with summary data-card export. Discussion only, not betting advice.</p>
+                  </div>
+                  <CopyButton text={gameweekText}>Copy Gameweek Cards</CopyButton>
+                </div>
+                <div className="space-y-2">
+                  {gameweekMatches.map((match, index) => (
+                    <div key={`${index}-${match.home}-${match.away}`} className="grid gap-2 rounded-lg border border-[#30363D] bg-[#010409] p-2 text-xs md:grid-cols-[1fr_1fr_90px_1.3fr]">
+                      <input value={match.home} onChange={(event) => updateGameweekMatch(index, 'home', event.target.value)} className="rounded-md border border-[#30363D] bg-[#0D1117] px-2 py-2 text-white outline-none focus:border-[#58A6FF]" />
+                      <input value={match.away} onChange={(event) => updateGameweekMatch(index, 'away', event.target.value)} className="rounded-md border border-[#30363D] bg-[#0D1117] px-2 py-2 text-white outline-none focus:border-[#58A6FF]" />
+                      <input value={match.score} onChange={(event) => updateGameweekMatch(index, 'score', event.target.value)} className="rounded-md border border-[#30363D] bg-[#0D1117] px-2 py-2 text-white outline-none focus:border-[#58A6FF]" />
+                      <input value={match.implication} onChange={(event) => updateGameweekMatch(index, 'implication', event.target.value)} className="rounded-md border border-[#30363D] bg-[#0D1117] px-2 py-2 text-white outline-none focus:border-[#58A6FF]" />
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                  {gameweekCards.map((card) => (
+                    <article key={card.title} className="rounded-lg border border-[#30363D] bg-[#010409] p-3 text-xs leading-5 text-[#C9D1D9]">
+                      <h3 className="break-words text-sm font-black text-white">{card.title}</h3>
+                      <p className="mt-2 whitespace-pre-line break-words">{card.body}</p>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
+
             <section className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
               <div className="mb-3">
                 <h2 className="text-lg font-bold text-white">Single Match Prediction</h2>
