@@ -234,7 +234,14 @@ def generate_voice(req: VoiceGenRequest):
         except ImportError as ie:
             print(f"[TTS] pyttsx3 not installed: {ie}")
             fallback_errors.append(f"pyttsx3 unavailable: {ie}")
-            raise HTTPException(status_code=500, detail="pyttsx3 is not installed in the backend environment.")
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "pyttsx3 is not installed in the backend environment. "
+                    "Install backend requirements and, on Ubuntu/systemd hosts, install espeak or espeak-ng voice packages. "
+                    "Set VIDEO_ALLOW_SILENT_FALLBACK=1 only when an explicit silent-video fallback is acceptable."
+                ),
+            )
         engine = pyttsx3.init()
         engine.setProperty('rate', 180)
         engine.save_to_file(req.text, free_file_path)

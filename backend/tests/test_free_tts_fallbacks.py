@@ -65,6 +65,7 @@ def test_missing_free_tts_dependencies_report_explicit_reason(monkeypatch):
     assert "Voice generation failed" in str(exc.value.detail)
     assert "gTTS" in str(exc.value.detail)
     assert "pyttsx3" in str(exc.value.detail)
+    assert "espeak" in str(exc.value.detail)
 
 
 def test_silent_fallback_is_explicit_when_free_tts_fails(monkeypatch):
