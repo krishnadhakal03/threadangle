@@ -140,6 +140,13 @@ const CATEGORY_HASHTAGS = {
   spotlight: '#StarWatch',
   rivalry: '#Rivalry',
 };
+const PLATFORM_HOOK_GUIDANCE = {
+  'YouTube Shorts': 'Clear topic plus emotional stakes; searchable words can breathe for one beat.',
+  TikTok: 'Immediate punch text in the first frame; no cinematic warmup.',
+  Reels: 'Polished cover frame, clean typography, no watermark obstruction.',
+  Facebook: 'Readable informational card with team, table, or stakes visible instantly.',
+  All: 'Show team/topic, stake, and urgency in the first second.',
+};
 const LOCAL_ASSET_LIBRARY_SAMPLE = {
   assetId: 'worldcup_trophy_pressure_001',
   file: 'assets/sports_library/common/trophy/worldcup_trophy_pressure_001.mp4',
@@ -1253,6 +1260,51 @@ function riskBadgeClass(level) {
   return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200';
 }
 
+function buildFirstSecondHookQA(packageData) {
+  const firstScene = packageData.scenes[0] || {};
+  const topic = packageData.form.eventTopic || packageData.form.teamsPlayers || 'THIS MATCH';
+  const hookText = [
+    packageData.form.hook,
+    firstScene.caption,
+    firstScene.thumbnailText,
+    firstScene.label,
+  ].filter(Boolean).join(' ').toUpperCase();
+  const hasTopic = topic.split(/[,\s]+/).filter((part) => part.length > 2).some((part) => hookText.includes(part.toUpperCase()));
+  const hasStake = /(HISTORY|TITLE|TROPHY|FINAL|KNOCKOUT|SURVIVE|HEARTBREAK|COLLAPSE|PRESSURE|WHO WINS|GAMES LEFT|YEARS|POINTS|TABLE)/.test(hookText);
+  const hasUrgency = /(NOW|TONIGHT|TODAY|LEFT|FINAL|KNOCKOUT|SURVIVE|CAN|MUST|WHO)/.test(hookText);
+  const mobileReadable = hookText.length <= 72 && hookText.length >= 12;
+  const noSlowWarmup = !/(ATMOSPHERE|CINEMATIC|WARMUP|SLOW|ESTABLISHING)/.test(String(firstScene.label || '').toUpperCase());
+  const score = [
+    hasTopic ? 22 : 0,
+    hasStake ? 24 : 0,
+    hasUrgency ? 18 : 0,
+    mobileReadable ? 18 : 0,
+    noSlowWarmup ? 18 : 0,
+  ].reduce((sum, value) => sum + value, 0);
+  const team = String(topic).split(/,| vs | v /i)[0]?.trim() || 'THIS MATCH';
+  const recommendations = [
+    `${team.toUpperCase()}: HISTORY OR HEARTBREAK?`,
+    '22 YEARS. 2 GAMES LEFT.',
+    'PL, UCL, BOTH, OR COLLAPSE?',
+    'WHO SURVIVES TONIGHT?',
+  ];
+  const issues = [
+    !hasTopic && 'Team/player/topic is not obvious in frame one.',
+    !hasStake && 'Stake is too vague for a 0:01 retention test.',
+    !hasUrgency && 'Why-now urgency is missing.',
+    !mobileReadable && 'First-frame caption should be short and mobile-readable.',
+    !noSlowWarmup && 'Opening reads like a slow cinematic warmup.',
+  ].filter(Boolean);
+  return {
+    score,
+    status: score >= 80 ? 'pass' : score >= 60 ? 'review' : 'weak',
+    recommendedCaption: recommendations[0],
+    recommendations,
+    issues,
+    platformGuidance: PLATFORM_HOOK_GUIDANCE[packageData.form.targetPlatform] || PLATFORM_HOOK_GUIDANCE.All,
+  };
+}
+
 export default function SportsClipLab() {
   const [form, setForm] = useState(INITIAL_FORM);
   const [generatedForm, setGeneratedForm] = useState(INITIAL_FORM);
@@ -1302,6 +1354,7 @@ export default function SportsClipLab() {
   const metadataText = useMemo(() => buildMetadataText(packageData.metadata), [packageData.metadata]);
   const packageText = useMemo(() => buildPackageText(packageData), [packageData]);
   const workflowInstructions = useMemo(() => buildWorkflowInstructions(packageData.scenes), [packageData.scenes]);
+  const firstSecondHookQA = useMemo(() => buildFirstSecondHookQA(packageData), [packageData]);
   const assetSuggestions = useMemo(() => Object.fromEntries(
     packageData.scenes.map((scene) => [scene.number, buildFreeFirstAssetSuggestions(scene, generatedForm)])
   ), [packageData.scenes, generatedForm]);
@@ -2058,7 +2111,7 @@ export default function SportsClipLab() {
               <div className="mb-4 grid gap-3 md:grid-cols-3">
                 <div className="rounded-lg border border-[#21262D] bg-[#0D1117] p-3">
                   <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">1-second hook</p>
-                  <p className="mt-1 text-sm text-white">{packageData.scenes[0]?.retention.recommendedCut}</p>
+                  <p className="mt-1 text-sm text-white">{firstSecondHookQA.score}/100 · {firstSecondHookQA.status}</p>
                 </div>
                 <div className="rounded-lg border border-[#21262D] bg-[#0D1117] p-3">
                   <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Peak energy</p>
@@ -2067,6 +2120,33 @@ export default function SportsClipLab() {
                 <div className="rounded-lg border border-[#21262D] bg-[#0D1117] p-3">
                   <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Replay loop</p>
                   <p className="mt-1 text-sm text-white">{packageData.scenes.at(-1)?.retention.replayLoop}</p>
+                </div>
+              </div>
+
+              <div className={`mb-4 rounded-lg border p-4 ${
+                firstSecondHookQA.status === 'pass'
+                  ? 'border-emerald-500/30 bg-emerald-500/10'
+                  : firstSecondHookQA.status === 'review'
+                    ? 'border-amber-500/30 bg-amber-500/10'
+                    : 'border-red-500/30 bg-red-500/10'
+              }`}>
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">First-second hook QA gate</p>
+                    <p className="mt-1 text-xl font-bold text-white">{firstSecondHookQA.score}/100</p>
+                    <p className="mt-1 text-xs leading-5 text-[#C9D1D9]">{firstSecondHookQA.platformGuidance}</p>
+                  </div>
+                  <CopyButton text={firstSecondHookQA.recommendedCaption}>Copy Recommended Frame Text</CopyButton>
+                </div>
+                {firstSecondHookQA.issues.length > 0 && (
+                  <ul className="mt-3 space-y-1 text-xs leading-5 text-[#C9D1D9]">
+                    {firstSecondHookQA.issues.map((issue) => <li key={issue}>{issue}</li>)}
+                  </ul>
+                )}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {firstSecondHookQA.recommendations.map((caption) => (
+                    <span key={caption} className="rounded-md border border-[#30363D] bg-[#010409] px-2 py-1 text-xs font-semibold text-white">{caption}</span>
+                  ))}
                 </div>
               </div>
 
