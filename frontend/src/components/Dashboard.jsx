@@ -808,6 +808,21 @@ function AIVideoModal({
 
   if (!open) return null;
 
+  const keepEditorSpaceKeyLocal = (event) => {
+    const target = event.target;
+    const tagName = target?.tagName?.toLowerCase?.();
+    const isTextEditor = (
+      tagName === 'input'
+      || tagName === 'textarea'
+      || target?.isContentEditable
+      || target?.closest?.('[contenteditable="true"]')
+    );
+
+    if (isTextEditor && (event.key === ' ' || event.code === 'Space')) {
+      event.stopPropagation();
+    }
+  };
+
   const currentMeta = plan?.platform_meta?.[metaTab] || { title: '', description: '', hashtags: '' };
   const editableHook = scriptState?.hook || '';
   const editableBody = scriptState?.body || '';
@@ -831,7 +846,7 @@ function AIVideoModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[10000] bg-[#06070A]">
+    <div className="fixed inset-0 z-[10000] bg-[#06070A]" onKeyDownCapture={keepEditorSpaceKeyLocal}>
       <div className="h-full w-full flex flex-col bg-[#0b0d12]">
         <div className="sticky top-0 z-20 border-b border-[#1f2430] bg-[#0b0d12]/95 backdrop-blur px-6 py-4">
           <div className="flex items-start justify-between gap-4">
