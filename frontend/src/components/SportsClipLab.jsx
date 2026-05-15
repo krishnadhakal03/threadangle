@@ -2002,6 +2002,16 @@ export default function SportsClipLab() {
                             <p className="text-xs text-emerald-300">
                               Local preview ready: {sceneMotionPreviews[scene.number].duration}s {motionPresetLabel(sceneMotionPreviews[scene.number].motionStyle)}. Manual approval is still required before final use.
                             </p>
+                            {sceneMotionPreviews[scene.number].downloadUrl && (
+                              <a
+                                href={api.getVideoAssetUrl(sceneMotionPreviews[scene.number].downloadUrl)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex w-full items-center justify-center rounded-lg border border-[#30363D] bg-[#0D1117] px-3 py-2 text-xs font-semibold text-[#58A6FF] transition-colors hover:border-[#58A6FF] hover:text-white"
+                              >
+                                Download Local Preview MP4
+                              </a>
+                            )}
                             <button
                               type="button"
                               onClick={() => approveLocalMotionClip(scene)}
