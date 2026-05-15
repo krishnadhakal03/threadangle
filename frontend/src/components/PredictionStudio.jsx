@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import WorkflowQAPanel from './WorkflowQAPanel';
 
 const WORKFLOWS = [
   'Single match prediction',
@@ -22,6 +23,14 @@ const INITIAL_MATCH = {
   keyPlayers: 'Saka, Odegaard, Haaland, Foden',
   context: 'Title race pressure, home advantage, fixture congestion.',
 };
+const PREDICTION_QA_ITEMS = [
+  { id: 'single-match', label: 'Single match inputs generate hook, analysis, metadata, prediction package, and data cards.' },
+  { id: 'gameweek-route', label: 'Gameweek workflow remains inside Prediction Studio and does not alter Sports Clip Lab cinematic flow.' },
+  { id: 'copy-export', label: 'Copy package, copy cards, and copy QA report actions work.' },
+  { id: 'metadata', label: 'Prediction metadata includes title, caption, hashtags, CTA, and disclaimer.' },
+  { id: 'data-cards', label: 'Preview cards are readable in 9:16 layout on desktop and narrow widths.' },
+  { id: 'guardrails', label: 'No betting advice, no guaranteed outcomes, no paid APIs, and no auto-posting.' },
+];
 
 function CopyButton({ text, children }) {
   const [copied, setCopied] = useState(false);
@@ -250,6 +259,10 @@ export default function PredictionStudio() {
             </section>
           </main>
         </section>
+
+        <div className="mt-4">
+          <WorkflowQAPanel title="Prediction Studio Manual QA" items={PREDICTION_QA_ITEMS} />
+        </div>
       </div>
     </div>
   );

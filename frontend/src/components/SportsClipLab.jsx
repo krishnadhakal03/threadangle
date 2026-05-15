@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../utils/api';
+import WorkflowQAPanel from './WorkflowQAPanel';
 
 const DURATIONS = ['15s', '20s', '30s'];
 const SPORTS = ['Football', 'EPL', 'Soccer', 'NBA', 'NFL', 'Other'];
@@ -53,6 +54,16 @@ const VISUAL_QUALITY_OPTIONS = [
   { value: 'needs_regeneration', label: 'Needs regeneration', risk: 'medium' },
   { value: 'use_only_as_thumbnail', label: 'Thumbnail only', risk: 'medium' },
   { value: 'reject', label: 'Reject', risk: 'high' },
+];
+const SPORTS_QA_ITEMS = [
+  { id: 'full-workflow', label: 'Generate Sports Clip Lab package, images, local motion previews, approvals, and final stitch without paid providers.' },
+  { id: 'export-copy-download', label: 'Copy prompts/metadata/variants and download images/local preview/final MP4 where available.' },
+  { id: 'metadata', label: 'Platform metadata exists for YouTube, TikTok, Reels, and Facebook.' },
+  { id: 'platform-variants', label: 'Platform variants show distinct TikTok, Facebook, Instagram, and YouTube guidance.' },
+  { id: 'visual-quality', label: 'Visual quality gate can approve, regenerate, thumbnail-only, or reject each scene.' },
+  { id: 'first-second-hook', label: 'First-second hook QA score and copyable frame text are visible.' },
+  { id: 'retention-analyzer', label: 'Retention analyzer accepts manual analytics and returns copyable recommendations.' },
+  { id: 'responsive-layout', label: 'Scene cards, metadata cards, and action buttons remain readable on desktop and narrow widths.' },
 ];
 const GENERIC_VISUAL_GUIDANCE = [
   'Use generic sports editorial visuals inspired by the story context.',
@@ -2146,7 +2157,9 @@ export default function SportsClipLab() {
           </div>
         </header>
 
-        <section className="grid gap-6 xl:grid-cols-[420px_1fr]">
+        <WorkflowQAPanel title="Sports Clip Lab Manual QA" items={SPORTS_QA_ITEMS} />
+
+        <section className="mt-6 grid gap-6 xl:grid-cols-[420px_1fr]">
           <div className="space-y-4 rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
               <Field label="Event/topic">
