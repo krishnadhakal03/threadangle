@@ -2348,7 +2348,7 @@ export default function SportsClipLab() {
 
           <div className="space-y-6">
             <section>
-              <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-white">Scene Package</h2>
                   <p className="text-xs text-[#8B949E]">{packageData.scenes.length} scenes for {packageData.form.duration} using {packageData.metadata.template.name}</p>
@@ -2611,7 +2611,7 @@ export default function SportsClipLab() {
                         <p className="leading-6 text-[#C9D1D9]">{scene.imagePrompt}</p>
                       </div>
                       <div className="rounded-lg border border-[#30363D] bg-[#010409] p-3">
-                        <div className="mb-2 flex items-center justify-between gap-3">
+                        <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div>
                             <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Free-first asset finder</p>
                             <p className="mt-1 text-xs leading-5 text-[#8B949E]">Local assets are preferred before free stock prompts. No provider call is made here.</p>
@@ -2621,7 +2621,7 @@ export default function SportsClipLab() {
                         <div className="space-y-2">
                           {(assetSuggestions[scene.number] || []).map((item) => (
                             <div key={`${scene.number}-${item.source}-${item.query}`} className="rounded-lg border border-[#21262D] bg-[#0D1117] p-2 text-xs">
-                              <div className="flex items-center justify-between gap-3">
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                 <span className="font-semibold text-white">{item.source} · {item.label}</span>
                                 <span className="text-[#58A6FF]">{item.score}/100</span>
                               </div>
@@ -2677,7 +2677,7 @@ export default function SportsClipLab() {
 
             <section className="grid gap-4 lg:grid-cols-2">
               <div className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <h2 className="text-lg font-bold text-white">Voiceover Script</h2>
                   <CopyButton text={packageData.voiceover}>Copy</CopyButton>
                 </div>
@@ -2685,7 +2685,7 @@ export default function SportsClipLab() {
               </div>
 
               <div className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <h2 className="text-lg font-bold text-white">Manual Workflow Checklist</h2>
                   <CopyButton text={workflowInstructions}>Copy</CopyButton>
                 </div>
@@ -2788,7 +2788,7 @@ export default function SportsClipLab() {
             </section>
 
             <section className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-white">Colab Stitch Script</h2>
                   <p className="text-xs text-[#8B949E]">Resizes to 9:16, trims planned durations, overlays captions, and exports final_vertical_short.mp4.</p>
@@ -2803,7 +2803,7 @@ export default function SportsClipLab() {
             <section className="grid gap-4 lg:grid-cols-2">
               {Object.entries(packageData.metadata).filter(([platform]) => platform !== 'template').map(([platform, data]) => (
                 <article key={platform} className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
-                  <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <h2 className="text-lg font-bold capitalize text-white">{platform === 'youtube' ? 'YouTube Shorts' : platform === 'reels' ? 'Instagram Reels' : platform === 'facebook' ? 'Facebook Reels' : 'TikTok'}</h2>
                     <CopyButton text={Object.entries(data).map(([key, value]) => `${key}: ${value}`).join('\n')}>Copy</CopyButton>
                   </div>
@@ -2826,7 +2826,7 @@ export default function SportsClipLab() {
             </section>
 
             <section className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-white">Platform Variants</h2>
                   <p className="text-xs text-[#8B949E]">Same football topic, different hook, pacing, CTA, cover, and export notes per platform.</p>
@@ -2894,7 +2894,7 @@ export default function SportsClipLab() {
                     </Field>
                   </div>
                   <div className="rounded-lg border border-[#30363D] bg-[#0D1117] p-3">
-                    <div className="mb-2 flex items-center justify-between gap-3">
+                    <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Retention drop analyzer</p>
                       <CopyButton text={retentionRecommendations.join('\n')}>Copy Recommendations</CopyButton>
                     </div>

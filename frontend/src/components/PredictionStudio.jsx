@@ -44,7 +44,7 @@ function CopyButton({ text, children }) {
     }
   };
   return (
-    <button type="button" onClick={copy} className="rounded-lg border border-[#30363D] bg-[#161B22] px-3 py-2 text-xs font-semibold text-[#C9D1D9] hover:border-[#58A6FF] hover:text-white">
+    <button type="button" onClick={copy} className="inline-flex min-h-9 max-w-full items-center justify-center rounded-lg border border-[#30363D] bg-[#161B22] px-3 py-2 text-center text-xs font-semibold text-[#C9D1D9] hover:border-[#58A6FF] hover:text-white">
       {copied ? 'Copied' : children}
     </button>
   );
@@ -140,7 +140,7 @@ export default function PredictionStudio() {
           </p>
         </header>
 
-        <section className="grid gap-4 lg:grid-cols-[320px_1fr]">
+        <section className="grid min-w-0 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
           <aside className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
             <label className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Workflow</label>
             <select
@@ -155,7 +155,7 @@ export default function PredictionStudio() {
             </div>
           </aside>
 
-          <main className="space-y-4">
+          <main className="min-w-0 space-y-4">
             <section className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
               <div className="mb-3">
                 <h2 className="text-lg font-bold text-white">Single Match Prediction</h2>
@@ -194,22 +194,22 @@ export default function PredictionStudio() {
             </section>
 
             <section className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-white">Prediction Data Cards</h2>
                   <p className="text-xs text-[#8B949E]">Low-animation 9:16 card sequence for clear comparison, stats, pick, and debate CTA.</p>
                 </div>
                 <CopyButton text={cardsText}>Copy Cards</CopyButton>
               </div>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {predictionCards.map((card, index) => (
-                  <article key={card.label} className="aspect-[9/16] rounded-lg border border-[#30363D] bg-[#010409] p-4 text-white">
+                  <article key={card.label} className="flex min-h-[360px] rounded-lg border border-[#30363D] bg-[#010409] p-4 text-white md:aspect-[9/16]">
                     <div className="flex h-full flex-col justify-between">
                       <div>
                         <p className="text-[10px] font-bold uppercase tracking-wide text-[#58A6FF]">Card {index + 1} · {card.label}</p>
-                        <h3 className="mt-4 text-2xl font-black leading-tight">{card.title}</h3>
+                        <h3 className="mt-4 break-words text-xl font-black leading-tight sm:text-2xl">{card.title}</h3>
                       </div>
-                      <p className="rounded-lg border border-[#21262D] bg-[#0D1117] p-3 text-sm leading-6 text-[#C9D1D9]">{card.body}</p>
+                      <p className="my-4 overflow-hidden break-words rounded-lg border border-[#21262D] bg-[#0D1117] p-3 text-sm leading-6 text-[#C9D1D9]">{card.body}</p>
                       <p className="text-[10px] uppercase tracking-wide text-[#8B949E]">Generic team-color bars only · no official logos</p>
                     </div>
                   </article>
@@ -218,7 +218,7 @@ export default function PredictionStudio() {
             </section>
 
             <section className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-white">Prediction Package</h2>
                   <p className="text-xs text-[#8B949E]">Cautious analysis framing for debate and comments.</p>
@@ -237,7 +237,7 @@ export default function PredictionStudio() {
             </section>
 
             <section className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-white">Module Plan</h2>
                   <p className="text-xs text-[#8B949E]">Prediction Studio owns data-card prediction workflows; Sports Clip Lab remains cinematic.</p>
