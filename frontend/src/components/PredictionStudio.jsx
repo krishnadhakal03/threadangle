@@ -81,6 +81,44 @@ export default function PredictionStudio() {
     predictionPackage.cta,
     predictionPackage.disclaimer,
   ].join('\n');
+  const predictionCards = useMemo(() => [
+    {
+      label: 'Hook Card',
+      title: predictionPackage.hook.toUpperCase(),
+      body: `${matchForm.competition}${matchForm.matchDate ? ` · ${matchForm.matchDate}` : ''}`,
+    },
+    {
+      label: 'Form Comparison',
+      title: 'RECENT FORM',
+      body: predictionPackage.formSummary,
+    },
+    {
+      label: 'Head To Head',
+      title: 'MATCHUP HISTORY',
+      body: predictionPackage.headToHead,
+    },
+    {
+      label: 'Key Players',
+      title: 'WATCHLIST',
+      body: predictionPackage.keyPlayers.join(' vs '),
+    },
+    {
+      label: 'Pressure Factor',
+      title: 'WHAT DECIDES IT?',
+      body: predictionPackage.pressureFactors.join(' · '),
+    },
+    {
+      label: 'Predicted Score',
+      title: predictionPackage.predictedScore,
+      body: `${predictionPackage.confidence} confidence · discussion pick only`,
+    },
+    {
+      label: 'CTA Card',
+      title: 'AGREE OR DISAGREE?',
+      body: `${predictionPackage.cta} ${predictionPackage.disclaimer}`,
+    },
+  ], [matchForm, predictionPackage]);
+  const cardsText = predictionCards.map((card, index) => `Card ${index + 1}: ${card.label}\n${card.title}\n${card.body}`).join('\n\n');
 
   return (
     <div className="min-h-screen bg-[#010409] text-[#C9D1D9]">
@@ -143,6 +181,30 @@ export default function PredictionStudio() {
                     className="mt-1 w-full rounded-lg border border-[#30363D] bg-[#010409] px-3 py-2 text-sm normal-case tracking-normal text-white outline-none focus:border-[#58A6FF]"
                   />
                 </label>
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold text-white">Prediction Data Cards</h2>
+                  <p className="text-xs text-[#8B949E]">Low-animation 9:16 card sequence for clear comparison, stats, pick, and debate CTA.</p>
+                </div>
+                <CopyButton text={cardsText}>Copy Cards</CopyButton>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {predictionCards.map((card, index) => (
+                  <article key={card.label} className="aspect-[9/16] rounded-lg border border-[#30363D] bg-[#010409] p-4 text-white">
+                    <div className="flex h-full flex-col justify-between">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-[#58A6FF]">Card {index + 1} · {card.label}</p>
+                        <h3 className="mt-4 text-2xl font-black leading-tight">{card.title}</h3>
+                      </div>
+                      <p className="rounded-lg border border-[#21262D] bg-[#0D1117] p-3 text-sm leading-6 text-[#C9D1D9]">{card.body}</p>
+                      <p className="text-[10px] uppercase tracking-wide text-[#8B949E]">Generic team-color bars only · no official logos</p>
+                    </div>
+                  </article>
+                ))}
               </div>
             </section>
 
