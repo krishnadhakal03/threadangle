@@ -1266,6 +1266,38 @@ function riskBadgeClass(level) {
   return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200';
 }
 
+function analyzeRetentionDrop(form) {
+  const platform = form.platform || 'YouTube Shorts';
+  const length = Number(form.videoLength) || 20;
+  const avgWatch = Number(form.averageWatchTime) || 0;
+  const fullWatchRate = Number(form.fullWatchRate) || 0;
+  const drop = Number(form.dropOffTimestamp) || 0;
+  const recommendations = [];
+  if (drop > 0 && drop <= 1.5) {
+    recommendations.push('First-frame hook is weak. Replace opening with large topic/stakes text in the first second.');
+    recommendations.push('Use a hard zoom, flash, or stat-card reveal in the first 0.3 seconds.');
+  }
+  if (/tiktok/i.test(platform)) {
+    recommendations.push('Cut TikTok runtime to 8-10 seconds and move the CTA before the final beat.');
+  }
+  if (/facebook/i.test(platform) || (drop >= 7 && drop <= 9)) {
+    recommendations.push('Switch the middle to readable data-card or standings-card framing before the 0:08 drop.');
+  }
+  if (/instagram|reels/i.test(platform)) {
+    recommendations.push('Use a cleaner cover frame, remove watermark/logo clutter, and reduce text density.');
+  }
+  if (avgWatch > 0 && avgWatch < length * 0.35) {
+    recommendations.push('Reduce scene count and make every cut answer one clear question.');
+  }
+  if (fullWatchRate > 0 && fullWatchRate < 20) {
+    recommendations.push('Strengthen the loop ending so the final frame snaps back to the opening question.');
+  }
+  if (recommendations.length === 0) {
+    recommendations.push('Retention looks usable. Test a platform-specific variant before changing the core topic.');
+  }
+  return recommendations;
+}
+
 function buildFirstSecondHookQA(packageData) {
   const firstScene = packageData.scenes[0] || {};
   const topic = packageData.form.eventTopic || packageData.form.teamsPlayers || 'THIS MATCH';
@@ -1350,6 +1382,10 @@ export default function SportsClipLab() {
     comments: '',
     shares: '',
     subscribers: '',
+    videoLength: '20',
+    averageWatchTime: '',
+    fullWatchRate: '',
+    dropOffTimestamp: '',
     postingTime: '',
     retentionNotes: '',
     replayabilityNotes: '',
@@ -1385,6 +1421,7 @@ export default function SportsClipLab() {
   const allScenesApproved = approvedSceneCount === packageData.scenes.length;
   const activeImageProvider = getImageProviderProfile(imageProvider);
   const performanceSummary = useMemo(() => summarizePerformance(performanceLogs), [performanceLogs]);
+  const retentionRecommendations = useMemo(() => analyzeRetentionDrop(performanceForm), [performanceForm]);
   const activePaidProvider = PAID_PROVIDER_OPTIONS.find((provider) => provider.value === paidProviderGovernance.provider) || PAID_PROVIDER_OPTIONS[0];
   const heroSceneCount = packageData.scenes.filter((scene) => /(hook|final|trophy|rivalry|legacy|pressure|debate)/i.test(`${scene.label} ${scene.caption}`)).length || 1;
   const estimatedHeroCredits = Math.min(Number(paidProviderGovernance.maxCredits) || 0, heroSceneCount * activePaidProvider.estimatedCredits);
@@ -1442,6 +1479,11 @@ export default function SportsClipLab() {
       comments: Number(performanceForm.comments) || 0,
       shares: Number(performanceForm.shares) || 0,
       subscribers: Number(performanceForm.subscribers) || 0,
+      videoLength: Number(performanceForm.videoLength) || 0,
+      averageWatchTime: Number(performanceForm.averageWatchTime) || 0,
+      fullWatchRate: Number(performanceForm.fullWatchRate) || 0,
+      dropOffTimestamp: Number(performanceForm.dropOffTimestamp) || 0,
+      retentionRecommendations,
       retentionNotes: performanceForm.retentionNotes,
       replayabilityNotes: performanceForm.replayabilityNotes,
     };
@@ -1458,6 +1500,9 @@ export default function SportsClipLab() {
       comments: '',
       shares: '',
       subscribers: '',
+      averageWatchTime: '',
+      fullWatchRate: '',
+      dropOffTimestamp: '',
       retentionNotes: '',
       replayabilityNotes: '',
     }));
@@ -2655,6 +2700,27 @@ export default function SportsClipLab() {
                     <Field label="Subscribers gained">
                       <TextInput type="number" min="0" value={performanceForm.subscribers} onChange={(e) => updatePerformanceField('subscribers', e.target.value)} />
                     </Field>
+                    <Field label="Video length (s)">
+                      <TextInput type="number" min="1" value={performanceForm.videoLength} onChange={(e) => updatePerformanceField('videoLength', e.target.value)} />
+                    </Field>
+                    <Field label="Avg watch (s)">
+                      <TextInput type="number" min="0" step="0.1" value={performanceForm.averageWatchTime} onChange={(e) => updatePerformanceField('averageWatchTime', e.target.value)} />
+                    </Field>
+                    <Field label="Full watch %">
+                      <TextInput type="number" min="0" max="100" value={performanceForm.fullWatchRate} onChange={(e) => updatePerformanceField('fullWatchRate', e.target.value)} />
+                    </Field>
+                    <Field label="Drop-off second">
+                      <TextInput type="number" min="0" step="0.1" value={performanceForm.dropOffTimestamp} onChange={(e) => updatePerformanceField('dropOffTimestamp', e.target.value)} />
+                    </Field>
+                  </div>
+                  <div className="rounded-lg border border-[#30363D] bg-[#0D1117] p-3">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Retention drop analyzer</p>
+                      <CopyButton text={retentionRecommendations.join('\n')}>Copy Recommendations</CopyButton>
+                    </div>
+                    <ul className="space-y-1 text-xs leading-5 text-[#C9D1D9]">
+                      {retentionRecommendations.map((item) => <li key={item}>{item}</li>)}
+                    </ul>
                   </div>
                   <Field label="Retention notes">
                     <TextArea rows={3} value={performanceForm.retentionNotes} onChange={(e) => updatePerformanceField('retentionNotes', e.target.value)} placeholder="Where did viewers likely stay or drop?" />
