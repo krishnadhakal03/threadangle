@@ -1298,6 +1298,45 @@ function analyzeRetentionDrop(form) {
   return recommendations;
 }
 
+function buildPlatformVariants(packageData, firstSecondHookQA) {
+  const topic = packageData.form.eventTopic || 'Football story';
+  const baseTeam = String(topic).split(/,| vs | v /i)[0]?.trim() || 'THIS MATCH';
+  return [
+    {
+      platform: 'TikTok',
+      hook: firstSecondHookQA.recommendations[1] || `${baseTeam.toUpperCase()} NOW.`,
+      pacing: '8-10s, hyper-fast, hard visual change in first 0.3s',
+      cta: 'Drop your score before the comments decide.',
+      cover: 'Huge punch text, one subject, no warmup.',
+      exportPreset: 'Short runtime, high motion, loop ending.',
+    },
+    {
+      platform: 'Facebook Reels',
+      hook: `${baseTeam.toUpperCase()} TITLE RACE CHECK`,
+      pacing: '12-18s with readable data-card beats',
+      cta: 'Would you take this trophy trade-off?',
+      cover: 'Standings or stat card with fan identity cue.',
+      exportPreset: 'Readable typography, fewer cuts, informational cards.',
+    },
+    {
+      platform: 'Instagram Reels',
+      hook: `${baseTeam.toUpperCase()}: HISTORY OR HEARTBREAK?`,
+      pacing: '10-15s polished, cleaner visual density',
+      cta: 'Which frame belongs on the cover?',
+      cover: 'Premium cover frame, no watermark, no logo clutter.',
+      exportPreset: 'Cleaner typography, high contrast, thumbnail-ready first frame.',
+    },
+    {
+      platform: 'YouTube Shorts',
+      hook: `${topic}: what is really at stake?`,
+      pacing: '15-20s, emotional stakes plus replay loop',
+      cta: 'Subscribe if this race is going to the final day.',
+      cover: 'Searchable title plus visible team/stakes text.',
+      exportPreset: 'SEO title, clear topic, strong final loop.',
+    },
+  ];
+}
+
 function buildFirstSecondHookQA(packageData) {
   const firstScene = packageData.scenes[0] || {};
   const topic = packageData.form.eventTopic || packageData.form.teamsPlayers || 'THIS MATCH';
@@ -1408,6 +1447,7 @@ export default function SportsClipLab() {
   const packageText = useMemo(() => buildPackageText(packageData), [packageData]);
   const workflowInstructions = useMemo(() => buildWorkflowInstructions(packageData.scenes), [packageData.scenes]);
   const firstSecondHookQA = useMemo(() => buildFirstSecondHookQA(packageData), [packageData]);
+  const platformVariants = useMemo(() => buildPlatformVariants(packageData, firstSecondHookQA), [packageData, firstSecondHookQA]);
   const visualQualityWarnings = useMemo(() => Object.fromEntries(
     packageData.scenes.map((scene) => [scene.number, buildVisualQualityWarnings(scene)])
   ), [packageData.scenes]);
@@ -2665,6 +2705,28 @@ export default function SportsClipLab() {
                   </div>
                 </article>
               ))}
+            </section>
+
+            <section className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold text-white">Platform Variants</h2>
+                  <p className="text-xs text-[#8B949E]">Same football topic, different hook, pacing, CTA, cover, and export notes per platform.</p>
+                </div>
+                <CopyButton text={platformVariants.map((variant) => `${variant.platform}\nHook: ${variant.hook}\nPacing: ${variant.pacing}\nCTA: ${variant.cta}\nCover: ${variant.cover}\nExport: ${variant.exportPreset}`).join('\n\n')}>Copy Variants</CopyButton>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                {platformVariants.map((variant) => (
+                  <article key={variant.platform} className="rounded-lg border border-[#30363D] bg-[#010409] p-3 text-xs leading-5 text-[#C9D1D9]">
+                    <h3 className="text-sm font-bold text-white">{variant.platform}</h3>
+                    <p><span className="font-semibold text-[#58A6FF]">Hook:</span> {variant.hook}</p>
+                    <p><span className="font-semibold text-[#58A6FF]">Pacing:</span> {variant.pacing}</p>
+                    <p><span className="font-semibold text-[#58A6FF]">CTA:</span> {variant.cta}</p>
+                    <p><span className="font-semibold text-[#58A6FF]">Cover:</span> {variant.cover}</p>
+                    <p><span className="font-semibold text-[#58A6FF]">Export:</span> {variant.exportPreset}</p>
+                  </article>
+                ))}
+              </div>
             </section>
 
             <section className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
