@@ -25,6 +25,9 @@ const MOTION_PRESETS = [
 const FOOTBALL_TEMPLATE_OPTIONS = [
   { value: 'el-clasico', label: 'El Clasico Rivalry' },
   { value: 'epl-title-race', label: 'EPL Title Race' },
+  { value: 'historic-title-chase', label: 'Historic Title Chase' },
+  { value: 'standings-pressure-card', label: 'Standings Pressure Card' },
+  { value: 'trophy-choice-debate', label: 'Trophy Choice Debate' },
   { value: 'ucl-night', label: 'UCL Night' },
   { value: 'world-cup-knockout', label: 'World Cup Knockout Drama' },
   { value: 'penalty-shootout', label: 'Penalty Shootout Pressure' },
@@ -194,6 +197,55 @@ const FOOTBALL_TEMPLATES = {
       ['Comment trigger', 'Would you trust them with the season on the line?', 'bold football debate poster with table pressure and empty space for captions'],
     ],
   },
+  'historic-title-chase': {
+    hookType: 'historic-stakes',
+    topicCategory: 'title-race',
+    defaultTone: 'hype',
+    hook: '22 YEARS. 2 GAMES LEFT.',
+    body: 'A historic wait, a shrinking fixture list, and a trophy race that can flip in one weekend.',
+    cta: 'History, heartbreak, or both?',
+    thumbnailText: ['22 YEARS', '2 GAMES LEFT', 'HISTORY OR HEARTBREAK'],
+    beats: [
+      ['Historic wait', '{yearsWaiting} YEARS. {gamesLeft} GAMES LEFT.', 'high contrast football title-race card with big editable years and games numbers, no logos'],
+      ['Table pressure', '{teamName} position: {tablePosition}. Gap: {pointsGap}.', 'clean standings-card layout with generic team-color bars and no official crests'],
+      ['Rival pressure', '{rivalPressure}', 'two generic title rivals represented by color blocks and trophy silhouette'],
+      ['Trophy implication', '{teamName} can make history now.', 'trophy silhouette, packed stadium, dramatic team-color light'],
+      ['Comment trigger', '{trophyChoice}', 'bold debate card with Premier League versus Champions League style trophy-choice framing without official marks'],
+    ],
+  },
+  'standings-pressure-card': {
+    hookType: 'data-card',
+    topicCategory: 'title-race',
+    defaultTone: 'hype',
+    hook: 'THE TABLE JUST GOT DANGEROUS.',
+    body: 'Position, points gap, games remaining, rival pressure, and trophy implication all need to be readable immediately.',
+    cta: 'Is this a title statement or a collapse warning?',
+    thumbnailText: ['TABLE PRESSURE', 'POINTS GAP', 'TITLE RACE'],
+    beats: [
+      ['Current position', '{teamName}: {tablePosition}', 'vertical standings card, large table position, generic football colors, no logos'],
+      ['Points gap', 'Gap: {pointsGap}', 'minimal stat card with points gap and title-race arrow'],
+      ['Games remaining', '{gamesLeft} games left.', 'fixture countdown card with stadium backdrop and clean typography'],
+      ['Rival pressure', '{rivalPressure}', 'rival pressure comparison card with two generic color bars'],
+      ['Trophy implication', '{trophyChoice}', 'trophy choice debate card with clean negative space'],
+      ['CTA', 'Drop your title prediction.', 'comment-driven football debate card with bold CTA'],
+    ],
+  },
+  'trophy-choice-debate': {
+    hookType: 'debate',
+    topicCategory: 'title-race',
+    defaultTone: 'rivalry',
+    hook: 'ONE TROPHY OR THE OTHER?',
+    body: 'Fans do not just want highlights; they want a choice they can argue about.',
+    cta: 'League title, Europe, both, or heartbreak?',
+    thumbnailText: ['PICK ONE', 'BOTH OR BUST', 'TROPHY DEBATE'],
+    beats: [
+      ['Choice hook', '{trophyChoice}', 'split trophy debate card, generic silver and gold silhouettes, no official marks'],
+      ['Fan identity', '{teamName} fans have waited {yearsWaiting} years.', 'supporter color wall with no crests or sponsor marks'],
+      ['Pressure math', '{gamesLeft} games left. {pointsGap}.', 'stat-card countdown with football pitch texture'],
+      ['Risk beat', '{rivalPressure}', 'dramatic pressure card with rival color block closing in'],
+      ['Comment close', 'Pick the trophy path.', 'bold comment prompt card with clean typography'],
+    ],
+  },
   'ucl-night': {
     hookType: 'atmosphere',
     topicCategory: 'champions-night',
@@ -355,6 +407,13 @@ const EXAMPLES = {
     cta: 'Who owns Game 5: Wemby or Ant?',
     template: 'star-player-watch',
     worldCupMode: false,
+    titleRaceTeam: 'Arsenal',
+    yearsWaiting: '22',
+    gamesLeft: '2',
+    tablePosition: '2nd',
+    pointsGap: 'within reach',
+    rivalPressure: 'One slip changes the title race.',
+    trophyChoice: 'PL, UCL, both, or heartbreak?',
   },
   city: {
     label: 'Manchester City game tomorrow',
@@ -392,6 +451,23 @@ const INITIAL_FORM = EXAMPLES.nba;
 
 function getTemplate(form) {
   return FOOTBALL_TEMPLATES[form.template] || FOOTBALL_TEMPLATES['star-player-watch'];
+}
+
+function titleRaceStats(form) {
+  return {
+    teamName: form.titleRaceTeam || String(form.teamsPlayers || form.eventTopic || 'Arsenal').split(',')[0],
+    yearsWaiting: form.yearsWaiting || '22',
+    gamesLeft: form.gamesLeft || '2',
+    tablePosition: form.tablePosition || '2nd',
+    pointsGap: form.pointsGap || 'within reach',
+    rivalPressure: form.rivalPressure || 'Every rival result changes the pressure.',
+    trophyChoice: form.trophyChoice || 'PL, UCL, both, or heartbreak?',
+  };
+}
+
+function fillTitleRaceTokens(text, form) {
+  const stats = titleRaceStats(form);
+  return String(text || '').replace(/\{(\w+)\}/g, (_, key) => stats[key] ?? '');
 }
 
 function applyTemplateToForm(form, templateKey, keepTopic = true) {
@@ -643,8 +719,8 @@ function buildScenes(form) {
 
   const beats = template.beats.map(([label, fallbackCaption, visual], index) => ({
     label,
-    caption: index === 0 ? (form.hook || fallbackCaption) : index === template.beats.length - 1 ? (form.cta || fallbackCaption) : (bodyLines[index - 1] || fallbackCaption),
-    visual,
+    caption: fillTitleRaceTokens(index === 0 ? (form.hook || fallbackCaption) : index === template.beats.length - 1 ? (form.cta || fallbackCaption) : (bodyLines[index - 1] || fallbackCaption), form),
+    visual: fillTitleRaceTokens(visual, form),
     motion: index === 0
       ? 'hard cut in under one second, fast push, crowd flash, immediate caption pop'
       : index === template.beats.length - 1
@@ -2163,6 +2239,35 @@ export default function SportsClipLab() {
                 </div>
                 <p className="mt-2 text-[11px] leading-4 text-[#8B949E]">Planning only. No paid provider is called from Sports Clip Lab; Krishna must manually approve any upgrade outside this local workflow.</p>
               </div>
+              {['historic-title-chase', 'standings-pressure-card', 'trophy-choice-debate'].includes(form.template) && (
+                <div className="rounded-lg border border-[#30363D] bg-[#010409] p-3 md:col-span-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Editable title-race stats</p>
+                  <p className="mt-1 text-xs leading-5 text-[#8B949E]">Manual review required. Do not use unsupported stats.</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <Field label="Team">
+                      <TextInput value={form.titleRaceTeam || ''} onChange={(e) => updateField('titleRaceTeam', e.target.value)} />
+                    </Field>
+                    <Field label="Years waiting">
+                      <TextInput value={form.yearsWaiting || ''} onChange={(e) => updateField('yearsWaiting', e.target.value)} />
+                    </Field>
+                    <Field label="Games left">
+                      <TextInput value={form.gamesLeft || ''} onChange={(e) => updateField('gamesLeft', e.target.value)} />
+                    </Field>
+                    <Field label="Table position">
+                      <TextInput value={form.tablePosition || ''} onChange={(e) => updateField('tablePosition', e.target.value)} />
+                    </Field>
+                    <Field label="Points gap">
+                      <TextInput value={form.pointsGap || ''} onChange={(e) => updateField('pointsGap', e.target.value)} />
+                    </Field>
+                    <Field label="Rival pressure">
+                      <TextInput value={form.rivalPressure || ''} onChange={(e) => updateField('rivalPressure', e.target.value)} />
+                    </Field>
+                    <Field label="Trophy choice">
+                      <TextInput value={form.trophyChoice || ''} onChange={(e) => updateField('trophyChoice', e.target.value)} />
+                    </Field>
+                  </div>
+                </div>
+              )}
               <Field label="Hook">
                 <TextArea rows={2} value={form.hook} onChange={(e) => updateField('hook', e.target.value)} />
               </Field>
