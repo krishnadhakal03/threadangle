@@ -54,6 +54,8 @@ Every reusable image or clip should have a manifest entry with provider, rights,
 Required safety fields:
 
 - `rights_status`
+- `risk_level`
+- `risk_reason`
 - `logos_present`
 - `broadcast_footage`
 - `exact_player_likeness`

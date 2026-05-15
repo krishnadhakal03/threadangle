@@ -6,6 +6,8 @@
   "cost_credits": 0,
   "cost_usd_estimate": 0,
   "rights_status": "ai_generated_safe",
+  "risk_level": "low",
+  "risk_reason": "AI-generated safe asset with no official logos, broadcast footage, or exact player likeness.",
   "logos_present": false,
   "broadcast_footage": false,
   "exact_player_likeness": false,

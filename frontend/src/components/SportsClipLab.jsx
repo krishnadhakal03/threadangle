@@ -1183,6 +1183,8 @@ function buildFreeFirstAssetSuggestions(scene, form) {
       query: LOCAL_ASSET_LIBRARY_SAMPLE.file,
       score: /(trophy|final|world cup|legacy|goat)/.test(text) ? 92 : 72,
       metadata: 'local, zero credits, ai_generated_safe',
+      rightsStatus: 'ai_generated_safe',
+      riskLevel: 'low',
     },
     {
       source: 'Pexels',
@@ -1190,6 +1192,8 @@ function buildFreeFirstAssetSuggestions(scene, form) {
       query: `${baseQuery} stadium cinematic`,
       score: 78,
       metadata: 'free provider, API key optional, verify logos before approval',
+      rightsStatus: 'free_stock',
+      riskLevel: 'low',
     },
     {
       source: 'Pixabay',
@@ -1197,9 +1201,18 @@ function buildFreeFirstAssetSuggestions(scene, form) {
       query: `${baseQuery} crowd emotion`,
       score: 74,
       metadata: 'free provider, API key optional, verify rights before approval',
+      rightsStatus: 'free_stock',
+      riskLevel: 'low',
     },
   ];
   return suggestions.sort((a, b) => b.score - a.score);
+}
+
+function riskBadgeClass(level) {
+  if (level === 'critical') return 'border-red-500/50 bg-red-500/10 text-red-200';
+  if (level === 'high') return 'border-orange-500/50 bg-orange-500/10 text-orange-200';
+  if (level === 'medium') return 'border-amber-500/40 bg-amber-500/10 text-amber-200';
+  return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200';
 }
 
 export default function SportsClipLab() {
@@ -2174,6 +2187,10 @@ export default function SportsClipLab() {
                                 <span className="text-[#58A6FF]">{item.score}/100</span>
                               </div>
                               <p className="mt-1 break-words text-[#C9D1D9]">{item.query}</p>
+                              <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <span className={`rounded-md border px-2 py-1 font-semibold uppercase ${riskBadgeClass(item.riskLevel)}`}>{item.riskLevel} risk</span>
+                                <span className="text-[#8B949E]">{item.rightsStatus}</span>
+                              </div>
                               <p className="mt-1 text-[#8B949E]">{item.metadata}</p>
                             </div>
                           ))}
