@@ -39,6 +39,10 @@ const IMAGE_PROVIDERS = [
   { value: 'huggingface', label: 'HuggingFace / fallback', mode: 'Free image adapter', risk: 'May fail when the local API has no model configured.' },
   { value: 'pollinations', label: 'Pollinations', mode: 'Free prompt image URL', risk: 'Remote image availability can vary by prompt.' },
 ];
+const PAID_PROVIDER_OPTIONS = [
+  { value: 'runway', label: 'Runway', estimatedCredits: 25 },
+  { value: 'comfyui', label: 'ComfyUI', estimatedCredits: 8 },
+];
 const PERFORMANCE_STORAGE_KEY = 'threadangle_football_performance_logs_v1';
 const SUPPORTED_EXTERNAL_CLIP_EXTENSIONS = ['.mp4', '.mov', '.webm'];
 const GENERIC_VISUAL_GUIDANCE = [
@@ -1262,6 +1266,11 @@ export default function SportsClipLab() {
   const [activeScene, setActiveScene] = useState(null);
   const [imageBatchMessage, setImageBatchMessage] = useState(null);
   const [finalStitch, setFinalStitch] = useState({ status: 'idle', error: null });
+  const [paidProviderGovernance, setPaidProviderGovernance] = useState({
+    enabled: false,
+    provider: 'runway',
+    maxCredits: 25,
+  });
   const externalClipInputRefs = useRef({});
   const objectUrlsRef = useRef(new Set());
   const [performanceLogs, setPerformanceLogs] = useState(() => loadPerformanceLogs());
@@ -1303,6 +1312,9 @@ export default function SportsClipLab() {
   const allScenesApproved = approvedSceneCount === packageData.scenes.length;
   const activeImageProvider = getImageProviderProfile(imageProvider);
   const performanceSummary = useMemo(() => summarizePerformance(performanceLogs), [performanceLogs]);
+  const activePaidProvider = PAID_PROVIDER_OPTIONS.find((provider) => provider.value === paidProviderGovernance.provider) || PAID_PROVIDER_OPTIONS[0];
+  const heroSceneCount = packageData.scenes.filter((scene) => /(hook|final|trophy|rivalry|legacy|pressure|debate)/i.test(`${scene.label} ${scene.caption}`)).length || 1;
+  const estimatedHeroCredits = Math.min(Number(paidProviderGovernance.maxCredits) || 0, heroSceneCount * activePaidProvider.estimatedCredits);
 
   useEffect(() => () => {
     objectUrlsRef.current.forEach((url) => revokeObjectUrl(url));
@@ -1926,6 +1938,42 @@ export default function SportsClipLab() {
                 </Select>
                 <p className="mt-1.5 text-[11px] leading-4 text-[#8B949E]">{activeImageProvider.mode}. {activeImageProvider.risk} No Runway, ElevenLabs, or video render APIs are called.</p>
               </Field>
+              <div className="rounded-lg border border-[#30363D] bg-[#010409] p-3 md:col-span-2">
+                <label className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <input
+                    type="checkbox"
+                    checked={paidProviderGovernance.enabled}
+                    onChange={(event) => setPaidProviderGovernance((current) => ({ ...current, enabled: event.target.checked }))}
+                  />
+                  Manual hero-scene paid upgrade planning
+                </label>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <Field label="Provider">
+                    <Select
+                      value={paidProviderGovernance.provider}
+                      onChange={(event) => setPaidProviderGovernance((current) => ({ ...current, provider: event.target.value }))}
+                      disabled={!paidProviderGovernance.enabled}
+                    >
+                      {PAID_PROVIDER_OPTIONS.map((provider) => <option key={provider.value} value={provider.value}>{provider.label}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="Max credits">
+                    <TextInput
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={paidProviderGovernance.maxCredits}
+                      disabled={!paidProviderGovernance.enabled}
+                      onChange={(event) => setPaidProviderGovernance((current) => ({ ...current, maxCredits: event.target.value }))}
+                    />
+                  </Field>
+                  <div className="rounded-lg border border-[#21262D] bg-[#0D1117] p-3 text-xs text-[#C9D1D9]">
+                    <p className="font-semibold text-white">Estimate</p>
+                    <p>{estimatedHeroCredits} credits for up to {heroSceneCount} reusable hero scene{heroSceneCount === 1 ? '' : 's'}.</p>
+                  </div>
+                </div>
+                <p className="mt-2 text-[11px] leading-4 text-[#8B949E]">Planning only. No paid provider is called from Sports Clip Lab; Krishna must manually approve any upgrade outside this local workflow.</p>
+              </div>
               <Field label="Hook">
                 <TextArea rows={2} value={form.hook} onChange={(e) => updateField('hook', e.target.value)} />
               </Field>
@@ -2230,6 +2278,13 @@ export default function SportsClipLab() {
                           ))}
                         </div>
                       </div>
+                      {paidProviderGovernance.enabled && /(hook|final|trophy|rivalry|legacy|pressure|debate)/i.test(`${scene.label} ${scene.caption}`) && (
+                        <div className="rounded-lg border border-[#8957E5]/40 bg-[#8957E5]/10 p-3 text-xs leading-5 text-[#D2A8FF]">
+                          <p className="font-bold text-white">Manual hero-scene upgrade candidate</p>
+                          <p>{activePaidProvider.label} estimate: {activePaidProvider.estimatedCredits} credits. Budget cap: {paidProviderGovernance.maxCredits || 0} credits.</p>
+                          <p>Reusable asset metadata must record provider, cost, quality score, reuse count, rights status, and manual approval.</p>
+                        </div>
+                      )}
                       <div>
                         <p className="mb-1 text-xs font-bold uppercase tracking-wide text-[#8B949E]">Image-to-video prompt</p>
                         <p className="leading-6 text-[#C9D1D9]">{scene.videoPrompt}</p>
