@@ -23,6 +23,49 @@ const INITIAL_MATCH = {
   keyPlayers: 'Saka, Odegaard, Haaland, Foden',
   context: 'Title race pressure, home advantage, fixture congestion.',
 };
+const MATCH_SCENARIOS = {
+  chelseaCity: {
+    label: 'Chelsea vs Man City FA Cup',
+    data: {
+      teamA: 'Chelsea',
+      teamB: 'Manchester City',
+      competition: 'FA Cup',
+      matchDate: '',
+      tone: 'analytical',
+      platform: 'All',
+      recentFormA: 'W-D-W-L-W',
+      recentFormB: 'W-W-D-W-W',
+      injuriesNews: 'Manual team news check required before export.',
+      headToHead: 'City bring control, Chelsea bring transition threat and cup-final chaos.',
+      keyPlayers: 'Cole Palmer, Enzo Fernandez, Erling Haaland, Phil Foden',
+      context: 'Cup pressure, midfield control, transition chances, late-game depth.',
+    },
+  },
+  worldCup: {
+    label: 'World Cup knockout',
+    data: {
+      teamA: 'Argentina',
+      teamB: 'France',
+      competition: 'World Cup Knockout',
+      matchDate: '',
+      tone: 'analytical',
+      platform: 'All',
+      recentFormA: 'W-W-D-W-W',
+      recentFormB: 'W-D-W-W-L',
+      injuriesNews: 'Manual squad/news verification required.',
+      headToHead: 'Knockout games turn form into pressure, and one moment can flip the tie.',
+      keyPlayers: 'Playmaker, striker, goalkeeper, pace winger',
+      context: 'Knockout pressure, extra time risk, penalty pressure, national stakes.',
+    },
+  },
+};
+const GAMEWEEK_SAMPLE = [
+  'Arsenal 2-1 Newcastle',
+  'Chelsea 1-2 Manchester City',
+  'Liverpool 3-1 Tottenham',
+  'Aston Villa 1-1 Manchester United',
+  'West Ham 0-2 Brighton',
+];
 const PREDICTION_QA_ITEMS = [
   { id: 'single-match', label: 'Single match inputs generate hook, analysis, metadata, prediction package, and data cards.' },
   { id: 'gameweek-route', label: 'Gameweek workflow remains inside Prediction Studio and does not alter Sports Clip Lab cinematic flow.' },
@@ -140,6 +183,26 @@ export default function PredictionStudio() {
           </p>
         </header>
 
+        <div className="mb-4 flex flex-wrap gap-2">
+          {Object.values(MATCH_SCENARIOS).map((scenario) => (
+            <button
+              key={scenario.label}
+              type="button"
+              onClick={() => setMatchForm(scenario.data)}
+              className="rounded-lg border border-[#30363D] bg-[#161B22] px-3 py-2 text-xs font-semibold text-[#C9D1D9] hover:border-[#58A6FF] hover:text-white"
+            >
+              {scenario.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setWorkflow('Gameweek prediction batch')}
+            className="rounded-lg border border-[#30363D] bg-[#161B22] px-3 py-2 text-xs font-semibold text-[#C9D1D9] hover:border-[#58A6FF] hover:text-white"
+          >
+            EPL Gameweek sample
+          </button>
+        </div>
+
         <section className="grid min-w-0 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
           <aside className="rounded-lg border border-[#21262D] bg-[#0D1117] p-4">
             <label className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Workflow</label>
@@ -150,6 +213,12 @@ export default function PredictionStudio() {
             >
               {WORKFLOWS.map((item) => <option key={item}>{item}</option>)}
             </select>
+            {workflow === 'Gameweek prediction batch' && (
+              <div className="mt-3 rounded-lg border border-[#30363D] bg-[#010409] p-3 text-xs leading-5 text-[#C9D1D9]">
+                <p className="font-semibold text-white">Sample matches</p>
+                {GAMEWEEK_SAMPLE.map((item) => <p key={item}>{item}</p>)}
+              </div>
+            )}
             <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-5 text-amber-200">
               No betting advice, no guaranteed outcomes, no paid data APIs, and no auto-posting.
             </div>
