@@ -134,6 +134,13 @@ const CATEGORY_HASHTAGS = {
   spotlight: '#StarWatch',
   rivalry: '#Rivalry',
 };
+const LOCAL_ASSET_LIBRARY_SAMPLE = {
+  assetId: 'worldcup_trophy_pressure_001',
+  file: 'assets/sports_library/common/trophy/worldcup_trophy_pressure_001.mp4',
+  source: 'local sports library',
+  rightsStatus: 'ai_generated_safe',
+  tags: ['trophy', 'stadium', 'dramatic', 'night', 'worldcup', 'goat_debate'],
+};
 
 const FOOTBALL_TEMPLATES = {
   'el-clasico': {
@@ -1149,6 +1156,52 @@ function inferMotionPreset(scene) {
   return scene?.number === 1 ? 'dramatic_push' : 'slow_zoom';
 }
 
+function buildFreeFirstAssetSuggestions(scene, form) {
+  const text = [
+    scene?.label,
+    scene?.caption,
+    scene?.imagePrompt,
+    form?.eventTopic,
+    form?.teamsPlayers,
+  ].join(' ').toLowerCase();
+  const category = /(trophy|final|champion|world cup|legacy|goat)/.test(text)
+    ? 'trophy pressure'
+    : /(crowd|fans|supporter|erupts|atmosphere)/.test(text)
+      ? 'crowd eruption'
+      : /(tunnel|walkout|lineup)/.test(text)
+        ? 'tunnel walk'
+        : /(boot|ball|pitch|grass)/.test(text)
+          ? 'pitch details'
+          : /(rivalry|duel|faceoff|debate)/.test(text)
+            ? 'rivalry faceoff'
+            : 'generic football action';
+  const baseQuery = `${category} football vertical video no logos no broadcast graphics`;
+  const suggestions = [
+    {
+      source: LOCAL_ASSET_LIBRARY_SAMPLE.source,
+      label: LOCAL_ASSET_LIBRARY_SAMPLE.assetId,
+      query: LOCAL_ASSET_LIBRARY_SAMPLE.file,
+      score: /(trophy|final|world cup|legacy|goat)/.test(text) ? 92 : 72,
+      metadata: 'local, zero credits, ai_generated_safe',
+    },
+    {
+      source: 'Pexels',
+      label: 'Free stock search',
+      query: `${baseQuery} stadium cinematic`,
+      score: 78,
+      metadata: 'free provider, API key optional, verify logos before approval',
+    },
+    {
+      source: 'Pixabay',
+      label: 'Free stock search',
+      query: `${baseQuery} crowd emotion`,
+      score: 74,
+      metadata: 'free provider, API key optional, verify rights before approval',
+    },
+  ];
+  return suggestions.sort((a, b) => b.score - a.score);
+}
+
 export default function SportsClipLab() {
   const [form, setForm] = useState(INITIAL_FORM);
   const [generatedForm, setGeneratedForm] = useState(INITIAL_FORM);
@@ -1193,6 +1246,9 @@ export default function SportsClipLab() {
   const metadataText = useMemo(() => buildMetadataText(packageData.metadata), [packageData.metadata]);
   const packageText = useMemo(() => buildPackageText(packageData), [packageData]);
   const workflowInstructions = useMemo(() => buildWorkflowInstructions(packageData.scenes), [packageData.scenes]);
+  const assetSuggestions = useMemo(() => Object.fromEntries(
+    packageData.scenes.map((scene) => [scene.number, buildFreeFirstAssetSuggestions(scene, generatedForm)])
+  ), [packageData.scenes, generatedForm]);
   const sportMismatchWarning = useMemo(() => detectSportMismatch(form), [form]);
   const generatedSportMismatchWarning = useMemo(() => detectSportMismatch(generatedForm), [generatedForm]);
   const generatedImageCount = Object.values(sceneImages).filter((image) => image?.status === 'success' && image.imageUrl).length;
@@ -2101,6 +2157,27 @@ export default function SportsClipLab() {
                       <div>
                         <p className="mb-1 text-xs font-bold uppercase tracking-wide text-[#8B949E]">Image prompt</p>
                         <p className="leading-6 text-[#C9D1D9]">{scene.imagePrompt}</p>
+                      </div>
+                      <div className="rounded-lg border border-[#30363D] bg-[#010409] p-3">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wide text-[#8B949E]">Free-first asset finder</p>
+                            <p className="mt-1 text-xs leading-5 text-[#8B949E]">Local assets are preferred before free stock prompts. No provider call is made here.</p>
+                          </div>
+                          <CopyButton text={(assetSuggestions[scene.number] || []).map((item) => `${item.source}: ${item.query}`).join('\n')}>Copy Searches</CopyButton>
+                        </div>
+                        <div className="space-y-2">
+                          {(assetSuggestions[scene.number] || []).map((item) => (
+                            <div key={`${scene.number}-${item.source}-${item.query}`} className="rounded-lg border border-[#21262D] bg-[#0D1117] p-2 text-xs">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="font-semibold text-white">{item.source} · {item.label}</span>
+                                <span className="text-[#58A6FF]">{item.score}/100</span>
+                              </div>
+                              <p className="mt-1 break-words text-[#C9D1D9]">{item.query}</p>
+                              <p className="mt-1 text-[#8B949E]">{item.metadata}</p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                       <div>
                         <p className="mb-1 text-xs font-bold uppercase tracking-wide text-[#8B949E]">Image-to-video prompt</p>
