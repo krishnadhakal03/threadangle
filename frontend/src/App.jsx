@@ -24,6 +24,7 @@ import Calendar from './components/Calendar';
 import UpgradeView from './components/UpgradeView';
 import Settings from './components/Settings';
 import SportsClipLab from './components/SportsClipLab';
+import PredictionStudio from './components/PredictionStudio';
 import Onboarding from './components/Onboarding';
 import AnnouncementBar from './components/AnnouncementBar';
 import { useWindowWidth } from './hooks/useWindowWidth';
@@ -146,6 +147,7 @@ const DashboardLayout = () => {
               {activeTab === 'dashboard' && <Dashboard mode="generate" />}
               {activeTab === 'ai-video' && <Dashboard mode="video" />}
               {activeTab === 'sports-workflow' && <SportsClipLab />}
+              {activeTab === 'prediction-studio' && <PredictionStudio />}
               {activeTab === 'history' && <History />}
               {activeTab === 'calendar' && <Calendar />}
               {activeTab === 'upgrade' && <UpgradeView />}
