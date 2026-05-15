@@ -150,6 +150,35 @@ def test_deleted_history_row_does_not_expose_download_url():
     assert payload["video_url"] is None
 
 
+def test_success_history_row_requires_existing_local_mp4(tmp_path, monkeypatch):
+    import routes.generate as generate_route
+
+    monkeypatch.setattr(generate_route, "generated_root", lambda: tmp_path)
+
+    payload = generate_route._serialize_video_history_row(
+        _generation(video_file="missing-run/missing.mp4", status="success"),
+        include_heavy=False,
+    )
+
+    assert payload["download_url"] is None
+    assert payload["video_url"] is None
+    assert "final MP4 artifact is missing" in payload["warning"]
+
+
+def test_success_history_row_exposes_existing_local_mp4(tmp_path, monkeypatch):
+    import routes.generate as generate_route
+
+    monkeypatch.setattr(generate_route, "generated_root", lambda: tmp_path)
+    run_dir = tmp_path / "sample-run_test123"
+    run_dir.mkdir()
+    (run_dir / "sample.mp4").write_bytes(b"mp4")
+
+    payload = generate_route._serialize_video_history_row(_generation(), include_heavy=False)
+
+    assert payload["download_url"] == "/api/generate/video/download/sample-run_test123/sample.mp4"
+    assert payload["video_url"] == "/api/generate/video/download/sample-run_test123/sample.mp4"
+
+
 def test_live_free_footage_rejects_paid_providers_by_default(monkeypatch):
     monkeypatch.setenv("ENABLE_SERVER_VIDEO_RENDERING", "true")
     monkeypatch.setenv("VIDEO_RENDER_ALLOWED_USER_EMAIL", "krishna.dhakal03@gmail.com")

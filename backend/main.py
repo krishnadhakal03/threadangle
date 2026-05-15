@@ -176,8 +176,24 @@ async def startup():
         )
         orphans = [row[0] for row in result.fetchall()]
         await _sess.commit()
-        if orphans:
-            _log.warning(f"[startup] Marked {len(orphans)} orphaned processing video(s) as failed: ids={orphans}")
+    if orphans:
+        _log.warning(f"[startup] Marked {len(orphans)} orphaned processing video(s) as failed: ids={orphans}")
+
+    no_spend_flags = {
+        "video_generation_dry_run": os.getenv("VIDEO_GENERATION_DRY_RUN", "1"),
+        "server_rendering_enabled": os.getenv("ENABLE_SERVER_VIDEO_RENDERING", "0"),
+        "hybrid_motion_renderer_enabled": os.getenv("ENABLE_HYBRID_MOTION_RENDERER", "0"),
+        "runway_max_scenes": os.getenv("RUNWAYML_MAX_SCENES", "unset"),
+        "free_paid_providers_enabled": os.getenv("FREE_VIDEO_ALLOW_PAID_PROVIDERS", "0"),
+        "allow_paid_providers": os.getenv("ALLOW_PAID_PROVIDERS", "0"),
+        "allow_runwayml": os.getenv("ALLOW_RUNWAYML", "0"),
+        "allow_elevenlabs": os.getenv("ALLOW_ELEVENLABS", "0"),
+        "allow_openai": os.getenv("ALLOW_OPENAI", "0"),
+        "allow_anthropic": os.getenv("ALLOW_ANTHROPIC", "0"),
+        "allow_gemini": os.getenv("ALLOW_GEMINI", "0"),
+        "silent_fallback_enabled": os.getenv("VIDEO_ALLOW_SILENT_FALLBACK", "0"),
+    }
+    _log.warning("[startup.no_spend] %s", " ".join(f"{key}={value}" for key, value in no_spend_flags.items()))
 
 
 # ── Development-only test endpoints ───────────────────────────────────────────

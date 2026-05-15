@@ -3218,6 +3218,21 @@ def _safe_json_loads(value: Any, *, expected_type: type | None = None, default: 
     return parsed
 
 
+def _downloadable_video_file(g: Generation) -> Optional[str]:
+    if not g.video_file or g.status not in {"success", "completed"}:
+        return None
+    try:
+        root_path = generated_root().resolve()
+        file_path = (root_path / str(g.video_file)).resolve()
+    except Exception:
+        return None
+    if root_path not in file_path.parents:
+        return None
+    if not file_path.exists() or not file_path.is_file():
+        return None
+    return str(g.video_file)
+
+
 def _serialize_video_history_row(
     g: Generation,
     *,
@@ -3226,22 +3241,26 @@ def _serialize_video_history_row(
 ) -> dict[str, Any]:
     parsed_seo_tags = _safe_json_loads(g.seo_tags, expected_type=list, default=[]) or []
     parsed_seo_hashtags = _safe_json_loads(g.seo_hashtags, expected_type=list, default=[]) or []
-    downloadable = bool(g.video_file and (g.status in {"success", "completed"}))
+    downloadable_file = _downloadable_video_file(g)
+    downloadable = bool(downloadable_file)
     metadata_only = bool((g.status in {"success", "completed"}) and not g.video_file)
+    release_warning = None
+    if g.video_file and g.status in {"success", "completed"} and not downloadable_file:
+        release_warning = "Generation metadata exists, but the final MP4 artifact is missing or outside the allowed output directory."
 
     payload = {
         "id": g.id,
         "run_id": g.video_run_id,
         "duration_seconds": g.video_duration_seconds,
         "file": g.video_file,
-        "video_url": f"/api/generate/video/download/{quote(str(g.video_file), safe='/')}" if downloadable else None,
-        "download_url": f"/api/generate/video/download/{quote(str(g.video_file), safe='/')}" if downloadable else None,
+        "video_url": f"/api/generate/video/download/{quote(downloadable_file, safe='/')}" if downloadable else None,
+        "download_url": f"/api/generate/video/download/{quote(downloadable_file, safe='/')}" if downloadable else None,
         "thumbnail_url": f"/api/generate/video/thumbnail/{quote(str(_relative_generated_asset_path(g.video_thumbnail) or ''), safe='/')}" if g.video_thumbnail else None,
         "created_at": g.created_at.isoformat() if g.created_at else None,
         "status": g.status,
         "metadata_only": metadata_only,
         "result_reason": g.error_message if metadata_only else None,
-        "warning": warning or g.error_message,
+        "warning": warning or release_warning or g.error_message,
         "seo": {
             "title": g.seo_title,
             "description": g.seo_description,
@@ -3290,21 +3309,25 @@ def _serialize_video_history_row(
 
 
 def _serialize_video_history_row_fallback(g: Generation, warning: Optional[str] = None) -> dict[str, Any]:
-    downloadable = bool(g.video_file and (g.status in {"success", "completed"}))
+    downloadable_file = _downloadable_video_file(g)
+    downloadable = bool(downloadable_file)
     metadata_only = bool((g.status in {"success", "completed"}) and not g.video_file)
+    release_warning = None
+    if g.video_file and g.status in {"success", "completed"} and not downloadable_file:
+        release_warning = "Generation metadata exists, but the final MP4 artifact is missing or outside the allowed output directory."
     return {
         "id": g.id,
         "run_id": g.video_run_id,
         "duration_seconds": g.video_duration_seconds,
         "file": g.video_file,
-        "video_url": f"/api/generate/video/download/{quote(str(g.video_file), safe='/')}" if downloadable else None,
-        "download_url": f"/api/generate/video/download/{quote(str(g.video_file), safe='/')}" if downloadable else None,
+        "video_url": f"/api/generate/video/download/{quote(downloadable_file, safe='/')}" if downloadable else None,
+        "download_url": f"/api/generate/video/download/{quote(downloadable_file, safe='/')}" if downloadable else None,
         "thumbnail_url": f"/api/generate/video/thumbnail/{quote(str(_relative_generated_asset_path(g.video_thumbnail) or ''), safe='/')}" if g.video_thumbnail else None,
         "created_at": g.created_at.isoformat() if g.created_at else None,
         "status": g.status,
         "metadata_only": metadata_only,
         "result_reason": g.error_message if metadata_only else None,
-        "warning": warning or g.error_message,
+        "warning": warning or release_warning or g.error_message,
         "seo": {
             "title": g.seo_title,
             "description": g.seo_description,
