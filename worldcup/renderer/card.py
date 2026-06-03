@@ -432,6 +432,34 @@ def build_hook_segment(team: str, group_id: str, flag_url: str,
 
 # ── Segment 2 — HISTORY / THE RECORD ─────────────────────────────────────────
 
+# Abbreviation map for long best-finish strings (Bug 2)
+_BEST_FINISH_ABBREV = {
+    "Champions":     "WINNER",
+    "Runner-up":     "FINALIST",
+    "3rd Place":     "3rd",
+    "4th Place":     "4th",
+    "Semi-final":    "SEMI",
+    "Quarter-final": "QTR-F",
+    "Round of 16":   "R16",
+    "Group Stage":   "GRP",
+    "First appear":  "DEBUT",
+}
+
+def _fit_cell_value(val: str, max_normal: int = 8) -> tuple[str, int]:
+    """
+    Return (display_text, font_size) for a history grid cell value.
+    Abbreviates long strings and reduces font size if still long.
+    """
+    if len(val) <= max_normal:
+        return val, 90
+    for key, short in _BEST_FINISH_ABBREV.items():
+        if key in val:
+            return short, 80
+    # Still long — use smaller font and truncate
+    font_size = max(38, 90 - (len(val) - max_normal) * 5)
+    return val[:14], font_size
+
+
 def build_history_segment(team: str, titles: int, appearances: int,
                            best_finish: str, last_title: int,
                            res: tuple = (1080, 1920)) -> Image.Image:
@@ -481,11 +509,12 @@ def build_history_segment(team: str, titles: int, appearances: int,
         draw.rounded_rectangle([(cx, cy), (cx + cell_w, cy + cell_h)],
                                 radius=16, outline=accent, width=2)
 
-        # Big number
-        font_big = _load_font("bold", 90)
-        bb  = draw.textbbox((0, 0), big_val, font=font_big)
+        # Big value — abbreviate and size-fit to prevent overflow (Bug 2)
+        display_val, big_sz = _fit_cell_value(big_val)
+        font_big = _load_font("bold", big_sz)
+        bb  = draw.textbbox((0, 0), display_val, font=font_big)
         bvx = cx + (cell_w - (bb[2] - bb[0])) // 2
-        draw.text((bvx, cy + 30), big_val, font=font_big, fill=accent)
+        draw.text((bvx, cy + 30), display_val, font=font_big, fill=accent)
 
         # Label
         font_lbl = _load_font("regular", 26)
@@ -530,7 +559,8 @@ def build_history_segment(team: str, titles: int, appearances: int,
 def build_player_segment(player: dict, photo: Image.Image, team: str,
                           res: tuple = (1080, 1920)) -> Image.Image:
     """
-    Player photo (top 40%), name, position badge, club, goals.
+    'PLAYERS TO WATCH' header band + photo (top region) + name + position
+    badge + club + 4-stat row (goals, caps, club goals, market value) + hype quote.
     """
     from worldcup.renderer.theme import get_country_theme
 
@@ -539,49 +569,80 @@ def build_player_segment(player: dict, photo: Image.Image, team: str,
     accent = theme["accent"]
 
     img  = _gradient_bg(W, H, theme["gradient_top"], theme["gradient_bottom"])
+    draw = ImageDraw.Draw(img)
 
-    # Photo area: centred in top 42% of frame
-    photo_size = 300
+    # ── "PLAYERS TO WATCH" header band ────────────────────────────────────────
+    band_h = 120
+    draw.rectangle([(0, 0), (W, band_h)], fill=accent)
+    font_band = _load_font("bold", 52)
+    band_lbl  = "PLAYERS TO WATCH"
+    draw.text((_centered_x(draw, band_lbl, font_band, W), 28),
+              band_lbl, font=font_band, fill=(0, 0, 0))
+
+    # ── Photo — centred below band ─────────────────────────────────────────────
+    photo_size = 280
     px = (W - photo_size) // 2
-    py = int(H * 0.08)
+    py = band_h + 60
 
-    photo_rgb = photo.convert("RGBA").resize((photo_size, photo_size), Image.LANCZOS)
-    # paste with alpha
-    if photo_rgb.mode == "RGBA":
-        img.paste(photo_rgb.convert("RGB"), (px, py),
-                  photo_rgb.split()[3] if photo_rgb.mode == "RGBA" else None)
+    photo_rgba = photo.convert("RGBA").resize((photo_size, photo_size), Image.LANCZOS)
+    if photo_rgba.mode == "RGBA":
+        img.paste(photo_rgba.convert("RGB"), (px, py), photo_rgba.split()[3])
     else:
-        img.paste(photo_rgb, (px, py))
+        img.paste(photo_rgba, (px, py))
 
-    draw  = ImageDraw.Draw(img)
+    # Re-draw after paste
+    draw = ImageDraw.Draw(img)
+
     name  = player.get("name", "Player")
     pos   = player.get("position", "")
     club  = player.get("club", "")
     goals = player.get("country_goals") or player.get("goals", 0)
+    caps  = player.get("caps", 0)
+    club_goals = player.get("club_goals", 0)
+    mval  = player.get("market_value", "")
+    quote = player.get("hype_quote", "")
 
-    # Name — 72px bold centred below photo
-    font_name = _load_font("bold", 72)
-    nx = _centered_x(draw, name, font_name, W)
-    ny = py + photo_size + 50
-    _text_shadow(draw, (nx, ny), name, font_name, (255, 255, 255))
+    # ── Name ──────────────────────────────────────────────────────────────────
+    font_name = _load_font("bold", 68)
+    ny = py + photo_size + 40
+    _text_shadow(draw, (_centered_x(draw, name, font_name, W), ny),
+                 name, font_name, (255, 255, 255))
 
-    # Position badge pill
-    font_pos = _load_font("bold", 34)
-    _pill(draw, pos, font_pos, W // 2, ny + 110, accent, (0, 0, 0))
+    # ── Position badge ────────────────────────────────────────────────────────
+    font_pos = _load_font("bold", 32)
+    _pill(draw, pos, font_pos, W // 2, ny + 96, accent, (0, 0, 0))
 
-    # Club
-    font_club = _load_font("regular", 38)
-    cx = _centered_x(draw, club, font_club, W)
-    draw.text((cx, ny + 170), club, font=font_club, fill=(200, 200, 200))
+    # ── Club ──────────────────────────────────────────────────────────────────
+    font_club = _load_font("regular", 36)
+    draw.text((_centered_x(draw, club, font_club, W), ny + 140),
+              club, font=font_club, fill=(190, 190, 190))
 
-    # Goals stat
-    if goals:
-        font_goals = _load_font("bold", 56)
-        gstr = f"{goals} INTL GOALS"
-        gx   = _centered_x(draw, gstr, font_goals, W)
-        draw.text((gx, ny + 250), gstr, font=font_goals, fill=accent)
+    # ── 4-stat row ────────────────────────────────────────────────────────────
+    stat_y  = ny + 210
+    stat_items = [
+        (str(goals), "INTL GOALS"),
+        (str(caps),  "CAPS"),
+        (str(club_goals), "CLUB GLS"),
+        (mval or "N/A", "VALUE"),
+    ]
+    col_w = W // 4
+    font_sv  = _load_font("bold", 44)
+    font_sl  = _load_font("light", 22)
+    for si, (sv, sl) in enumerate(stat_items):
+        cx = si * col_w + col_w // 2
+        draw.text((_centered_x(draw, sv, font_sv, col_w) + si * col_w, stat_y),
+                  sv, font=font_sv, fill=accent)
+        draw.text((_centered_x(draw, sl, font_sl, col_w) + si * col_w, stat_y + 52),
+                  sl, font=font_sl, fill=(160, 160, 180))
 
-    # Accent bar at very bottom
+    # ── Hype quote ────────────────────────────────────────────────────────────
+    if quote:
+        font_q = _load_font("light", 34)
+        quote_display = f'"{quote}"'
+        draw.text((_centered_x(draw, quote_display, font_q, W), stat_y + 130),
+                  quote_display, font=font_q, fill=(200, 200, 200))
+
+    # ── Bottom accent bar ──────────────────────────────────────────────────────
     draw.rectangle([(0, H - 12), (W, H)], fill=accent)
 
     return img
@@ -648,11 +709,16 @@ def build_group_segment(team: str, group_id: str, group_teams: list[str],
             else:
                 img.paste(flag_img, (pad + 20, fy))
 
-        # Team name
-        fn    = font_team_hl if is_hl else font_team_nm
+        # Team name — truncate long names and adjust font size (Bug 3)
+        if len(t_name) > 14:
+            display_t = t_name[:13] + "."
+        else:
+            display_t = t_name
+        nm_size = 36 if len(t_name) <= 10 else 28
+        fn    = _load_font("bold" if is_hl else "regular", nm_size)
         clr   = accent if is_hl else (220, 220, 220)
-        ty_txt = ry + (row_h - 46) // 2
-        draw.text((pad + 130, ty_txt), t_name, font=fn, fill=clr)
+        ty_txt = ry + (row_h - nm_size) // 2
+        draw.text((pad + 130, ty_txt), display_t, font=fn, fill=clr)
 
         # Featured badge
         if is_hl:
@@ -690,9 +756,9 @@ def build_cta_segment(team: str, group_id: str,
     font_cta = _load_font("bold", 80)
     font_sub = _load_font("regular", 36)
 
-    q1 = "WHO WILL"
+    q1 = "CAN"
     q2 = team.upper()
-    q3 = "WIN THE WORLD CUP?"
+    q3 = "WIN THE WORLD CUP 2026?"
 
     y = int(H * 0.22)
     _text_shadow(draw, (_centered_x(draw, q1, font_q1, W), y),
