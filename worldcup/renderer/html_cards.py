@@ -294,9 +294,10 @@ def _hook_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str:
     gt         = _hex(theme["gradient_top"])
     gb         = _hex(theme["gradient_bottom"])
     acc        = _hex(theme["accent"])
+    ar, ag, ab = theme["accent"]
     team_upper = team.upper()
 
-    # Solid team-colour gradient — no photo overlay (solid bg for non-player cards)
+    # Solid team-colour gradient — no photo overlay
     _card_bg = f"linear-gradient(160deg, {gt} 0%, {gb} 55%, #000508 100%)"
     extra = (
         f".card{{background:{_card_bg}!important;}}"
@@ -305,35 +306,55 @@ def _hook_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str:
         f"radial-gradient(circle at 30% 70%, rgba(255,255,255,0.03) 0%, transparent 40%)!important;}}"
     )
 
-    # ── Large flag above safe zone (decorative image — text-rule exempt) ──
-    flag_block = f"""
-    <div style="position:absolute;top:270px;left:0;right:0;
-                display:flex;justify-content:center;z-index:6;">
-      <img src="{flag_url}" alt="{team}"
-           style="height:220px;width:auto;object-fit:contain;
-                  border-radius:10px;box-shadow:0 8px 60px rgba(0,0,0,0.5);">
-    </div>""" if flag_url else ""
+    # ── 1. Watermark — large faint "FIFA WORLD CUP 2026" rotated across card ──
+    watermark = (
+        f'<div style="position:absolute;top:50%;left:50%;'
+        f'transform:translate(-50%,-50%) rotate(-15deg);'
+        f'font-size:300px;font-weight:700;color:#fff;opacity:0.04;'
+        f'z-index:0;white-space:nowrap;pointer-events:none;'
+        f'letter-spacing:-8px;font-family:Oswald,Impact,Arial,sans-serif;">'
+        f'FIFA WORLD CUP 2026</div>'
+    )
 
-    # ── Group badge — gold pill, top-right ────────────────────────────────
-    group_badge = f"""
-    <div style="position:absolute;top:{_SAFE_TOP + 20}px;right:60px;
-                background:{GOLD};border-radius:12px;padding:14px 32px;z-index:6;">
-      <span style="font-size:24px;font-weight:700;letter-spacing:3px;color:#000;">
-        GROUP {group_id}
-      </span>
-    </div>"""
+    # ── 2. Radial glow behind team name — centered on card ────────────────
+    glow = (
+        f'<div style="position:absolute;top:50%;left:50%;'
+        f'transform:translate(-50%,-50%);'
+        f'width:700px;height:500px;border-radius:50%;'
+        f'background:radial-gradient(ellipse 600px 400px at center,'
+        f'rgba({ar},{ag},{ab},0.15) 0%,transparent 70%);'
+        f'z-index:1;pointer-events:none;"></div>'
+    )
 
-    # ── Content block — vertically centred in safe zone ───────────────────
-    _hook_content_h = 160 + 68 + 40 + 60   # name + subtitle + gold_line + date
-    _hook_top = _vcenter(_hook_content_h)
+    # ── 3. Group badge — gold pill, top-right (stays in safe zone) ────────
+    group_badge = (
+        f'<div style="position:absolute;top:{_SAFE_TOP + 20}px;right:60px;'
+        f'background:{GOLD};border-radius:12px;padding:14px 32px;z-index:6;">'
+        f'<span style="font-size:24px;font-weight:700;letter-spacing:3px;color:#000;">'
+        f'GROUP {group_id}</span></div>'
+    )
 
-    body_inner = f"""
+    # ── 4. Content wrapper — centred on full card height ──────────────────
+    # flag(200) + gap(56) + name(160) + subtitle(68) + gold-line(40) + date(60) = 584px
+    flag_html = (
+        f'<div style="display:flex;justify-content:center;margin-bottom:56px;">'
+        f'<img src="{flag_url}" alt="{team}"'
+        f' style="width:200px;height:200px;border-radius:50%;object-fit:cover;'
+        f'box-shadow:0 8px 60px rgba(0,0,0,0.6),'
+        f'0 0 0 4px rgba({ar},{ag},{ab},0.4);">'
+        f'</div>'
+    ) if flag_url else ""
+
+    content = f"""
     <div style="position:absolute;left:60px;right:60px;
-                top:{_hook_top}px;text-align:center;z-index:5;">
+                top:50%;transform:translateY(-50%);
+                text-align:center;z-index:5;">
+
+      {flag_html}
 
       <div style="font-size:160px;font-weight:700;letter-spacing:-6px;
                   color:#fff;line-height:1;
-                  text-shadow:0 0 100px {_rgba(theme['accent'],0.7)},
+                  text-shadow:0 0 100px rgba({ar},{ag},{ab},0.7),
                               0 4px 40px rgba(0,0,0,0.9),
                               -1px -1px 0 rgba(0,0,0,0.7),
                                1px  1px 0 rgba(0,0,0,0.7);">
@@ -342,11 +363,10 @@ def _hook_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str:
 
       <div style="margin-top:30px;font-size:38px;font-weight:400;
                   letter-spacing:8px;color:{acc};
-                  text-shadow:0 0 30px {_rgba(theme['accent'],0.5)};">
+                  text-shadow:0 0 30px rgba({ar},{ag},{ab},0.5);">
         FIFA WORLD CUP 2026
       </div>
 
-      <!-- Gold underline accent -->
       <div style="width:200px;height:4px;margin:36px auto 0;
                   background:{GOLD};border-radius:2px;
                   box-shadow:0 0 20px rgba(212,168,67,0.6);"></div>
@@ -356,12 +376,10 @@ def _hook_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str:
                   color:rgba(200,205,215,0.6);">
         JUNE 11 - JULY 19, 2026
       </div>
-    </div>
-
-    """
+    </div>"""
 
     css = _base_css(theme, extra=extra)
-    return _html(css, flag_block + group_badge + body_inner)
+    return _html(css, watermark + glow + group_badge + content)
 
 
 # ── Card 2 — HISTORY (giant bg number, gold borders — Issue #221) ─────────────
