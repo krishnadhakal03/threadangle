@@ -18,7 +18,7 @@ Card segments (in pipeline order):
 YouTube Shorts safe zones (no text placed outside these boundaries):
   Horizontal: 120 px margin each side  →  content in x: 120–960
   Top:        250 px from top          →  text starts at y >= 250 (clears status bar)
-  Bottom:     520 px from bottom       →  text ends at y <= 1400 (clears nav bar)
+  Bottom:     470 px from bottom       →  text ends at y <= 1450 (clears nav bar)
 Decorative bars, borders, and images may extend outside these zones.
 """
 from __future__ import annotations
@@ -35,8 +35,8 @@ from worldcup.renderer.theme import get_country_theme
 
 # ── Safe-zone constants ────────────────────────────────────────────────────────
 _SAFE_TOP = 250    # top boundary — clears phone status bar (fix #133)
-_SAFE_BOT = 1400   # bottom boundary — clears phone nav bar (fix #133)
-_SAFE_H   = 1150   # _SAFE_BOT - _SAFE_TOP
+_SAFE_BOT = 1450   # bottom boundary — clears phone nav bar (stricter)
+_SAFE_H   = 1200   # _SAFE_BOT - _SAFE_TOP
 
 GOLD = "#D4A843"   # gold trim colour used across all cards
 
@@ -206,7 +206,7 @@ html, body {{
 .safe {{
   position: absolute;
   left: 120px; right: 120px;
-  top: 250px; bottom: 520px;
+  top: 250px; bottom: 470px;
   z-index: 5;
   display: flex; flex-direction: column;
 }}
@@ -305,7 +305,7 @@ def _hook_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str:
 
     # ── Large flag above safe zone (decorative image — text-rule exempt) ──
     flag_block = f"""
-    <div style="position:absolute;top:40px;left:0;right:0;
+    <div style="position:absolute;top:270px;left:0;right:0;
                 display:flex;justify-content:center;z-index:6;">
       <img src="{flag_url}" alt="{team}"
            style="height:220px;width:auto;object-fit:contain;
@@ -356,14 +356,7 @@ def _hook_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str:
       </div>
     </div>
 
-    <!-- Hosts line — near top of safe zone -->
-    <div style="position:absolute;top:{_SAFE_TOP + 20}px;left:60px;z-index:5;">
-      <div style="font-family:'Roboto',Arial,sans-serif;
-                  font-size:20px;font-weight:300;letter-spacing:4px;
-                  color:rgba(180,185,200,0.5);">
-        USA - CANADA - MEXICO
-      </div>
-    </div>"""
+    """
 
     css = _base_css(theme, extra=extra)
     return _html(css, flag_block + group_badge + body_inner)
@@ -411,8 +404,8 @@ def _history_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str
     _bar_h      = 110
     _timeline_h = 220 if recent else 0
     _hist_content_h = _stat_grid_h + _bar_h + _timeline_h
-    _header_bot = _SAFE_TOP + 80
-    _hist_top = max(_header_bot + 20, _vcenter(_hist_content_h))
+    _header_bot = _SAFE_TOP + 100          # 100px header below notch
+    _hist_top = max(_header_bot + 20, _vcenter(_hist_content_h))  # min 370px
 
     recent_boxes = ""
     if recent:
@@ -450,7 +443,7 @@ def _history_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str
     {titles_giant}
 
     <!-- Header band: team-colour to gold gradient, below notch -->
-    <div style="position:absolute;top:{_SAFE_TOP}px;left:0;right:0;height:80px;
+    <div style="position:absolute;top:{_SAFE_TOP}px;left:0;right:0;height:100px;
                 background:linear-gradient(90deg,{acc} 0%,{GOLD} 100%);
                 z-index:6;display:flex;align-items:center;justify-content:center;">
       <div style="font-size:44px;font-weight:700;letter-spacing:8px;
@@ -590,7 +583,7 @@ def _player_html(player: dict, team: str, theme: dict, bg_photo: str = "") -> st
 
     # ── OVR circle — top-left ─────────────────────────────────────────────
     ovr_circle = (
-        f'<div style="position:absolute;top:60px;left:60px;width:110px;height:110px;'
+        f'<div style="position:absolute;top:270px;left:60px;width:110px;height:110px;'
         f'border-radius:50%;background:rgba(0,0,0,0.75);border:2.5px solid {GOLD};'
         f'display:flex;flex-direction:column;align-items:center;'
         f'justify-content:center;z-index:20;">'
@@ -603,7 +596,7 @@ def _player_html(player: dict, team: str, theme: dict, bg_photo: str = "") -> st
     flag_url  = get_flag_url(team)
     flag_img  = f'<img src="{flag_url}" style="height:48px;border-radius:6px;">' if flag_url else ""
     country_badge = (
-        f'<div style="position:absolute;top:60px;right:60px;background:rgba(0,0,0,0.75);'
+        f'<div style="position:absolute;top:270px;right:60px;background:rgba(0,0,0,0.75);'
         f'border:1.5px solid {GOLD};border-radius:12px;padding:8px 16px;'
         f'z-index:20;display:flex;align-items:center;gap:10px;">'
         f'{flag_img}'
@@ -776,18 +769,21 @@ def _group_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str:
     body = f"""
     {group_letter}
 
-    <div style="position:absolute;left:60px;right:60px;top:{_grp_top}px;
+    <!-- Subtitle pinned at safe-zone top -->
+    <div style="position:absolute;left:60px;right:60px;top:{_SAFE_TOP + 20}px;
                 text-align:center;z-index:5;">
-
       <div style="font-size:28px;font-weight:400;letter-spacing:5px;
-                  color:rgba(255,255,255,0.85);margin-bottom:40px;">
+                  color:rgba(255,255,255,0.85);">
         GROUP {group_id} - FIFA WORLD CUP 2026
       </div>
+    </div>
 
-      <div style="display:flex;flex-direction:column;gap:16px;text-align:left;">
+    <!-- Team rows — first row at y=400 minimum -->
+    <div style="position:absolute;left:60px;right:60px;top:400px;
+                text-align:left;z-index:5;">
+      <div style="display:flex;flex-direction:column;gap:16px;">
         {rows_html}
       </div>
-
     </div>"""
 
     # Solid team-colour flat bg — no photo
