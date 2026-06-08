@@ -135,6 +135,8 @@ def _player_photo_src(name: str, accent: tuple, size: int = 300) -> str:
     try:
         from worldcup.data.photos import get_player_photo
         img = get_player_photo(name, size=size, accent=accent)
+        if img is None:           # no real photo — caller uses typographic fallback
+            return ""
         buf = io.BytesIO()
         img.convert("RGBA").save(buf, format="PNG")
         enc = base64.b64encode(buf.getvalue()).decode()
@@ -568,17 +570,42 @@ def _player_html(player: dict, team: str, theme: dict, bg_photo: str = "") -> st
             f'</div>'
         )
     else:
+        # Typographic poster — no photo available.
+        # Player's last name rendered large, like a print poster.
+        last_name = name.split()[-1].upper()
+        # Scale font to fit 960px content width (Oswald 700 ~1.6× width ratio)
+        poster_fs = min(280, max(120, int(1100 // max(len(last_name), 4))))
         photo_zone = (
             f'<div style="position:absolute;top:0;left:0;right:0;height:1280px;'
-            f'background:linear-gradient(160deg,#1a0a12,#2d0a1a,#1a0a12);'
-            f'display:flex;align-items:center;justify-content:center;">'
-            f'<svg width="360" height="520" viewBox="0 0 360 520" fill="{acc}" opacity="0.35"'
-            f' xmlns="http://www.w3.org/2000/svg">'
-            f'<circle cx="180" cy="100" r="80"/>'
-            f'<path d="M40 520 Q30 320 180 290 Q330 320 320 520Z"/>'
-            f'<line x1="70" y1="380" x2="40" y2="490" stroke="{acc}" stroke-width="30" stroke-linecap="round"/>'
-            f'<line x1="290" y1="380" x2="320" y2="490" stroke="{acc}" stroke-width="30" stroke-linecap="round"/>'
-            f'</svg></div>'
+            f'background:#000;display:flex;flex-direction:column;'
+            f'align-items:center;justify-content:center;overflow:hidden;">'
+            # Team-colour radial glow behind the name
+            f'<div style="position:absolute;inset:0;'
+            f'background:radial-gradient(ellipse at 50% 55%,'
+            f'{_rgba(theme["accent"], 0.28)} 0%,transparent 65%);'
+            f'pointer-events:none;"></div>'
+            # Diagonal stripe texture
+            f'<div style="position:absolute;inset:0;'
+            f'background:repeating-linear-gradient('
+            f'135deg,transparent,transparent 40px,'
+            f'rgba(255,255,255,0.018) 40px,rgba(255,255,255,0.018) 41px);'
+            f'pointer-events:none;"></div>'
+            # Player last name — poster typographic treatment
+            f'<div style="position:relative;z-index:2;width:960px;'
+            f'font-family:Oswald,Impact,Arial Black,Arial,sans-serif;'
+            f'font-size:{poster_fs}px;font-weight:700;color:#ffffff;'
+            f'line-height:1;letter-spacing:-4px;text-align:center;'
+            f'text-shadow:0 0 80px {_rgba(theme["accent"], 0.7)},'
+            f'0 0 200px {_rgba(theme["accent"], 0.4)},'
+            f'0 4px 40px rgba(0,0,0,0.9);">'
+            f'{last_name}</div>'
+            # Position pill below name
+            f'<div style="position:relative;z-index:2;margin-top:48px;'
+            f'background:#E63946;color:#fff;'
+            f'font-family:Oswald,Impact,Arial Black,Arial,sans-serif;'
+            f'font-size:32px;font-weight:700;letter-spacing:4px;'
+            f'padding:14px 48px;border-radius:6px;">{pos_short}</div>'
+            f'</div>'
         )
 
     # ── OVR circle — top-left ─────────────────────────────────────────────
