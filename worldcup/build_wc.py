@@ -74,7 +74,7 @@ def fetch_all_footage(team: str) -> tuple[list[Path], list[str]]:
         if seg_name == "player":
             player_idx += 1
         t0 = time.perf_counter()
-        p  = fetch_footage(team, seg_name, seg_dur)
+        p  = fetch_footage(team, label, seg_dur)   # label = "player_0/1/2", not "player"
         elapsed = time.perf_counter() - t0
         size_kb = p.stat().st_size // 1024 if p.exists() else 0
         print(f"   [{label:10s}] {_fmt(elapsed):>5}  {size_kb} KB  {p.name}")
