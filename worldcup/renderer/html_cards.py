@@ -451,11 +451,11 @@ def _history_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str
                 f'</div>'
             )
 
-    # Giant decorative title count behind stat grid (opacity 0.06)
+    # Giant decorative title count behind stat grid (opacity 0.06, z-index:1)
     titles_giant = (
         f'<div style="position:absolute;left:20px;top:{_SAFE_TOP}px;'
         f'font-size:520px;font-weight:700;line-height:1;'
-        f'color:{acc};opacity:0.06;z-index:0;letter-spacing:-20px;'
+        f'color:{acc};opacity:0.06;z-index:1;letter-spacing:-20px;'
         f'pointer-events:none">{titles}</div>'
     )
 
@@ -531,14 +531,13 @@ def _history_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str
 
     </div>"""
 
-    # Dark flat bg + gold stat-box borders
-    _dark_bg = f"linear-gradient(180deg,{_rgba(theme['gradient_top'],0.35)} 0%,#050510 40%,#0a0a1a 100%)"
+    # Pure solid dark bg — no bg_photo, no semi-transparent rgba bleeding onto white
     extra = (
         f".stat-box{{background:rgba(0,0,0,0.80)!important;"
         f"border:1.5px solid {GOLD}!important;}}"
-        f".card{{background:{_dark_bg}!important;}}"
+        f".card{{background:linear-gradient(170deg,#1a1a2e 0%,#16213e 40%,#0a0a14 100%)!important;}}"
     )
-    css = _base_css(theme, extra=extra)
+    css = _base_css(theme, extra=extra)   # bg_photo intentionally not passed
     return _html(css, body)
 
 
