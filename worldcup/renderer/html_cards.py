@@ -851,16 +851,11 @@ def _cta_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str:
     group_id = data["group_info"]["group"]
     r, g, b  = theme["accent"]
 
-    # Heights: CAN(80)+team(120)+WIN(80) = 280 + gaps ~60 = 340
-    #          divider block = 48+3+48 = 99
-    #          COMMENT(96)+YOUR_PRED(52+12) = 160
-    #          group info(32+16) = 48
-    #          total ~ 647
-    _cta_content_h = 340 + 99 + 160 + 48
-    _cta_top = _vcenter(_cta_content_h)
-
-    body = f"""
-    <div style="position:absolute;left:60px;right:60px;top:{_cta_top}px;
+    # ── 1. Content block — true vertical center of full 1920px card ───────
+    # top:50% + translateY(-50%) centres on card height, not safe zone.
+    content = f"""
+    <div style="position:absolute;left:60px;right:60px;
+                top:50%;transform:translateY(-50%);
                 text-align:center;z-index:5;">
 
       <!-- CAN / TEAM / WIN IT ALL -->
@@ -869,12 +864,12 @@ def _cta_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str:
                   text-shadow:0 0 60px rgba({r},{g},{b},0.6);">{team.upper()}</div>
       <div style="font-size:80px;font-weight:700;color:#fff;line-height:1;">WIN IT ALL?</div>
 
-      <!-- Full-width gold divider -->
+      <!-- ── 3. Gold divider — 840px wide, 3px, glowing ── -->
       <div style="width:840px;max-width:100%;height:3px;margin:48px auto;
                   background:{GOLD};border-radius:2px;
-                  box-shadow:0 0 20px rgba(212,168,67,0.5);"></div>
+                  box-shadow:0 0 12px {GOLD};"></div>
 
-      <!-- COMMENT — white, large, with glow -->
+      <!-- COMMENT — white, large, with accent glow -->
       <div style="font-size:96px;font-weight:700;letter-spacing:-1px;
                   color:#FFFFFF;
                   text-shadow:0 0 40px {acc_glow},2px 2px 0 rgba(0,0,0,0.8);">
@@ -891,14 +886,33 @@ def _cta_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str:
         Group {group_id} - FIFA World Cup 2026
       </div>
 
-    </div>
+    </div>"""
 
-    <!-- Gold bottom accent bar -->
-    <div style="position:absolute;bottom:10px;left:0;right:0;height:4px;z-index:20;
-                background:linear-gradient(90deg,transparent,{GOLD},transparent);"></div>"""
+    # ── 2. Swipe indicator — 5 circles at y=1350, middle filled with accent ──
+    dot_outline = (
+        f'<div style="width:10px;height:10px;border-radius:50%;'
+        f'border:2px solid rgba(255,255,255,0.35);"></div>'
+    )
+    dot_filled = (
+        f'<div style="width:10px;height:10px;border-radius:50%;'
+        f'background:{acc};box-shadow:0 0 8px {acc_glow};"></div>'
+    )
+    swipe_indicator = (
+        f'<div style="position:absolute;top:1350px;left:50%;'
+        f'transform:translateX(-50%);'
+        f'display:flex;align-items:center;gap:16px;z-index:5;">'
+        f'{dot_outline}{dot_outline}{dot_filled}{dot_outline}{dot_outline}'
+        f'</div>'
+    )
+
+    # Gold bottom accent bar
+    bottom_bar = (
+        f'<div style="position:absolute;bottom:10px;left:0;right:0;height:4px;z-index:20;'
+        f'background:linear-gradient(90deg,transparent,{GOLD},transparent);"></div>'
+    )
 
     css = _base_css(theme)
-    return _html(css, body)
+    return _html(css, content + swipe_indicator + bottom_bar)
 
 
 # ── Playwright screenshot engine ───────────────────────────────────────────────
