@@ -91,20 +91,28 @@ def generate_srt(team: str, segments: list[dict],
     slug     = team.lower().replace(" ", "_")
     srt_path = CAPTIONS_DIR / f"{slug}.srt"
 
+    _SKIP_KEYS = {"player_0", "player_1", "player_2"}
+
     lines: list[str] = []
+    entry_num = 1
     t = 0.0
     for i, seg in enumerate(segments):
-        dur      = float(seg["duration_seconds"])
-        text     = str(seg["caption_text"]).strip()
-        # Segment i starts at (sum of previous durations) - (i transitions × xfade)
-        t_start  = t
-        t_end    = t + dur - (xfade if i < len(segments) - 1 else 0)
-        lines.append(str(i + 1))
-        lines.append(f"{_fmt_time(t_start)} --> {_fmt_time(t_end)}")
-        lines.append(text)
-        lines.append("")
-        t += dur - xfade   # next segment starts xfade seconds earlier
+        dur = float(seg["duration_seconds"])
+        key = seg.get("key", "")
+
+        if key not in _SKIP_KEYS:
+            text    = str(seg["caption_text"]).strip()
+            t_start = t
+            t_end   = t + dur - (xfade if i < len(segments) - 1 else 0)
+            lines.append(str(entry_num))
+            lines.append(f"{_fmt_time(t_start)} --> {_fmt_time(t_end)}")
+            lines.append(text)
+            lines.append("")
+            entry_num += 1
+
+        t += dur - xfade   # timeline advances for all segments, skipped or not
 
     srt_path.write_text("\n".join(lines), encoding="utf-8")
-    print(f"[captions] SRT written → {srt_path} ({len(segments)} entries)")
+    n_written = entry_num - 1
+    print(f"[captions] SRT written -> {srt_path} ({n_written} entries)")
     return srt_path
