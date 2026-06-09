@@ -92,6 +92,44 @@ def _concat_segments(segment_paths: list[Path], dest: Path) -> bool:
     return ok
 
 
+def _ffmpeg_vf_path(p: Path) -> str:
+    """
+    Escape an absolute path for use inside an ffmpeg -vf filter value.
+    On Windows the drive-letter colon must be escaped: C:/ → C\\:/
+    """
+    s = str(p.resolve()).replace("\\", "/")
+    if len(s) >= 2 and s[1] == ":":
+        s = s[0] + "\\:" + s[2:]
+    return s
+
+
+def _burn_captions(video: Path, srt: Path, dest: Path) -> bool:
+    """
+    Hard-burn SRT captions into video using ffmpeg subtitles filter.
+    Style: white text, black outline, bottom-centre, MarginV=120 (above TikTok chrome).
+    """
+    force_style = (
+        "FontName=Arial,"
+        "FontSize=18,"
+        "Bold=1,"
+        "PrimaryColour=&H00FFFFFF,"   # white
+        "OutlineColour=&H00000000,"   # black outline
+        "BorderStyle=1,"
+        "Outline=2,"
+        "Shadow=0,"
+        "Alignment=2,"                # bottom-centre
+        "MarginV=120"                 # 120px above bottom edge
+    )
+    srt_escaped = _ffmpeg_vf_path(srt)
+    return _run([
+        FFMPEG, "-y",
+        "-i", str(video),
+        "-vf", f"subtitles='{srt_escaped}':force_style='{force_style}'",
+        "-c:a", "copy",
+        str(dest),
+    ], label="burn_captions")
+
+
 def _mix_narration(video: Path, narration: Path, dest: Path) -> bool:
     """Mix narration at -3 dB over video; soften existing footage audio to -6 dB."""
     return _run([
@@ -117,6 +155,7 @@ def assemble_mp4(
     footage_paths: list[Path],
     card_pngs: list[Path],
     narration_path: Optional[Path] = None,
+    srt_path: Optional[Path] = None,
 ) -> Path:
     """
     Assemble a 1080x1920 World Cup Short MP4.
@@ -124,12 +163,11 @@ def assemble_mp4(
     Parameters
     ----------
     team:           Team name, used in the output filename.
-    footage_paths:  One Path per segment, already trimmed to segment duration
-                    by fetch_footage().
-    card_pngs:      One PNG per segment, overlaid at 70% opacity centered on
-                    the footage. Must have the same length as footage_paths.
-    narration_path: Optional WAV/MP3 voiceover mixed at -3 dB. When absent
-                    (or file missing), the video is silent — safe for dev mode.
+    footage_paths:  One Path per segment, already trimmed to segment duration.
+    card_pngs:      One PNG per segment, overlaid at 70% opacity centered.
+                    Must have the same length as footage_paths.
+    narration_path: Optional WAV/MP3 voiceover mixed at -3 dB.
+    srt_path:       Optional SRT file; captions are hard-burned into the video.
 
     Returns
     -------
@@ -173,17 +211,27 @@ def assemble_mp4(
             raise RuntimeError("[assembler] Concat failed — check ffmpeg stderr above")
 
         # ── Step 3: mix narration (optional) ──────────────────────────────────
+        current = concat_path
         narration = Path(narration_path) if narration_path else None
         if narration and narration.exists():
             print(f"[assembler] Mixing narration at -3 dB...")
             mixed = tmp / "mixed.mp4"
-            if _mix_narration(concat_path, narration, mixed):
-                shutil.copy(str(mixed), str(out_path))
+            if _mix_narration(current, narration, mixed):
+                current = mixed
             else:
-                print("[assembler] Narration mix failed — keeping silent video")
-                shutil.copy(str(concat_path), str(out_path))
-        else:
-            shutil.copy(str(concat_path), str(out_path))
+                print("[assembler] Narration mix failed — continuing without")
+
+        # ── Step 4: burn captions (optional) ──────────────────────────────────
+        srt = Path(srt_path) if srt_path else None
+        if srt and srt.exists():
+            print(f"[assembler] Burning captions...")
+            captioned = tmp / "captioned.mp4"
+            if _burn_captions(current, srt, captioned):
+                current = captioned
+            else:
+                print("[assembler] Caption burn failed — outputting without captions")
+
+        shutil.copy(str(current), str(out_path))
 
     size_mb = out_path.stat().st_size / (1024 * 1024)
     print(f"[assembler] Done → {out_path} ({size_mb:.1f} MB)")

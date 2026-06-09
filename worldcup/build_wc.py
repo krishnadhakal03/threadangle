@@ -25,6 +25,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from worldcup.capcut_builder import SEGMENTS
 from worldcup.config import OUTPUT_DIR
 from worldcup.data.footage import fetch_footage
+from worldcup.data.wc2026_data import get_full_team_data
+from worldcup.assembler.captions import build_segment_captions, generate_srt
 from worldcup.assembler.mp4_assembler import assemble_mp4
 
 
@@ -64,23 +66,25 @@ def render_cards(team: str, skip: bool) -> dict[str, Path]:
 
 # ── Step 2: fetch footage ───────────────────────────────────────────────────────
 
-def fetch_all_footage(team: str) -> tuple[list[Path], list[str]]:
-    """Return (footage_paths, segment_names) in SEGMENTS order."""
-    paths: list[Path] = []
-    names: list[str]  = []
+def fetch_all_footage(team: str) -> tuple[list[Path], list[str], list[float]]:
+    """Return (footage_paths, segment_names, segment_durations) in SEGMENTS order."""
+    paths:     list[Path]  = []
+    names:     list[str]   = []
+    durations: list[float] = []
     player_idx = 0
     for seg_name, seg_dur in SEGMENTS:
         label = f"player_{player_idx}" if seg_name == "player" else seg_name
         if seg_name == "player":
             player_idx += 1
         t0 = time.perf_counter()
-        p  = fetch_footage(team, label, seg_dur)   # label = "player_0/1/2", not "player"
+        p  = fetch_footage(team, label, seg_dur)
         elapsed = time.perf_counter() - t0
         size_kb = p.stat().st_size // 1024 if p.exists() else 0
         print(f"   [{label:10s}] {_fmt(elapsed):>5}  {size_kb} KB  {p.name}")
         paths.append(p)
         names.append(label)
-    return paths, names
+        durations.append(seg_dur)
+    return paths, names, durations
 
 
 # ── Step 3: assemble ────────────────────────────────────────────────────────────
@@ -91,6 +95,7 @@ def build_mp4(
     card_by_name: dict[str, Path],
     seg_names: list[str],
     narration_path: Path | None,
+    srt_path: Path | None = None,
 ) -> Path:
     ordered_cards: list[Path] = []
     for label in seg_names:
@@ -106,6 +111,7 @@ def build_mp4(
         footage_paths=footage_paths,
         card_pngs=ordered_cards,
         narration_path=narration_path,
+        srt_path=srt_path,
     )
 
 
@@ -140,23 +146,30 @@ def main() -> None:
 
     # ── 2. Footage ──────────────────────────────────────────────────────────────
     t0 = _step(2, f"fetch_footage() — {len(SEGMENTS)} segments")
-    footage_paths, seg_names = fetch_all_footage(team)
+    footage_paths, seg_names, seg_durations = fetch_all_footage(team)
     _done(t0)
 
-    # ── 3. Narration ─────────────────────────────────────────────────────────────
+    # ── 3. Captions ──────────────────────────────────────────────────────────────
+    t0 = _step(3, "generate_srt()")
+    team_data    = get_full_team_data(team)
+    caption_segs = build_segment_captions(team, seg_names, seg_durations, team_data)
+    srt_path     = generate_srt(team, caption_segs)
+    _done(t0)
+
+    # ── 4. Narration ─────────────────────────────────────────────────────────────
     narration_path: Path | None = None
     if not no_voice:
-        slug    = team.lower().replace(" ", "_")
-        wav     = OUTPUT_DIR / f"{slug}_vo.wav"
+        slug = team.lower().replace(" ", "_")
+        wav  = OUTPUT_DIR / f"{slug}_vo.wav"
         if wav.exists():
             narration_path = wav
             print(f"\n── Narration: {wav}")
         else:
             print("\n── Narration: no .wav found — silent")
 
-    # ── 4. Assemble ──────────────────────────────────────────────────────────────
-    t0 = _step(3, "assemble_mp4()")
-    out = build_mp4(team, footage_paths, card_by_name, seg_names, narration_path)
+    # ── 5. Assemble ──────────────────────────────────────────────────────────────
+    t0 = _step(4, "assemble_mp4()")
+    out = build_mp4(team, footage_paths, card_by_name, seg_names, narration_path, srt_path)
     _done(t0)
 
     # ── Summary ──────────────────────────────────────────────────────────────────
