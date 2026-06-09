@@ -760,20 +760,18 @@ def _group_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str:
         is_hl    = t_name.lower() == team.lower()
         flag_url = get_flag_url(t_name, width=200)
 
-        # Explicit width+height attrs + border-radius on <img> directly.
-        # A wrapper div with overflow:hidden is intentionally avoided — flex/grid
-        # containers collapse it. The img itself carries all circular styling.
         if flag_url:
             flag_cell = (
+                f'<div style="width:80px;height:80px;border-radius:50%;'
+                f'overflow:hidden;flex-shrink:0;flex-basis:80px;">'
                 f'<img src="{flag_url}" alt="{t_name}"'
-                f' width="100" height="100"'
-                f' style="width:100px;height:100px;object-fit:cover;'
-                f'border-radius:50%;display:block;flex-shrink:0;">'
+                f' style="width:100%;height:100%;object-fit:cover;display:block;">'
+                f'</div>'
             )
         else:
             flag_cell = (
-                f'<div style="width:100px;height:100px;border-radius:50%;'
-                f'background:rgba(255,255,255,0.12);display:block;flex-shrink:0;"></div>'
+                f'<div style="width:80px;height:80px;border-radius:50%;'
+                f'background:rgba(255,255,255,0.12);flex-shrink:0;flex-basis:80px;"></div>'
             )
 
         if is_hl:
@@ -797,10 +795,8 @@ def _group_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str:
 
         name_size = "52px" if len(t_name) <= 12 else "40px"
 
-        # Grid layout: fixed 110px flag col | flexible name col | auto badge col.
-        # display:grid prevents flex from collapsing the flag cell.
         rows_html += (
-            f'<div style="display:grid;grid-template-columns:110px 1fr auto;'
+            f'<div style="display:grid;grid-template-columns:96px 1fr auto;'
             f'align-items:center;gap:16px;'
             f'{row_style}border-radius:20px;padding:20px 28px;min-height:160px;">'
             f'{flag_cell}'
@@ -811,8 +807,7 @@ def _group_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str:
             f'</div>'
         )
 
-    # Decorative left accent bar — font-load-independent replacement for
-    # the group letter (which rendered as a thin rectangle before fonts loaded).
+    # Left accent bar — 8px solid bar at safe-zone top (font-load-independent)
     accent_bar = (
         f'<div style="position:absolute;left:60px;top:{_SAFE_TOP}px;'
         f'width:8px;height:200px;border-radius:4px;'
@@ -820,8 +815,20 @@ def _group_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str:
         f'box-shadow:0 0 24px {_rgba(theme["accent"],0.55)};"></div>'
     )
 
+    # Large group letter watermark centred on the rows area (below rows start y=400)
+    # Uses Impact/Arial Black as fallback so it renders even before Oswald loads.
+    group_watermark = (
+        f'<div style="position:absolute;left:0;right:0;top:380px;'
+        f'font-size:900px;font-weight:900;line-height:1;'
+        f'color:{acc};opacity:0.08;z-index:0;'
+        f'text-align:center;pointer-events:none;'
+        f'font-family:Impact,"Arial Black",Arial,sans-serif;">'
+        f'{group_id}</div>'
+    )
+
     body = f"""
     {accent_bar}
+    {group_watermark}
 
     <!-- Subtitle pinned at safe-zone top, indented past the accent bar -->
     <div style="position:absolute;left:88px;right:60px;top:{_SAFE_TOP + 20}px;z-index:5;">
