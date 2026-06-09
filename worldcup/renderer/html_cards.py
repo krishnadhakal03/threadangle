@@ -755,86 +755,92 @@ def _group_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str:
     r, g, b     = theme["accent"]
 
     rows_html = ""
-    for i, t_name in enumerate(group_teams[:4]):
-        is_hl      = t_name.lower() == team.lower()
-        flag_url   = get_flag_url(t_name, width=200)
-        flag_img   = (
-            f'<div style="width:100px;height:100px;border-radius:50%;overflow:hidden;flex-shrink:0;">'
-            f'<img src="{flag_url}" alt="{t_name}"'
-            f' style="width:100%;height:100%;object-fit:cover;"></div>'
-        ) if flag_url else (
-            f'<div style="width:100px;height:100px;border-radius:50%;'
-            f'background:rgba(255,255,255,0.1);flex-shrink:0;"></div>'
-        )
+    for t_name in group_teams[:4]:
+        is_hl    = t_name.lower() == team.lower()
+        flag_url = get_flag_url(t_name, width=200)
+
+        # Explicit width+height attrs + border-radius on <img> directly.
+        # A wrapper div with overflow:hidden is intentionally avoided — flex/grid
+        # containers collapse it. The img itself carries all circular styling.
+        if flag_url:
+            flag_cell = (
+                f'<img src="{flag_url}" alt="{t_name}"'
+                f' width="100" height="100"'
+                f' style="width:100px;height:100px;object-fit:cover;'
+                f'border-radius:50%;display:block;flex-shrink:0;">'
+            )
+        else:
+            flag_cell = (
+                f'<div style="width:100px;height:100px;border-radius:50%;'
+                f'background:rgba(255,255,255,0.12);display:block;flex-shrink:0;"></div>'
+            )
+
         if is_hl:
             row_style = (
                 f"background:rgba({r},{g},{b},0.25);"
                 f"border:2px solid {GOLD};"
                 f"box-shadow:0 0 40px rgba({r},{g},{b},0.3);"
             )
-            name_color = "#fff"
+            name_color  = "#fff"
             name_weight = "700"
             badge = (
                 f'<span style="background:{GOLD};color:#000;font-size:18px;'
                 f'font-weight:700;letter-spacing:2px;padding:8px 20px;'
-                f'border-radius:999px;white-space:nowrap;margin-left:auto;">YOUR TEAM</span>'
+                f'border-radius:999px;white-space:nowrap;">YOUR TEAM</span>'
             )
         else:
-            row_style = "background:rgba(15,15,30,0.85);border:1.5px solid rgba(255,255,255,0.08);"
-            name_color = "#d0d4e8"
+            row_style   = "background:rgba(15,15,30,0.85);border:1.5px solid rgba(255,255,255,0.08);"
+            name_color  = "#d0d4e8"
             name_weight = "400"
-            badge = ""
+            badge       = ""
 
-        name_size = "56px" if len(t_name) <= 12 else "44px"
+        name_size = "52px" if len(t_name) <= 12 else "40px"
+
+        # Grid layout: fixed 110px flag col | flexible name col | auto badge col.
+        # display:grid prevents flex from collapsing the flag cell.
         rows_html += (
-            f'<div style="display:flex;align-items:center;gap:28px;'
-            f'{row_style}border-radius:20px;padding:24px 32px;height:148px;">'
-            f'{flag_img}'
+            f'<div style="display:grid;grid-template-columns:110px 1fr auto;'
+            f'align-items:center;gap:16px;'
+            f'{row_style}border-radius:20px;padding:20px 28px;min-height:160px;">'
+            f'{flag_cell}'
             f'<div style="font-size:{name_size};font-weight:{name_weight};'
-            f'color:{name_color};letter-spacing:0;flex:1;line-height:1.1;">'
+            f'color:{name_color};letter-spacing:0;line-height:1.1;">'
             f'{t_name}</div>'
             f'{badge}'
             f'</div>'
         )
 
-    # Layout: subtitle (30px) + gap (40px) + rows (4x148px + 3x16px gaps) = 30+40+640 = 710
-    _n_teams      = len(group_teams[:4])
-    _row_h        = 148
-    _rows_total   = _n_teams * _row_h + max(0, _n_teams - 1) * 16
-    _grp_content_h = 30 + 40 + _rows_total
-    _grp_top = _vcenter(_grp_content_h)
-
-    # Decorative group letter — left-aligned, opacity 0.15
-    group_letter = (
-        f'<div style="position:absolute;left:40px;top:{_SAFE_TOP}px;'
-        f'font-size:300px;font-weight:700;line-height:1;'
-        f'color:{acc};opacity:0.15;z-index:0;pointer-events:none">{group_id}</div>'
+    # Decorative left accent bar — font-load-independent replacement for
+    # the group letter (which rendered as a thin rectangle before fonts loaded).
+    accent_bar = (
+        f'<div style="position:absolute;left:60px;top:{_SAFE_TOP}px;'
+        f'width:8px;height:200px;border-radius:4px;'
+        f'background:{acc};z-index:2;'
+        f'box-shadow:0 0 24px {_rgba(theme["accent"],0.55)};"></div>'
     )
 
     body = f"""
-    {group_letter}
+    {accent_bar}
 
-    <!-- Subtitle pinned at safe-zone top -->
-    <div style="position:absolute;left:60px;right:60px;top:{_SAFE_TOP + 20}px;
-                text-align:center;z-index:5;">
-      <div style="font-size:28px;font-weight:400;letter-spacing:5px;
+    <!-- Subtitle pinned at safe-zone top, indented past the accent bar -->
+    <div style="position:absolute;left:88px;right:60px;top:{_SAFE_TOP + 20}px;z-index:5;">
+      <div style="font-size:28px;font-weight:400;letter-spacing:4px;
                   color:rgba(255,255,255,0.85);">
-        GROUP {group_id} - FIFA WORLD CUP 2026
+        GROUP {group_id} &mdash; FIFA WORLD CUP 2026
       </div>
     </div>
 
-    <!-- Team rows — first row at y=400 minimum -->
-    <div style="position:absolute;left:60px;right:60px;top:400px;
-                text-align:left;z-index:5;">
+    <!-- Team rows — first row starts at y=400 -->
+    <div style="position:absolute;left:60px;right:60px;top:400px;z-index:5;">
       <div style="display:flex;flex-direction:column;gap:16px;">
         {rows_html}
       </div>
     </div>"""
 
     # Solid team-colour flat bg — no photo
-    gt = _hex(theme["gradient_top"])
+    gt    = _hex(theme["gradient_top"])
     extra = f".card{{background:linear-gradient(160deg,{gt} 0%,#060810 60%)!important;}}"
-    css = _base_css(theme, extra=extra)
+    css   = _base_css(theme, extra=extra)
     return _html(css, body)
 
 
