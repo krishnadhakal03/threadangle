@@ -74,13 +74,12 @@ def _overlay_segment(footage: Path, card: Path, dest: Path) -> bool:
 
 
 def _concat_segments(segment_paths: list[Path], dest: Path) -> bool:
-    """Join all segments via ffmpeg concat demuxer with re-encode for compatibility."""
+    """Join all segments via ffmpeg concat demuxer (hard-cut, used as fallback)."""
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".txt", delete=False, encoding="utf-8"
     ) as f:
         list_path = Path(f.name)
         for p in segment_paths:
-            # Use forward slashes — ffmpeg concat demuxer requires them on Windows too
             f.write(f"file '{p.as_posix()}'\n")
 
     ok = _run([
@@ -93,6 +92,60 @@ def _concat_segments(segment_paths: list[Path], dest: Path) -> bool:
     ], label="concat")
     list_path.unlink(missing_ok=True)
     return ok
+
+
+def _concat_with_xfade(segment_paths: list[Path], dest: Path,
+                        xfade_duration: float = 0.5) -> bool:
+    """
+    Join segments with 0.5s crossfade (xfade) transitions between each pair.
+
+    Each segment's effective contribution = (duration - xfade_duration) so the
+    total runtime shrinks by xfade_duration * (n-1) vs a hard-cut concat.
+    Audio is concatenated cleanly (no audio xfade — avoids phasing artefacts).
+    """
+    if len(segment_paths) == 1:
+        shutil.copy2(str(segment_paths[0]), str(dest))
+        return True
+
+    # Probe every segment duration up front
+    durations = [_probe_duration(p) for p in segment_paths]
+
+    # Build -i list
+    inputs: list[str] = []
+    for p in segment_paths:
+        inputs += ["-i", str(p)]
+
+    # Build xfade video chain
+    filter_parts: list[str] = []
+    prev_label = "0:v"
+    offset = 0.0
+    for i in range(1, len(segment_paths)):
+        offset += durations[i - 1] - xfade_duration
+        curr_label = f"v{i}"
+        filter_parts.append(
+            f"[{prev_label}][{i}:v]xfade=transition=fade:"
+            f"duration={xfade_duration:.3f}:offset={offset:.3f}[{curr_label}]"
+        )
+        prev_label = curr_label
+
+    # Simple audio concat (no xfade on audio — avoids desync)
+    audio_in = "".join(f"[{i}:a]" for i in range(len(segment_paths)))
+    filter_parts.append(
+        f"{audio_in}concat=n={len(segment_paths)}:v=0:a=1[aout]"
+    )
+
+    filter_complex = ";".join(filter_parts)
+
+    return _run([
+        FFMPEG, "-y",
+        *inputs,
+        "-filter_complex", filter_complex,
+        "-map", f"[{prev_label}]",
+        "-map", "[aout]",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-ar", "44100",
+        str(dest),
+    ], label="xfade_concat")
 
 
 def _probe_duration(p: Path) -> float:
@@ -272,11 +325,13 @@ def assemble_mp4(
                 shutil.copy(str(footage), str(dest))
             seg_paths.append(dest)
 
-        # ── Step 2: concatenate ────────────────────────────────────────────────
+        # ── Step 2: concatenate with crossfade transitions ────────────────────
         concat_path = tmp / "concat.mp4"
-        print(f"[assembler] Concatenating {len(seg_paths)} segments...")
-        if not _concat_segments(seg_paths, concat_path):
-            raise RuntimeError("[assembler] Concat failed — check ffmpeg stderr above")
+        print(f"[assembler] Concatenating {len(seg_paths)} segments (xfade 0.5s)...")
+        if not _concat_with_xfade(seg_paths, concat_path):
+            print("[assembler] xfade failed — falling back to hard-cut concat")
+            if not _concat_segments(seg_paths, concat_path):
+                raise RuntimeError("[assembler] Concat failed — check ffmpeg stderr above")
 
         # ── Step 3: mix narration (optional) ──────────────────────────────────
         current = concat_path
