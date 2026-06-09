@@ -72,9 +72,17 @@ def build_segment_captions(
     return segments
 
 
-def generate_srt(team: str, segments: list[dict]) -> Path:
+XFADE_DUR = 0.5   # must match mp4_assembler._concat_with_xfade xfade_duration
+
+
+def generate_srt(team: str, segments: list[dict],
+                 xfade: float = XFADE_DUR) -> Path:
     """
-    Write an SRT file from a segment list.
+    Write an SRT file from a segment list, accounting for xfade overlap.
+
+    Each xfade transition removes *xfade* seconds from the total timeline, so
+    segment N starts at:
+        sum(durations 0..N-1) - N * xfade
 
     Each dict requires: key, duration_seconds, caption_text.
     Returns path to worldcup/output/captions/{team}.srt
@@ -85,14 +93,17 @@ def generate_srt(team: str, segments: list[dict]) -> Path:
 
     lines: list[str] = []
     t = 0.0
-    for i, seg in enumerate(segments, 1):
-        dur  = float(seg["duration_seconds"])
-        text = str(seg["caption_text"]).strip()
-        lines.append(str(i))
-        lines.append(f"{_fmt_time(t)} --> {_fmt_time(t + dur)}")
+    for i, seg in enumerate(segments):
+        dur      = float(seg["duration_seconds"])
+        text     = str(seg["caption_text"]).strip()
+        # Segment i starts at (sum of previous durations) - (i transitions × xfade)
+        t_start  = t
+        t_end    = t + dur - (xfade if i < len(segments) - 1 else 0)
+        lines.append(str(i + 1))
+        lines.append(f"{_fmt_time(t_start)} --> {_fmt_time(t_end)}")
         lines.append(text)
         lines.append("")
-        t += dur
+        t += dur - xfade   # next segment starts xfade seconds earlier
 
     srt_path.write_text("\n".join(lines), encoding="utf-8")
     print(f"[captions] SRT written → {srt_path} ({len(segments)} entries)")

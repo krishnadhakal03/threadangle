@@ -226,19 +226,22 @@ def _ffmpeg_vf_path(p: Path) -> str:
 def _burn_captions(video: Path, srt: Path, dest: Path) -> bool:
     """
     Hard-burn SRT captions into video using ffmpeg subtitles filter.
-    Style: white text, black outline, bottom-centre, MarginV=120 (above TikTok chrome).
+
+    Style: white text, dark semi-transparent background box (BorderStyle=3),
+    bottom-centre, MarginV=50 — readable on any footage background.
     """
     force_style = (
         "FontName=Arial,"
-        "FontSize=18,"
+        "FontSize=16,"
         "Bold=1,"
-        "PrimaryColour=&H00FFFFFF,"   # white
+        "PrimaryColour=&H00FFFFFF,"   # white text
         "OutlineColour=&H00000000,"   # black outline
-        "BorderStyle=1,"
-        "Outline=2,"
+        "BorderStyle=3,"              # opaque box behind text
+        "BackColour=&H80000000,"      # 50% black background box
+        "Outline=1,"
         "Shadow=0,"
         "Alignment=2,"                # bottom-centre
-        "MarginV=120"                 # 120px above bottom edge
+        "MarginV=50"                  # 50px above bottom edge
     )
     srt_escaped = _ffmpeg_vf_path(srt)
     return _run([
