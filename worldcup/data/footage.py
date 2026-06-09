@@ -68,13 +68,14 @@ def _run(args: list[str], label: str = "") -> bool:
         return False
 
 
-def _make_fallback(dest: Path, duration: float) -> Path:
-    """Silent black 1080×1920 h264/aac clip — always works."""
+def _make_fallback(dest: Path, duration: float,
+                   w: int = 1080, h: int = 1920) -> Path:
+    """Silent black h264/aac clip at *w*×*h* — always works."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     _run([
         FFMPEG, "-y",
         "-f", "lavfi", "-i",
-        f"color=black:size=1080x1920:rate=30:duration={duration:.3f}",
+        f"color=black:size={w}x{h}:rate=30:duration={duration:.3f}",
         "-f", "lavfi", "-i",
         "anullsrc=channel_layout=stereo:sample_rate=44100",
         "-t", f"{duration:.3f}",
@@ -87,23 +88,23 @@ def _make_fallback(dest: Path, duration: float) -> Path:
     return dest
 
 
-def _trim_resize(src: Path, dest: Path, duration: float) -> bool:
+def _trim_resize(src: Path, dest: Path, duration: float,
+                 w: int = 1080, h: int = 1920) -> bool:
     """
-    Resize to 1080×1920 (scale-to-fill + crop, no letterboxing), trim to
+    Resize to *w*×*h* (scale-to-fill + crop, no letterboxing), trim to
     *duration* seconds, add a silent stereo audio track for mux compatibility.
+    Default: 1080×1920 portrait (Shorts). Pass w=1920,h=1080 for landscape.
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
     return _run([
         FFMPEG, "-y",
         "-i", str(src),
-        # Silent audio source — overridden if source has audio via -map below
         "-f", "lavfi", "-i",
         "anullsrc=channel_layout=stereo:sample_rate=44100",
-        # Video: scale up to fill 1080×1920 then centre-crop (no black bars)
         "-vf", (
-            "scale=1080:1920:force_original_aspect_ratio=increase,"
-            "crop=1080:1920,"
-            "setsar=1"
+            f"scale={w}:{h}:force_original_aspect_ratio=increase,"
+            f"crop={w}:{h},"
+            f"setsar=1"
         ),
         "-map", "0:v:0",          # video from source
         "-map", "0:a:0?",         # source audio if present (? = optional)
@@ -213,28 +214,33 @@ def _search_pixabay(query: str) -> str:
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
-def fetch_footage(team: str, segment: str, duration: float) -> Path:
+def fetch_footage(team: str, segment: str, duration: float,
+                  resolution: tuple[int, int] = (1080, 1920)) -> Path:
     """
-    Fetch, process, and cache a 1080×1920 portrait MP4 for one video segment.
+    Fetch, process, and cache a portrait or landscape MP4 for one segment.
 
     Parameters
     ----------
-    team:     Team name matching wc2026_data.py key (e.g. "Brazil").
-    segment:  Segment key: "hook" | "history" | "player" | "group" | "cta".
-    duration: Target clip length in seconds.
+    team:       Team name matching wc2026_data.py key (e.g. "Brazil").
+    segment:    Segment key: "hook" | "history" | "player_0" | etc.
+    duration:   Target clip length in seconds.
+    resolution: (width, height) — default (1080,1920) portrait for Shorts.
+                Pass (1920,1080) for long-form landscape.
 
     Returns
     -------
-    Path to worldcup/output/footage/{team}/{segment}.mp4.
+    Path to worldcup/output/footage/{team}[_long]/{segment}.mp4.
     Always returns a valid Path — uses a silent black fallback on any failure.
     """
+    w, h    = resolution
     slug    = team.lower().replace(" ", "_")
-    out_dir = FOOTAGE_DIR / slug
+    sub     = f"{slug}_long" if w > h else slug
+    out_dir = FOOTAGE_DIR / sub
     out_dir.mkdir(parents=True, exist_ok=True)
     dest    = out_dir / f"{segment}.mp4"
 
     if dest.exists() and dest.stat().st_size > 10_000:
-        print(f"[footage] Cache hit: {slug}/{segment}.mp4")
+        print(f"[footage] Cache hit: {sub}/{segment}.mp4")
         return dest
 
     raw_query = _QUERIES.get(segment, "{team} football")
@@ -256,13 +262,13 @@ def fetch_footage(team: str, segment: str, duration: float) -> Path:
             print(f"[footage] Download failed — using fallback")
             return _make_fallback(dest, duration)
 
-        print(f"[footage] Trimming/resizing to 1080x1920 @ {duration:.1f}s...")
-        if not _trim_resize(tmp_path, dest, duration):
+        print(f"[footage] Trimming/resizing to {w}x{h} @ {duration:.1f}s...")
+        if not _trim_resize(tmp_path, dest, duration, w=w, h=h):
             print(f"[footage] Resize failed — using fallback")
             return _make_fallback(dest, duration)
     finally:
         tmp_path.unlink(missing_ok=True)
 
     size_kb = dest.stat().st_size // 1024
-    print(f"[footage] Saved {slug}/{segment}.mp4 ({size_kb} KB)")
+    print(f"[footage] Saved {sub}/{segment}.mp4 ({size_kb} KB)")
     return dest

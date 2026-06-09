@@ -44,28 +44,27 @@ def _run(args: list[str], label: str = "") -> bool:
         return False
 
 
-def _overlay_segment(footage: Path, card: Path, dest: Path) -> bool:
+def _overlay_segment(footage: Path, card: Path, dest: Path,
+                     w: int = 1080, h: int = 1920) -> bool:
     """
     Overlay *card* PNG at 70% opacity, centered on *footage*.
-    Output duration = footage duration (-shortest stops at footage EOF).
-    Always produces 1 video + 1 stereo AAC audio stream.
+    Output resolution = *w*×*h*. Default: 1080×1920 portrait (Shorts).
+    For 1920×1080 landscape, the portrait card is pillarboxed (centred strip).
     """
     filter_complex = (
-        # Scale card to fit 1080x1920, pad transparent, apply 70% opacity
-        "[1:v]scale=1080:1920:force_original_aspect_ratio=decrease,"
-        "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black@0,"
+        f"[1:v]scale={w}:{h}:force_original_aspect_ratio=decrease,"
+        f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black@0,"
         "format=rgba,colorchannelmixer=aa=0.7[card];"
-        # Blend card over footage video
         "[0:v][card]overlay=0:0:format=auto[vout]"
     )
     return _run([
         FFMPEG, "-y",
         "-i", str(footage),
-        "-loop", "1", "-i", str(card),  # loop still image to match footage duration
+        "-loop", "1", "-i", str(card),
         "-filter_complex", filter_complex,
         "-map", "[vout]",
-        "-map", "0:a:0",               # audio from footage (null or real)
-        "-shortest",                    # stop when footage stream ends
+        "-map", "0:a:0",
+        "-shortest",
         "-c:v", "libx264", "-preset", "fast", "-crf", "22", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "44100",
         "-r", str(FPS),
@@ -277,9 +276,10 @@ def assemble_mp4(
     card_pngs: list[Path],
     narration_path: Optional[Path] = None,
     srt_path: Optional[Path] = None,
+    fmt: str = "short",
 ) -> Path:
     """
-    Assemble a 1080x1920 World Cup Short MP4.
+    Assemble a World Cup MP4.
 
     Parameters
     ----------
@@ -289,10 +289,11 @@ def assemble_mp4(
                     Must have the same length as footage_paths.
     narration_path: Optional WAV/MP3 voiceover mixed at -3 dB.
     srt_path:       Optional SRT file; captions are hard-burned into the video.
+    fmt:            "short" (default, 1080×1920) | "long" (1920×1080 landscape).
 
     Returns
     -------
-    Path to worldcup/output/final/{team}_wc2026_{timestamp}.mp4
+    Path to worldcup/output/final/{team}_wc2026_{short|long}_{timestamp}.mp4
 
     Raises
     ------
@@ -306,9 +307,10 @@ def assemble_mp4(
         )
 
     FINAL_DIR.mkdir(parents=True, exist_ok=True)
-    slug = team.lower().replace(" ", "_")
-    ts = int(time.time())
-    out_path = FINAL_DIR / f"{slug}_wc2026_{ts}.mp4"
+    slug     = team.lower().replace(" ", "_")
+    ts       = int(time.time())
+    w, h     = (1920, 1080) if fmt == "long" else (1080, 1920)
+    out_path = FINAL_DIR / f"{slug}_wc2026_{fmt}_{ts}.mp4"
 
     with tempfile.TemporaryDirectory(prefix="wc_asm_") as tmp_dir:
         tmp = Path(tmp_dir)
@@ -319,7 +321,7 @@ def assemble_mp4(
         for i, (footage, card) in enumerate(zip(footage_paths, card_pngs)):
             dest = tmp / f"seg_{i:02d}.mp4"
             print(f"[assembler] [{i+1}/{n}] {card.stem} overlay → {dest.name}")
-            ok = _overlay_segment(footage, card, dest)
+            ok = _overlay_segment(footage, card, dest, w=w, h=h)
             if not ok or not dest.exists() or dest.stat().st_size < 1_000:
                 print(f"[assembler]   overlay failed — using raw footage for segment {i+1}")
                 shutil.copy(str(footage), str(dest))

@@ -963,6 +963,7 @@ def render_team_cards(
     team: str,
     output_dir: Optional[Path] = None,
     players: int = 3,
+    fmt: str = "short",
 ) -> list[Path]:
     """
     Render all card segments for *team* and return list of saved PNG paths.
@@ -972,11 +973,13 @@ def render_team_cards(
     team:       Team name matching wc2026_data.py key (e.g. "Brazil")
     output_dir: Override save directory (default: worldcup/output/cards/{team}/)
     players:    Number of player cards to render (1-5, default 3)
+    fmt:        "short" (default, 1080×1920) or "long" (saves to {team}_long/)
     """
     data   = get_full_team_data(team)
     theme  = get_country_theme(team)
     slug   = team.lower().replace(" ", "_")
-    outdir = output_dir or (OUTPUT_DIR / "cards" / slug)
+    subdir = f"{slug}_long" if fmt == "long" else slug
+    outdir = output_dir or (OUTPUT_DIR / "cards" / subdir)
     outdir.mkdir(parents=True, exist_ok=True)
 
     key_players = data.get("key_players", [])[:players]

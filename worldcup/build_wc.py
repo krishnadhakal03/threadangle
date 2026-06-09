@@ -1,16 +1,20 @@
 """
-build_wc.py — Full France pipeline: cards → footage → MP4.
+build_wc.py — Full pipeline: cards → footage → MP4.
 
 Usage:
   python worldcup/build_wc.py France
   python worldcup/build_wc.py France --no-voice
+  python worldcup/build_wc.py France --format long --no-voice
   python worldcup/build_wc.py France --skip-cards
 
 Environment:
-  WC_VOICE=false   same as --no-voice (default)
-  WC_VOICE=true    attempt narration from cached .wav
+  WC_VOICE=false     same as --no-voice (default)
+  WC_VOICE=true      generate narration via ElevenLabs/gTTS
+  BGM_TRACK=hype     football_hype.mp3 (default)
+  BGM_TRACK=dramatic dramatic.mp3
 
-Output: worldcup/output/final/{team}_wc2026_{timestamp}.mp4
+Output (short): worldcup/output/final/{team}_wc2026_short_{timestamp}.mp4
+Output (long):  worldcup/output/final/{team}_wc2026_long_{timestamp}.mp4
 """
 from __future__ import annotations
 
@@ -22,7 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from worldcup.capcut_builder import SEGMENTS
+from worldcup.capcut_builder import SEGMENTS, SEGMENTS_LONG
 from worldcup.config import OUTPUT_DIR
 from worldcup.data.footage import fetch_footage
 from worldcup.data.wc2026_data import get_full_team_data
@@ -46,16 +50,18 @@ def _done(t0: float) -> None:
 
 # ── Step 1: render cards ────────────────────────────────────────────────────────
 
-def render_cards(team: str, skip: bool) -> dict[str, Path]:
-    cards_dir = OUTPUT_DIR / "cards" / team.lower()
+def render_cards(team: str, skip: bool, fmt: str = "short") -> dict[str, Path]:
+    slug      = team.lower().replace(" ", "_")
+    subdir    = f"{slug}_long" if fmt == "long" else slug
+    cards_dir = OUTPUT_DIR / "cards" / subdir
     existing  = {p.stem: p for p in cards_dir.glob("*.png")} if cards_dir.exists() else {}
     required  = {"hook", "history", "player_0", "player_1", "player_2", "group", "cta"}
     missing   = required - existing.keys()
 
     if missing and not skip:
-        print(f"   Rendering {len(missing)} card(s): {sorted(missing)}")
+        print(f"   Rendering {len(missing)} card(s) [{fmt}]: {sorted(missing)}")
         from worldcup.renderer.html_cards import render_team_cards
-        rendered = render_team_cards(team)
+        rendered = render_team_cards(team, fmt=fmt)
         existing = {p.stem: p for p in rendered}
         print(f"   {len(existing)} cards saved → {cards_dir}")
     elif existing:
@@ -67,18 +73,24 @@ def render_cards(team: str, skip: bool) -> dict[str, Path]:
 
 # ── Step 2: fetch footage ───────────────────────────────────────────────────────
 
-def fetch_all_footage(team: str) -> tuple[list[Path], list[str], list[float]]:
-    """Return (footage_paths, segment_names, segment_durations) in SEGMENTS order."""
+def fetch_all_footage(
+    team: str,
+    segs: list = None,
+    resolution: tuple[int, int] = (1080, 1920),
+) -> tuple[list[Path], list[str], list[float]]:
+    """Return (footage_paths, segment_names, segment_durations) in segment order."""
+    if segs is None:
+        segs = SEGMENTS
     paths:     list[Path]  = []
     names:     list[str]   = []
     durations: list[float] = []
     player_idx = 0
-    for seg_name, seg_dur in SEGMENTS:
+    for seg_name, seg_dur in segs:
         label = f"player_{player_idx}" if seg_name == "player" else seg_name
         if seg_name == "player":
             player_idx += 1
         t0 = time.perf_counter()
-        p  = fetch_footage(team, label, seg_dur)
+        p  = fetch_footage(team, label, seg_dur, resolution=resolution)
         elapsed = time.perf_counter() - t0
         size_kb = p.stat().st_size // 1024 if p.exists() else 0
         print(f"   [{label:10s}] {_fmt(elapsed):>5}  {size_kb} KB  {p.name}")
@@ -97,6 +109,7 @@ def build_mp4(
     seg_names: list[str],
     narration_path: Path | None,
     srt_path: Path | None = None,
+    fmt: str = "short",
 ) -> Path:
     ordered_cards: list[Path] = []
     for label in seg_names:
@@ -113,14 +126,19 @@ def build_mp4(
         card_pngs=ordered_cards,
         narration_path=narration_path,
         srt_path=srt_path,
+        fmt=fmt,
     )
 
 
 # ── Main ────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="World Cup Short — full pipeline")
+    parser = argparse.ArgumentParser(description="World Cup pipeline — short or long-form")
     parser.add_argument("team", help="Team name, e.g. France")
+    parser.add_argument(
+        "--format", choices=["short", "long"], default="short",
+        help="Output format: short (37s, 1080×1920) or long (~117s, 1920×1080)",
+    )
     parser.add_argument(
         "--no-voice", action="store_true",
         help="Skip narration (default; also set by WC_VOICE=false)",
@@ -132,22 +150,26 @@ def main() -> None:
     args = parser.parse_args()
 
     team     = args.team
+    fmt      = args.format
     no_voice = args.no_voice or os.getenv("WC_VOICE", "false").lower() != "true"
+    segs     = SEGMENTS_LONG if fmt == "long" else SEGMENTS
+    res      = (1920, 1080) if fmt == "long" else (1080, 1920)
 
     wall_start = time.perf_counter()
     print(f"{'='*52}")
-    print(f"  World Cup Short — {team}")
+    print(f"  World Cup {'Long-form' if fmt=='long' else 'Short'} — {team}")
+    print(f"  Format: {fmt}  Resolution: {res[0]}×{res[1]}")
     print(f"  Voice: {'off' if no_voice else 'on'}")
     print(f"{'='*52}")
 
     # ── 1. Cards ────────────────────────────────────────────────────────────────
-    t0 = _step(1, "render_team_cards()")
-    card_by_name = render_cards(team, skip=args.skip_cards)
+    t0 = _step(1, f"render_team_cards() [{fmt}]")
+    card_by_name = render_cards(team, skip=args.skip_cards, fmt=fmt)
     _done(t0)
 
     # ── 2. Footage ──────────────────────────────────────────────────────────────
-    t0 = _step(2, f"fetch_footage() — {len(SEGMENTS)} segments")  # noqa: E501
-    footage_paths, seg_names, seg_durations = fetch_all_footage(team)
+    t0 = _step(2, f"fetch_footage() — {len(segs)} segments @ {res[0]}×{res[1]}")
+    footage_paths, seg_names, seg_durations = fetch_all_footage(team, segs=segs, resolution=res)
     _done(t0)
 
     # ── 3. Captions ──────────────────────────────────────────────────────────────
@@ -171,7 +193,8 @@ def main() -> None:
 
     # ── 5. Assemble ──────────────────────────────────────────────────────────────
     t0 = _step(5, "assemble_mp4()")
-    out = build_mp4(team, footage_paths, card_by_name, seg_names, narration_path, srt_path)
+    out = build_mp4(team, footage_paths, card_by_name, seg_names,
+                    narration_path, srt_path, fmt=fmt)
     _done(t0)
 
     # ── Summary ──────────────────────────────────────────────────────────────────
