@@ -28,6 +28,7 @@ from worldcup.data.footage import fetch_footage
 from worldcup.data.wc2026_data import get_full_team_data
 from worldcup.assembler.captions import build_segment_captions, generate_srt
 from worldcup.assembler.mp4_assembler import assemble_mp4
+from worldcup.audio.narration import generate_narration
 
 
 def _fmt(seconds: float) -> str:
@@ -145,7 +146,7 @@ def main() -> None:
     _done(t0)
 
     # ── 2. Footage ──────────────────────────────────────────────────────────────
-    t0 = _step(2, f"fetch_footage() — {len(SEGMENTS)} segments")
+    t0 = _step(2, f"fetch_footage() — {len(SEGMENTS)} segments")  # noqa: E501
     footage_paths, seg_names, seg_durations = fetch_all_footage(team)
     _done(t0)
 
@@ -157,18 +158,19 @@ def main() -> None:
     _done(t0)
 
     # ── 4. Narration ─────────────────────────────────────────────────────────────
+    t0 = _step(4, "generate_narration()")
     narration_path: Path | None = None
     if not no_voice:
-        slug = team.lower().replace(" ", "_")
-        wav  = OUTPUT_DIR / f"{slug}_vo.wav"
-        if wav.exists():
-            narration_path = wav
-            print(f"\n── Narration: {wav}")
-        else:
-            print("\n── Narration: no .wav found — silent")
+        narration_path = generate_narration(team, team_data)
+        if narration_path:
+            size_kb = narration_path.stat().st_size // 1024
+            print(f"   → {narration_path} ({size_kb} KB)")
+    else:
+        print("   WC_VOICE=false — skipped")
+    _done(t0)
 
     # ── 5. Assemble ──────────────────────────────────────────────────────────────
-    t0 = _step(4, "assemble_mp4()")
+    t0 = _step(5, "assemble_mp4()")
     out = build_mp4(team, footage_paths, card_by_name, seg_names, narration_path, srt_path)
     _done(t0)
 

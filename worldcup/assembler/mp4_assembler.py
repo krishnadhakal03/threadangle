@@ -11,6 +11,7 @@ Specs: 1080x1920 @ 30fps, H.264 + AAC, target < 50 MB for ~37s content.
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
@@ -21,7 +22,9 @@ from typing import Optional
 from worldcup.config import OUTPUT_DIR, FPS
 
 FINAL_DIR = OUTPUT_DIR / "final"
-FFMPEG = shutil.which("ffmpeg") or shutil.which("ffmpeg.exe") or "ffmpeg"
+FFMPEG    = shutil.which("ffmpeg")   or shutil.which("ffmpeg.exe")   or "ffmpeg"
+FFPROBE   = (shutil.which("ffprobe") or shutil.which("ffprobe.exe")
+             or str(Path(FFMPEG).parent / "ffprobe"))
 
 
 def _run(args: list[str], label: str = "") -> bool:
@@ -90,6 +93,71 @@ def _concat_segments(segment_paths: list[Path], dest: Path) -> bool:
     ], label="concat")
     list_path.unlink(missing_ok=True)
     return ok
+
+
+def _probe_duration(p: Path) -> float:
+    """Return video/audio duration in seconds via ffprobe. Falls back to 37.0."""
+    try:
+        r = subprocess.run(
+            [FFPROBE, "-v", "quiet",
+             "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1",
+             str(p)],
+            capture_output=True, text=True, timeout=15,
+        )
+        return float(r.stdout.strip())
+    except Exception:
+        return 37.0
+
+
+def _add_bgm(input_mp4: Path, output_mp4: Path, has_narration: bool = False) -> bool:
+    """
+    Mix a looping background music track into *input_mp4*.
+
+    BGM track is chosen by the BGM_TRACK env var:
+      BGM_TRACK=hype (default) → worldcup/assets/bgm/football_hype.mp3
+      BGM_TRACK=dramatic       → worldcup/assets/bgm/dramatic.mp3
+
+    Volume: 0.12 under narration, 0.20 without (more presence when voice is off).
+    Last 3 seconds fade out.
+    If BGM file is missing the input is copied unchanged — never crashes.
+    """
+    track_map = {
+        "hype":     "football_hype.mp3",
+        "dramatic": "dramatic.mp3",
+    }
+    track_name   = os.getenv("BGM_TRACK", "hype").lower()
+    bgm_filename = track_map.get(track_name, "football_hype.mp3")
+    bgm_path     = Path(__file__).resolve().parent.parent / "assets" / "bgm" / bgm_filename
+
+    if not bgm_path.exists():
+        print(f"[assembler] BGM not found at {bgm_path} — skipping")
+        shutil.copy2(str(input_mp4), str(output_mp4))
+        return True
+
+    bgm_vol    = "0.12" if has_narration else "0.20"
+    total_dur  = _probe_duration(input_mp4)
+    fade_start = max(0.0, total_dur - 3.0)
+
+    print(f"[assembler] Adding BGM ({bgm_filename}, vol={bgm_vol}, fade@{fade_start:.1f}s)")
+    return _run([
+        FFMPEG, "-y",
+        "-i", str(input_mp4),
+        "-stream_loop", "-1",          # loop BGM to cover full video length
+        "-i", str(bgm_path),
+        "-filter_complex",
+        (
+            f"[1:a]volume={bgm_vol},"
+            f"afade=t=out:st={fade_start:.3f}:d=3.0[bgm];"
+            f"[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[aout]"
+        ),
+        "-map", "0:v",
+        "-map", "[aout]",
+        "-c:v", "copy",
+        "-c:a", "aac", "-b:a", "192k",
+        "-shortest",
+        str(output_mp4),
+    ], label="bgm_mix")
 
 
 def _ffmpeg_vf_path(p: Path) -> str:
@@ -230,6 +298,12 @@ def assemble_mp4(
                 current = captioned
             else:
                 print("[assembler] Caption burn failed — outputting without captions")
+
+        # ── Step 5: add BGM ────────────────────────────────────────────────────
+        bgm_out = tmp / "bgm_mixed.mp4"
+        _add_bgm(current, bgm_out, has_narration=(narration is not None and narration.exists()))
+        if bgm_out.exists() and bgm_out.stat().st_size > 1_000:
+            current = bgm_out
 
         shutil.copy(str(current), str(out_path))
 
