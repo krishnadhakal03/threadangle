@@ -306,12 +306,14 @@ def _hook_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str:
         f"radial-gradient(circle at 30% 70%, rgba(255,255,255,0.03) 0%, transparent 40%)!important;}}"
     )
 
-    # ── 1. Watermark — large faint "FIFA WORLD CUP 2026" rotated across card ──
+    # ── 1. Watermark — full-width div, text-align:center, rotated across card ──
+    # left:0;right:0 makes the div span the full 1080px card width so the
+    # transform-origin is the true card centre, bleeding equally off both sides.
     watermark = (
-        f'<div style="position:absolute;top:50%;left:50%;'
-        f'transform:translate(-50%,-50%) rotate(-15deg);'
+        f'<div style="position:absolute;top:50%;left:0;right:0;'
+        f'transform:translateY(-50%) rotate(-15deg);'
         f'font-size:300px;font-weight:700;color:#fff;opacity:0.04;'
-        f'z-index:0;white-space:nowrap;pointer-events:none;'
+        f'z-index:0;text-align:center;pointer-events:none;'
         f'letter-spacing:-8px;font-family:Oswald,Impact,Arial,sans-serif;">'
         f'FIFA WORLD CUP 2026</div>'
     )
@@ -334,10 +336,10 @@ def _hook_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str:
         f'GROUP {group_id}</span></div>'
     )
 
-    # ── 4. Content wrapper — centred on full card height ──────────────────
-    # flag(200) + gap(56) + name(160) + subtitle(68) + gold-line(40) + date(60) = 584px
+    # ── 4. Content wrapper — flag at y=400, name at y≈640 ────────────────
+    # top:400px + flag(200px) + gap(40px) = name starts at y=640
     flag_html = (
-        f'<div style="display:flex;justify-content:center;margin-bottom:56px;">'
+        f'<div style="display:flex;justify-content:center;margin-bottom:40px;">'
         f'<img src="{flag_url}" alt="{team}"'
         f' style="width:200px;height:200px;border-radius:50%;object-fit:cover;'
         f'box-shadow:0 8px 60px rgba(0,0,0,0.6),'
@@ -347,7 +349,7 @@ def _hook_html(team: str, data: dict, theme: dict, bg_photo: str = "") -> str:
 
     content = f"""
     <div style="position:absolute;left:60px;right:60px;
-                top:50%;transform:translateY(-50%);
+                top:400px;
                 text-align:center;z-index:5;">
 
       {flag_html}
