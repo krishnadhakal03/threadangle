@@ -1,0 +1,154 @@
+{
+  "questions": [
+    {
+      "id": 1,
+      "difficulty": "easy",
+      "question": "How many nations are co-hosting the 2026 FIFA World Cup?",
+      "options": {
+        "A": "2",
+        "B": "3",
+        "C": "4"
+      },
+      "correct": "B",
+      "explanation": "USA, Canada, and Mexico co-host together",
+      "imagePrompt": "FIFA World Cup 2026 three host nations flags USA Canada Mexico stadium",
+      "bgQuery": "international soccer stadium",
+      "themeColor": "#2196F3"
+    },
+    {
+      "id": 2,
+      "difficulty": "easy",
+      "question": "How many teams compete in the 2026 World Cup expanded format?",
+      "options": {
+        "A": "32",
+        "B": "40",
+        "C": "48"
+      },
+      "correct": "C",
+      "explanation": "Expanded from 32 to 48 teams in 2026",
+      "imagePrompt": "48 national team flags flying World Cup 2026 grand stadium celebration",
+      "bgQuery": "world cup flags stadium",
+      "themeColor": "#FF8C00"
+    },
+    {
+      "id": 3,
+      "difficulty": "easy",
+      "question": "Where is the 2026 World Cup opening match held?",
+      "options": {
+        "A": "MetLife Stadium, New York",
+        "B": "Estadio Azteca, Mexico City",
+        "C": "SoFi Stadium, Los Angeles"
+      },
+      "correct": "B",
+      "explanation": "Opening match takes place at Estadio Azteca",
+      "imagePrompt": "Estadio Azteca Mexico City World Cup 2026 opening ceremony crowd fireworks night",
+      "bgQuery": "Estadio Azteca Mexico City",
+      "themeColor": "#32CD32"
+    },
+    {
+      "id": 4,
+      "difficulty": "easy",
+      "question": "How many total matches will be played at the 2026 World Cup?",
+      "options": {
+        "A": "64",
+        "B": "80",
+        "C": "104"
+      },
+      "correct": "C",
+      "explanation": "104 matches, up from 64 in 2022",
+      "imagePrompt": "packed soccer stadium scoreboard showing 104 matches World Cup 2026 celebration",
+      "bgQuery": "soccer match stadium crowd",
+      "themeColor": "#9B59B6"
+    },
+    {
+      "id": 5,
+      "difficulty": "medium",
+      "question": "How many groups are in the 2026 World Cup group stage?",
+      "options": {
+        "A": "8 groups of 6",
+        "B": "12 groups of 4",
+        "C": "16 groups of 3"
+      },
+      "correct": "B",
+      "explanation": "12 groups labeled A through L, four teams each",
+      "imagePrompt": "World Cup 2026 group stage draw board 12 groups FIFA headquarters",
+      "bgQuery": "FIFA World Cup draw",
+      "themeColor": "#E91E63"
+    },
+    {
+      "id": 6,
+      "difficulty": "medium",
+      "question": "Which new knockout round is introduced at the 2026 World Cup?",
+      "options": {
+        "A": "Round of 64",
+        "B": "Round of 32",
+        "C": "Play-in round"
+      },
+      "correct": "B",
+      "explanation": "Round of 32 is brand new this tournament",
+      "imagePrompt": "World Cup 2026 knockout bracket Round of 32 giant screen stadium fans",
+      "bgQuery": "soccer knockout tournament bracket",
+      "themeColor": "#FF5722"
+    },
+    {
+      "id": 7,
+      "difficulty": "medium",
+      "question": "How many third-place group finishers advance to the knockout stage in 2026?",
+      "options": {
+        "A": "4 best third-place teams",
+        "B": "8 best third-place teams",
+        "C": "No third-place teams advance"
+      },
+      "correct": "B",
+      "explanation": "Top 2 plus 8 best third-place teams advance",
+      "imagePrompt": "soccer team celebrating third place group qualification World Cup 2026 stadium",
+      "bgQuery": "soccer team celebration",
+      "themeColor": "#009688"
+    },
+    {
+      "id": 8,
+      "difficulty": "medium",
+      "question": "Which star striker's nation Norway failed to qualify for the 2026 World Cup?",
+      "options": {
+        "A": "Robert Lewandowski",
+        "B": "Erling Haaland",
+        "C": "Harry Kane"
+      },
+      "correct": "B",
+      "explanation": "Haaland's Norway did not qualify for 2026",
+      "imagePrompt": "Erling Haaland Norway red jersey disappointed World Cup qualification failure empty pitch",
+      "bgQuery": "Norway soccer team",
+      "themeColor": "#FF9800"
+    },
+    {
+      "id": 9,
+      "difficulty": "hard",
+      "question": "The 2026 World Cup marks the centenary anniversary of which historic event?",
+      "options": {
+        "A": "FIFA's founding in 1926",
+        "B": "The first World Cup in 1930",
+        "C": "The first World Cup in 1926"
+      },
+      "correct": "B",
+      "explanation": "2026 commemorates 1930 first World Cup centenary",
+      "imagePrompt": "vintage 1930 Uruguay World Cup trophy montage with modern 2026 World Cup celebration",
+      "bgQuery": "FIFA World Cup history vintage",
+      "themeColor": "#3F51B5"
+    },
+    {
+      "id": 10,
+      "difficulty": "hard",
+      "question": "How old will Cristiano Ronaldo be during the 2026 FIFA World Cup?",
+      "options": {
+        "A": "39 years old",
+        "B": "40 years old",
+        "C": "41 years old"
+      },
+      "correct": "C",
+      "explanation": "Ronaldo turns 41, oldest star at 2026 WC",
+      "imagePrompt": "Cristiano Ronaldo Portugal jersey number 7 World Cup 2026 veteran legend stadium",
+      "bgQuery": "Cristiano Ronaldo Portugal soccer",
+      "themeColor": "#F44336"
+    }
+  ]
+}

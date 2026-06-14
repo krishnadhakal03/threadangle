@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Cloned reference libraries (not part of this project's source)
+clippkit-lib/
+remotion-dev/
+templates-lib/
+
+# Remotion render output
+out/
+.remotion/
+
+# Build artefacts
+dist/
+build/
+
+# Environment secrets
+.env
+.env.local
+.env*.local
+
+# Rendered video / audio files (large binaries)
+*.mp4
+*.webm
+*.mov
+*.wav
+*.aiff
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/settings.json
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
