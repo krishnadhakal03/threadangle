@@ -1,0 +1,28 @@
+name: Threadangle CI
+
+# Runs the video-pipeline dry-run tests on every pull request.
+# Production deploys stay on the existing manual "Deploy Threadangle"
+# workflow (workflow_dispatch -> EC2 branch deploy).
+
+on:
+  pull_request:
+    branches: ["feature/batch6-hook-visual"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install backend deps
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pytest
+      - name: Run video-pipeline dry-run tests
+        run: |
+          cd backend
+          python -m pytest tests/test_video_pipeline_dryrun.py -q
