@@ -2,6 +2,11 @@ name: Deploy Threadangle
 
 on:
   workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to deploy: branch, tag, or full commit SHA. Leave empty for a normal deploy (deploy-branch tip). Pass a SHA to roll back to a known-good commit.'
+        required: false
+        default: ''
 
 jobs:
   deploy:
@@ -21,10 +26,11 @@ jobs:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
           THREADANGLE_DEPLOY_BRANCH: ${{ secrets.THREADANGLE_DEPLOY_BRANCH }}
+          THREADANGLE_DEPLOY_REF: ${{ inputs.ref }}
         run: |
           set -euo pipefail
 
-          ssh -o StrictHostKeyChecking=accept-new "$EC2_USER@$EC2_HOST" "THREADANGLE_DEPLOY_BRANCH='$THREADANGLE_DEPLOY_BRANCH' bash -s" <<'REMOTE'
+          ssh -o StrictHostKeyChecking=accept-new "$EC2_USER@$EC2_HOST" "THREADANGLE_DEPLOY_BRANCH='$THREADANGLE_DEPLOY_BRANCH' THREADANGLE_DEPLOY_REF='$THREADANGLE_DEPLOY_REF' bash -s" <<'REMOTE'
           set -euo pipefail
 
           APP_DIR="/var/www/threadangle"
@@ -32,6 +38,7 @@ jobs:
           FRONTEND_DIR="$APP_DIR/frontend"
           PUBLIC_DIR="$APP_DIR/public"
           DEPLOY_BRANCH="${THREADANGLE_DEPLOY_BRANCH:-feature/batch6-hook-visual}"
+          DEPLOY_REF="${THREADANGLE_DEPLOY_REF:-}"
 
           echo "Pre-deploy WealthPro checks"
           curl -fsS --max-time 15 "http://wealthproplus.com/" >/dev/null || true
@@ -42,9 +49,15 @@ jobs:
           test "$PUBLIC_DIR" = "/var/www/threadangle/public"
 
           cd "$APP_DIR"
-          git fetch origin "$DEPLOY_BRANCH"
-          git checkout "$DEPLOY_BRANCH"
-          git pull --ff-only origin "$DEPLOY_BRANCH"
+          if [ -n "$DEPLOY_REF" ]; then
+            echo "Deploying pinned ref $DEPLOY_REF (pin/rollback)"
+            git fetch origin "$DEPLOY_REF"
+            git checkout "$DEPLOY_REF"
+          else
+            git fetch origin "$DEPLOY_BRANCH"
+            git checkout "$DEPLOY_BRANCH"
+            git pull --ff-only origin "$DEPLOY_BRANCH"
+          fi
 
           cd "$BACKEND_DIR"
           python3 -m venv venv
