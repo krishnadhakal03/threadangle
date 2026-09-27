@@ -3,6 +3,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Dict
 from pathlib import Path
+import os
 
 from utils.seo import generate_seo
 from utils.thumbnail import generate_thumbnail
@@ -60,7 +61,8 @@ async def generate_seo_content(req: SeoRequest, _=Depends(require_full_access_us
 
 @router.post("/thumbnail")
 async def generate_thumbnail_image(req: ThumbnailRequest, _=Depends(require_full_access_user)):
-    model = req.model or "gpt-image-1"
+    # Free Pillow composer is the default; pass model="gpt-image-1" for paid AI.
+    model = req.model or os.getenv("THUMBNAIL_MODEL", "free")
     try:
         return generate_thumbnail(req.topic, req.niche, model=model)
     except Exception as exc:

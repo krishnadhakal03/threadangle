@@ -22,6 +22,22 @@ RUNWAYML_API_VERSION = os.getenv("RUNWAYML_API_VERSION", "2024-11-06")
 RUNWAYML_TASK_URL = os.getenv("RUNWAYML_TASK_URL", "https://api.dev.runwayml.com/v1/tasks/{task_id}")
 RUNWAYML_MODEL = os.getenv("RUNWAYML_MODEL", "gen4.5")
 
+# ── Single source of truth for Runway credit pricing ─────────────────────────
+# Official pricing: https://docs.dev.runwayml.com/guides/pricing
+# Credits are billed PER SECOND of generated video — NOT per 5s bucket.
+# Every credit estimate in the codebase must derive from this table.
+RUNWAY_CREDITS_PER_SECOND: dict = {
+    "gen4.5": 12,        # hero quality
+    "gen4_turbo": 5,     # balanced
+    "gen4_aleph": 15,    # editing model
+}
+
+
+def runway_credits_for(model: str, duration_seconds: float) -> float:
+    """Estimated Runway credits to generate `duration_seconds` of `model` video."""
+    rate = RUNWAY_CREDITS_PER_SECOND.get(model or "", 12)
+    return round(max(0.0, float(duration_seconds)) * rate, 2)
+
 class RunwayMLQuotaError(Exception):
     pass
 
@@ -268,10 +284,8 @@ class RunwayMLClient:
         return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
     def _calculate_credits(self, duration: int, model: str, method: str):
-        # Official API pricing: https://docs.dev.runwayml.com/guides/pricing
-        # gen4.5: 12 credits/sec, gen4_turbo: 5 credits/sec, gen4_aleph: 15/sec
-        credits_per_second = {"gen4.5": 12, "gen4_turbo": 5, "gen4_aleph": 15}
-        return duration * credits_per_second.get(model, 12)
+        # Billed per second — see RUNWAY_CREDITS_PER_SECOND above.
+        return runway_credits_for(model, duration)
 
     def check_quota(self):
         # RunwayML does not have a public quota endpoint, so we can only infer from errors

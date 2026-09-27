@@ -1383,7 +1383,7 @@ function AIVideoModal({
             <div>
               <label className="block text-[11px] font-bold text-[#71717A] uppercase tracking-widest mb-2">Video Style</label>
               <select
-                value={form.scene_mode || 'auto'}
+                value={form.scene_mode || 'stock'}
                 onChange={e => setForm(prev => ({ ...prev, scene_mode: e.target.value }))}
                 className="w-full bg-[#09090B] border border-[#27272A] rounded-xl p-3 text-white focus:border-[#3B82F6] outline-none"
               >
@@ -1393,7 +1393,7 @@ function AIVideoModal({
               </select>
               {/* Auto-label showing implied max scenes */}
               <p className="mt-1.5 text-[11px] text-[#52525B]">
-                {form.scene_mode === 'ai' ? '⚡ All scenes use RunwayML (max credits)' : form.scene_mode === 'auto' ? '⚡ Up to 3 AI scenes + stock fill' : '✦ Stock footage only — no Runway spend'}
+                {form.scene_mode === 'ai' ? '⚡ All scenes use RunwayML (max credits)' : form.scene_mode === 'auto' ? '⚡ Up to 3 AI scenes + stock fill (~180 credits max)' : '✦ Stock footage only — no Runway spend'}
               </p>
             </div>
             <div>
@@ -1602,7 +1602,7 @@ function AIVideoModal({
               <div className="mt-3 space-y-2 text-sm">
                 <div className="flex items-center justify-between text-[#A9B5D1]"><span>Estimated Credits</span><span className="text-white font-semibold">{displayedCredits}</span></div>
                 <div className="flex items-center justify-between text-[#A9B5D1]"><span>Character Source</span><span className="text-white font-semibold">{form.character_source === 'generate' ? 'AI Generate' : form.character_source === 'preset' ? 'Preset Library' : form.character_source === 'upload' ? 'Upload Photo' : 'AI Generate'}</span></div>
-                <div className="flex items-center justify-between text-[#A9B5D1]"><span>Scene Mode</span><span className="text-white font-semibold capitalize">{form.scene_mode || 'auto'}</span></div>
+                <div className="flex items-center justify-between text-[#A9B5D1]"><span>Scene Mode</span><span className="text-white font-semibold capitalize">{form.scene_mode || 'stock'}</span></div>
                 <div className="flex items-center justify-between text-[#A9B5D1]"><span>Max AI Scenes</span><span className="text-white font-semibold">{form.scene_mode === 'ai' ? 'All' : form.scene_mode === 'auto' ? '3' : '0'}</span></div>
                 <div className="flex items-center justify-between text-[#A9B5D1]"><span>Duration</span><span className="text-white font-semibold">{form.duration_seconds || 45}s</span></div>
                 <div className="flex items-center justify-between text-[#A9B5D1]"><span>Voice</span><span className={`font-semibold text-xs ${form.tts_provider === 'free' ? 'text-emerald-300' : 'text-violet-300'}`}>{form.tts_provider === 'free' ? 'Free TTS' : 'ElevenLabs'}</span></div>
@@ -2227,7 +2227,7 @@ export default function Dashboard({ mode = 'generate' }) {
       const data = await api.generateVideoBatch({
         topics,
         duration: videoForm.duration_seconds || 45,
-        style: videoForm.scene_mode || 'auto',
+        style: videoForm.scene_mode || 'stock',
         niche: videoForm.niche || 'general',
       });
       setBatchResult(data);
@@ -2340,7 +2340,7 @@ export default function Dashboard({ mode = 'generate' }) {
         character_source: videoForm.character_source || 'generate',
         preset_id: videoForm.preset_id || null,
         uploaded_image_base64: videoForm.uploaded_image_base64 || null,
-        scene_mode: videoForm.scene_mode || 'auto',
+        scene_mode: videoForm.scene_mode || 'stock',
         image_provider: videoForm.image_provider || 'pollinations',
       });
       setVideoPreview(preview);
@@ -2414,7 +2414,7 @@ export default function Dashboard({ mode = 'generate' }) {
         return;
       }
 
-      const sceneMode = videoForm.scene_mode || 'auto';
+      const sceneMode = videoForm.scene_mode || 'stock';
       const derivedMaxScenes = sceneMode === 'ai' ? 99 : sceneMode === 'auto' ? 3 : 0;
       const payload = {
         script: scriptState.full_script,

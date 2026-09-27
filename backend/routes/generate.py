@@ -425,7 +425,7 @@ class GenerateVideoRequest(BaseModel):
     cta: str | None = None
     duration_seconds: int = 45
     confirmed_plan: dict | None = None
-    scene_mode: str = "auto"
+    scene_mode: str = "stock"
     niche: str | None = None
     runway_model: str = "gen4.5"  # Options: gen4.5, gen4_turbo, gen3a_turbo (cheaper)
     dry_run: Optional[bool] = None   # overrides VIDEO_GENERATION_DRY_RUN env when provided
@@ -444,7 +444,7 @@ class GenerateVideoPlanRequest(BaseModel):
     body: str | None = None
     cta: str | None = None
     duration_seconds: int = 45
-    scene_mode: str = "auto"
+    scene_mode: str = "stock"
 
 
 class BatchVideoRequest(BaseModel):
@@ -478,7 +478,7 @@ class VideoPreviewRequest(BaseModel):
     character_source: str = Field(default="generate", pattern="^(generate|upload|preset)$")
     preset_id: Optional[str] = None
     uploaded_image_base64: Optional[str] = None
-    scene_mode: str = "auto"  # ai | hybrid | auto | stock — controls credit estimation in preview
+    scene_mode: str = "stock"  # ai | hybrid | auto | stock — controls credit estimation in preview
     image_provider: str = "pollinations"  # "pollinations" (free) | "gemini" (paid)
 
 
@@ -3709,7 +3709,7 @@ async def _generate_single_video_background(batch_id: str, request: GenerateVide
                 fetch_scene_clips(
                     scenes,
                     run_id=run_id,
-                    mode="stock" if dry_run else (request.scene_mode or "auto"),
+                    mode="stock" if dry_run else (request.scene_mode or "stock"),
                     available_credits=float(os.getenv("RUNWAYML_AVAILABLE_CREDITS", "750")),
                 )
             )
