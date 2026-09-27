@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from utils.openai_client import chat_complete
 from utils.render_guard import assert_video_duration_allowed, require_video_render_access
+import os
 
 router = APIRouter(prefix="/api/generate", tags=["ViralVideo"])
 
@@ -68,7 +69,9 @@ Rules:
     try:
         content = chat_complete(
             messages=[{"role": "user", "content": prompt}],
-            model="gpt-4",
+            # gpt-4o-mini is ~200x cheaper than gpt-4 and plenty for script JSON.
+            # Override with VIRAL_SCRIPT_MODEL if a stronger model is ever needed.
+            model=os.getenv("VIRAL_SCRIPT_MODEL", "gpt-4o-mini"),
             max_tokens=1200,
             temperature=1.05,
         )

@@ -326,7 +326,7 @@ class TestSelectRunwayModel:
     def test_score_5_uses_gen4_turbo(self):
         model, rate = select_runway_model("body", 5, budget_remaining=100)
         assert model == "gen4_turbo"
-        assert rate == 10
+        assert rate == 5  # credits per SECOND (Runway bills per second)
 
     def test_score_4_uses_stock(self):
         model, rate = select_runway_model("body", 4, budget_remaining=100)
@@ -335,12 +335,12 @@ class TestSelectRunwayModel:
 
     def test_insufficient_budget_returns_stock(self):
         model, rate = select_runway_model("hook", 10, budget_remaining=5)
-        assert model is None, "Budget below cheapest model (10) must return stock"
+        assert model is None, "Budget below cheapest 5s scene (25 cr) must return stock"
 
     def test_budget_forces_downgrade(self):
-        # Budget=11: can afford gen4_turbo(10) but not gen4.5(12)
-        model, rate = select_runway_model("body", 8, budget_remaining=11)
-        assert model == "gen4_turbo", "Should downgrade to gen4_turbo when budget < gen4.5 rate"
+        # Budget=30: can afford a 5s gen4_turbo scene (25 cr) but not gen4.5 (60 cr)
+        model, rate = select_runway_model("body", 8, budget_remaining=30)
+        assert model == "gen4_turbo", "Should downgrade to gen4_turbo when budget < gen4.5 scene cost"
 
     def test_zero_budget_always_stock(self):
         model, rate = select_runway_model("hook", 10, budget_remaining=0)

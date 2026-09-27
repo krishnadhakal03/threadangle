@@ -189,11 +189,44 @@ def generate_voice(req: VoiceGenRequest):
         except Exception as e:
             print(f"[TTS] ElevenLabs failed, falling back: {e}")
 
-    # Free fallback chain: gTTS first, then pyttsx3, then optional explicit silent fallback.
+    # Free fallback chain: Edge TTS (free, near-human) → gTTS → pyttsx3,
+    # then optional explicit silent fallback.
     if req.force_free:
         print("[TTS] force_free=True - using free TTS fallbacks (no ElevenLabs credits consumed)")
     free_filename = f"voice_free_{text_hash}.wav"
     free_file_path = os.path.join(out_dir, free_filename)
+    # --- Edge TTS: best free voice, no API key needed ---
+    try:
+        from utils.edge_tts import generate_edge_tts_sync
+        edge_mp3_path = os.path.join(out_dir, f"voice_edge_{text_hash}.mp3")
+        generate_edge_tts_sync(req.text, edge_mp3_path)
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", edge_mp3_path, free_file_path],
+            check=True,
+            timeout=60,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        _post_process_voice(free_file_path)
+        size = os.path.getsize(free_file_path) if os.path.exists(free_file_path) else 0
+        if not os.path.exists(free_file_path) or size < 1000:
+            raise Exception("Edge TTS audio file missing or too small")
+        print(f"[TTS] Edge TTS audio saved: {free_file_path} ({size} bytes)")
+        return VoiceGenResponse(
+            audio_url=f"/static/voice_cache/{free_filename}",
+            audio_file=free_file_path,
+            provider="edge_tts",
+        )
+    except Exception as e:
+        fallback_errors.append(f"Edge TTS failed: {e}")
+        print(f"[TTS] Edge TTS failed, trying gTTS: {e}")
+    finally:
+        try:
+            edge_mp3 = os.path.join(out_dir, f"voice_edge_{text_hash}.mp3")
+            if os.path.exists(edge_mp3):
+                os.unlink(edge_mp3)
+        except Exception:
+            pass
     gtts_mp3_path = os.path.join(out_dir, f"voice_gtts_{text_hash}.mp3")
     try:
         try:

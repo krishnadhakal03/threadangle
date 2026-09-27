@@ -24,7 +24,7 @@ except Exception:
 
 # --- AI video import ---
 from .ai_video import fetch_runwayml_clip
-from .runwayml_client import RunwayMLQuotaError
+from .runwayml_client import RunwayMLQuotaError, runway_credits_for
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -2708,8 +2708,8 @@ def get_hybrid_scene_strategy(scenes: List[ScenePlan], available_credits: float)
 
     Each scene is scored heuristically (zero API cost) and assigned the
     optimal RunwayML model:
-      hook / score ≥ 8  → gen4.5   (12 cr/5s)
-      score 5-7         → gen4_turbo (10 cr/5s)
+      hook / score ≥ 8  → gen4.5   (12 cr/s)
+      score 5-7         → gen4_turbo (5 cr/s)
       score < 5         → stock footage (0 cr)
 
     Budget is tracked cumulatively; when credits run low the strategy
@@ -2737,12 +2737,14 @@ def get_hybrid_scene_strategy(scenes: List[ScenePlan], available_credits: float)
                 scene_type=scene.part,
                 visual_score=result.score,
                 budget_remaining=credits_remaining,
+                duration=duration,
             )
         else:
             model, rate = None, 0
 
         if model:
-            scene_credits = round((duration / 5.0) * rate, 2)
+            # Billed per second — rate is credits/second from RUNWAY_CREDITS_PER_SECOND
+            scene_credits = round(duration * rate, 2)
             use_runway = True
             scene.runway_model = model
             reason = f"Score {result.score}/10 → {model} | {result.reasoning}"
@@ -2791,7 +2793,9 @@ async def fetch_scene_clips(scenes: List[ScenePlan], run_id: str, mode: str = No
     else:
         for scene in scenes:
             scene.use_runway = mode == "ai"
-            scene.credits_cost = max(0.0, round(((scene.end - scene.start) / 5.0) * 10.0, 2)) if scene.use_runway else 0.0
+            # Honest cost estimate: billed per second (see RUNWAY_CREDITS_PER_SECOND)
+            est_model = scene.runway_model or runway_model or "gen4.5"
+            scene.credits_cost = runway_credits_for(est_model, scene.end - scene.start) if scene.use_runway else 0.0
             scene.allocation_reason = "FULL AI MODE" if scene.use_runway else "STOCK MODE"
 
     experimental_mixed_media_enabled = os.getenv("ENABLE_EXPERIMENTAL_MIXED_MEDIA", "0") == "1"
@@ -3363,7 +3367,130 @@ def render_thumbnail(video_path: str, title_text: str, output_path: str = None) 
 
 from moviepy.editor import AudioFileClip
 
+def _ffprobe_duration(path: str) -> float:
+    """Fast duration probe via ffprobe. Returns 0.0 when unreadable."""
+    import subprocess
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", path],
+            capture_output=True, text=True, timeout=15,
+        )
+        return max(0.0, float(out.stdout.strip()))
+    except Exception:
+        return 0.0
+
+
+def assemble_video_ffmpeg(scenes: List[ScenePlan], run_id: str, fps: int = 30, audio_path: str = None) -> Dict[str, str]:
+    """
+    ffmpeg-native assembly — no moviepy.
+
+    Per scene: trim (or stream-loop) to the scene duration, cover-scale to
+    1080x1920 + center crop, then concat, burn ASS captions, mux audio, and
+    encode libx264 in a single ffmpeg pass. Typically 5-20x faster than the
+    moviepy path and uses a fraction of the RAM.
+    """
+    import subprocess
+
+    ass_path = TEMP_DIR / f"{run_id}.ass"
+    final_path = ASSETS_DIR / f"{run_id}.mp4"
+    render_fps = max(24, min(60, int(fps or 30)))
+
+    valid: list[tuple[str, float]] = []
+    for scene in scenes:
+        scene_duration = max(1.2, float(scene.end - scene.start))
+        src = scene.clip_path
+        if not src or not Path(src).exists():
+            print(f"[VIDEO] ffmpeg path skipping scene {scene.idx}: missing clip")
+            continue
+        src_dur = _ffprobe_duration(str(src))
+        if src_dur <= 0:
+            print(f"[VIDEO] ffmpeg path skipping scene {scene.idx}: unreadable clip")
+            continue
+        valid.append((str(src), scene_duration))
+
+    if not valid:
+        raise RuntimeError("Failed to assemble video: no valid source clips.")
+
+    _write_ass(scenes, ass_path, audio_path=audio_path)
+
+    cmd: list[str] = ["ffmpeg", "-y"]
+    filter_parts: list[str] = []
+    for i, (src, dur) in enumerate(valid):
+        src_dur = _ffprobe_duration(src)
+        if src_dur < dur - 0.05:
+            cmd += ["-stream_loop", "-1"]  # loop short clips instead of freezing
+        cmd += ["-t", f"{dur:.3f}", "-i", src]
+        # cover-scale to 1080x1920 + center crop == _fit_vertical()
+        filter_parts.append(
+            f"[{i}:v]setpts=PTS-STARTPTS,"
+            f"scale=1080:1920:force_original_aspect_ratio=increase,"
+            f"crop=1080:1920,fps={render_fps},format=yuv420p[v{i}]"
+        )
+    concat_inputs = "".join(f"[v{i}]" for i in range(len(valid)))
+    filter_parts.append(f"{concat_inputs}concat=n={len(valid)}:v=1:a=0[vcat]")
+    filter_parts.append(f"[vcat]{_subtitle_filter(ass_path)}[vout]")
+    cmd += ["-filter_complex", ";".join(filter_parts), "-map", "[vout]"]
+
+    if audio_path and Path(audio_path).exists():
+        cmd += ["-i", str(audio_path), "-map", f"{len(valid)}:a",
+                "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-shortest"]
+    crf = os.getenv("VIDEO_FFMPEG_CRF", "21")
+    cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", crf,
+            "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+            "-threads", str(max(2, os.cpu_count() or 4)),
+            str(final_path)]
+
+    print(f"[VIDEO] ffmpeg fast-path: {len(valid)} scenes → {final_path}")
+    try:
+        subprocess.run(cmd, check=True, timeout=900,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError as exc:
+        allow_no_captions = os.getenv("ALLOW_RENDER_WITHOUT_CAPTIONS", "0") == "1"
+        if not allow_no_captions:
+            raise RuntimeError(f"ffmpeg assembly failed (refusing to render without captions): {exc}")
+        raise
+
+    # Portrait thumbnail from the first source clip (no burned-caption artifacts)
+    thumbnail_path = str(final_path).replace(".mp4", ".jpg")
+    try:
+        first_src = valid[0][0]
+        t = min(max(0.0, _ffprobe_duration(first_src) * 0.35),
+                max(0.0, _ffprobe_duration(first_src) - 0.1))
+        subprocess.run(
+            ["ffmpeg", "-y", "-ss", f"{t:.2f}", "-i", first_src,
+             "-frames:v", "1", "-s", "1080x1920", "-q:v", "3", thumbnail_path],
+            check=True, timeout=60,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        print(f"[THUMBNAIL] Saved portrait thumbnail (1080×1920): {thumbnail_path}")
+    except Exception as e:
+        print(f"[THUMBNAIL] Failed to generate thumbnail: {e}")
+        thumbnail_path = None
+
+    return {
+        "video_path": str(final_path),
+        "subtitle_path": str(ass_path),
+        "thumbnail_path": thumbnail_path,
+        "ffmpeg_error": None,
+        "assembler": "ffmpeg",
+    }
+
+
 def assemble_video(scenes: List[ScenePlan], run_id: str, fps: int = 30, audio_path: str = None) -> Dict[str, str]:
+    """
+    Dispatcher: ffmpeg-native fast path by default (5-20x faster, far less RAM).
+    Falls back to the moviepy path on failure, or when VIDEO_ASSEMBLER=moviepy.
+    """
+    if os.getenv("VIDEO_ASSEMBLER", "ffmpeg").lower() == "ffmpeg":
+        try:
+            return assemble_video_ffmpeg(scenes, run_id, fps=fps, audio_path=audio_path)
+        except Exception as e:
+            print(f"[VIDEO] ffmpeg fast-path failed ({e}); falling back to moviepy")
+    return _assemble_video_moviepy(scenes, run_id, fps=fps, audio_path=audio_path)
+
+
+def _assemble_video_moviepy(scenes: List[ScenePlan], run_id: str, fps: int = 30, audio_path: str = None) -> Dict[str, str]:
     ass_path = TEMP_DIR / f"{run_id}.ass"
     final_path = ASSETS_DIR / f"{run_id}.mp4"
 

@@ -11,11 +11,15 @@ import re
 from dataclasses import dataclass, field
 from typing import Tuple
 
-# ── Credit rates per 5-second bucket ─────────────────────────────────────────
-MODEL_CREDITS: dict = {
-    "gen4.5":      12,   # 2.4 cr/s — hero quality
-    "gen4_turbo":  10,   # 2.0 cr/s — balanced
-}
+# ── Credit rates (PER SECOND — single source of truth) ──────────────────────────
+# Runway bills per second of generated video, not per 5s bucket.
+# Imported from runwayml_client so every estimate in the codebase agrees.
+try:
+    from .runwayml_client import RUNWAY_CREDITS_PER_SECOND
+except ImportError:  # pragma: no cover - standalone/script usage
+    from utils.runwayml_client import RUNWAY_CREDITS_PER_SECOND
+
+MODEL_CREDITS: dict = dict(RUNWAY_CREDITS_PER_SECOND)
 
 # ── Trigger-word banks ────────────────────────────────────────────────────────
 _HIGH_TRIGGERS = {
@@ -42,7 +46,7 @@ class SceneScore:
     reasoning: str
     use_runway: bool
     recommended_model: str       # "gen4.5" | "gen4_turbo" | "stock"
-    credits_per_5s: int          # 0 for stock
+    credits_per_second: int       # 0 for stock
     visual_prompt: str = ""
 
 
@@ -50,21 +54,23 @@ def select_runway_model(
     scene_type: str,
     visual_score: int,
     budget_remaining: float,
+    duration: float = 5.0,
 ) -> Tuple[str | None, int]:
     """
-    Return (model_name, credits_per_5s).
+    Return (model_name, credits_per_second).
     Returns (None, 0) when stock footage should be used.
 
     Strategy:
       hook              → always gen4.5 (first impression is everything)
-      score ≥ 8         → gen4.5  (12 cr/5s)
-      score 5–7         → gen4_turbo  (10 cr/5s)
+      score ≥ 8         → gen4.5  (12 cr/s)
+      score 5–7         → gen4_turbo  (5 cr/s)
       score < 5         → stock footage (0 credits)
 
-    Budget guardrail: if remaining credits cannot cover the cheapest model,
-    fall back to stock regardless of score.
+    Budget guardrail: the REAL scene cost is duration × credits_per_second.
+    If remaining credits cannot cover the actual cost, fall back to the
+    cheaper model, then to stock.
     """
-    cheapest = min(MODEL_CREDITS.values())
+    cheapest_rate = min(MODEL_CREDITS.values())
 
     if scene_type == "hook":
         model, rate = "gen4.5", MODEL_CREDITS["gen4.5"]
@@ -75,13 +81,16 @@ def select_runway_model(
     else:
         return None, 0
 
-    # Budget guardrail
-    if budget_remaining < cheapest:
+    def _cost(r: int) -> float:
+        return max(1.0, float(duration)) * r
+
+    # Budget guardrail — compare against true scene cost, not the raw rate
+    if budget_remaining < _cost(cheapest_rate):
         return None, 0
-    if budget_remaining < rate:
+    if budget_remaining < _cost(rate):
         # Downgrade to cheaper model
         model, rate = "gen4_turbo", MODEL_CREDITS["gen4_turbo"]
-        if budget_remaining < rate:
+        if budget_remaining < _cost(rate):
             return None, 0
 
     return model, rate
@@ -150,7 +159,7 @@ def score_scene_heuristic(
         reasoning=reasoning,
         use_runway=use_runway,
         recommended_model=model,
-        credits_per_5s=credits,
+        credits_per_second=credits,
         visual_prompt=vp,
     )
 
@@ -219,7 +228,7 @@ Output ONLY valid JSON:
             reasoning=data.get("reasoning", ""),
             use_runway=bool(data.get("use_runway", score >= 5)),
             recommended_model=model,
-            credits_per_5s=MODEL_CREDITS.get(model, 0),
+            credits_per_second=MODEL_CREDITS.get(model, 0),
             visual_prompt=_build_visual_prompt(scene_text, scene_type, score),
         )
     except Exception as exc:
